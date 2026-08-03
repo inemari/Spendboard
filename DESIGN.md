@@ -47,5 +47,5 @@ Bold, fun, and energetic. Saturated colors, pill-shaped elements, and bouncy mic
   the `--font-sans` CSS variable that `globals.css` already expected.
 - Pill shape + hover scale/shadow applied directly in `src/components/ui/button.tsx`,
   `input.tsx`, `badge.tsx`; lift/shadow on `card.tsx`. Category board columns and the
-  review-mode drop zones (`category-column.tsx`, `category-drop-zone.tsx`) got the
+  Categorize screen's drop zones (`category-column.tsx`, `category-drop-zone.tsx`) got the
   same radius treatment since they're central, highly visible UI.

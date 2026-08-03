@@ -9,7 +9,7 @@ import { CategoryDropZone } from "@/components/category-drop-zone";
 import { flattenWithDepth, getCategoryLabel } from "@/lib/category-tree";
 import type { Category, Transaction } from "@/lib/types";
 
-export function ReviewMode({
+export function CategorizeScreen({
   transactions,
   categories,
   onCategoryChange,
@@ -45,7 +45,7 @@ export function ReviewMode({
     <div className="fixed inset-0 z-50 flex flex-col bg-background">
       <header className="flex items-center justify-between border-b p-4">
         <div>
-          <h2 className="font-semibold">Review transactions</h2>
+          <h2 className="font-semibold">Categorize</h2>
           <p className="text-sm text-muted-foreground">
             {remaining.length} left{skipped.size > 0 ? ` · ${skipped.size} skipped` : ""}
           </p>
@@ -59,7 +59,7 @@ export function ReviewMode({
         <div className="flex flex-1 flex-col items-center justify-center gap-8 overflow-y-auto p-6">
           {current ? (
             <>
-              <div className="w-full max-w-sm">
+              <div className="w-full max-w-md">
                 <DraggableTransactionCard
                   transaction={current}
                   categories={categories}
@@ -78,7 +78,7 @@ export function ReviewMode({
                 Skip for now
               </button>
 
-              <div className="grid w-full max-w-2xl grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-3">
+              <div className="grid w-full max-w-5xl grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-4">
                 {flattenWithDepth(categories).map(({ category: c }) => (
                   <CategoryDropZone key={c.id} id={c.id} name={getCategoryLabel(c, categories)} />
                 ))}

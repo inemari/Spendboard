@@ -14,7 +14,7 @@ track common vs. personal spending. See [README.md](README.md) for setup and
 - Each transaction card's **title is the `Spesifikasjon` (description) column**,
   and its **subtitle is the `Sted` (location) column**, when present.
 - Categorize transactions via dropdown, drag-and-drop board (desktop), or the
-  one-by-one review-mode game (drag a card onto its category).
+  one-by-one "Categorize" screen (drag a card onto its category).
 - Optional one-level subcategories (e.g. "Hud/hår-pleie" → "Hår").
 - Toggle each transaction between **Common**, **Personal**, and **Need review**
   (a third state for "haven't decided yet" — distinct from being uncategorized).

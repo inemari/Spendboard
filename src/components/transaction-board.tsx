@@ -8,7 +8,7 @@ import { formatTxType } from "@/lib/format";
 import { SummaryBar } from "@/components/summary-bar";
 import { TransactionCard } from "@/components/transaction-card";
 import { CategoryBoard } from "@/components/category-board";
-import { ReviewMode } from "@/components/review-mode";
+import { CategorizeScreen } from "@/components/categorize-screen";
 import { BulkActionBar } from "@/components/bulk-action-bar";
 import { Button } from "@/components/ui/button";
 import type { Category, Transaction, TxType, CardType } from "@/lib/types";
@@ -21,7 +21,7 @@ export function TransactionBoard({
   categories: Category[];
 }) {
   const [transactions, setTransactions] = useState(initialTransactions);
-  const [reviewing, setReviewing] = useState(false);
+  const [categorizing, setCategorizing] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const supabase = useMemo(() => createClient(), []);
 
@@ -150,20 +150,20 @@ export function TransactionBoard({
       />
 
       {totals.uncategorizedCount > 0 && (
-        <Button onClick={() => setReviewing(true)} className="self-start">
-          Review {totals.uncategorizedCount} uncategorized
+        <Button onClick={() => setCategorizing(true)} className="self-start">
+          Categorize {totals.uncategorizedCount} uncategorized
         </Button>
       )}
 
-      {reviewing && (
-        <ReviewMode
+      {categorizing && (
+        <CategorizeScreen
           transactions={uncategorized}
           categories={categories}
           onCategoryChange={handleCategoryChange}
           onTypeToggle={handleTypeToggle}
           onCardTypeToggle={handleCardTypeToggle}
           onNotesChange={handleNotesChange}
-          onClose={() => setReviewing(false)}
+          onClose={() => setCategorizing(false)}
         />
       )}
 
