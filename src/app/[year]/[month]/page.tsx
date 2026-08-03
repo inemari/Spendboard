@@ -22,7 +22,7 @@ export default async function MonthWorkspacePage({
 
   await ensureDefaultCategories(supabase);
 
-  const { data: categories } = await supabase
+  const { data: categories, error: categoriesError } = await supabase
     .from("categories")
     .select("id, name, color, is_default, parent_id")
     .order("name");
@@ -57,6 +57,12 @@ export default async function MonthWorkspacePage({
           <SignOutButton />
         </div>
       </header>
+
+      {categoriesError && (
+        <p className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
+          Failed to load categories: {categoriesError.message}
+        </p>
+      )}
 
       <UploadDropzone year={yearNum} month={monthNum} />
 
