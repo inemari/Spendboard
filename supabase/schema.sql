@@ -20,6 +20,15 @@ create table if not exists categories (
 -- top-level category) — enforced by the app, not the schema.
 alter table categories add column if not exists parent_id uuid references categories(id) on delete cascade;
 
+-- Manual drag-to-reorder within a group (top-level categories, or the
+-- subcategories of one parent). New rows default to 0 and get pushed to the
+-- end of their group at insert time by the app; pre-existing rows are all 0
+-- until reordered, so category-tree.ts falls back to alphabetical for ties —
+-- deliberately not backfilled here, since that would need to be a one-time
+-- data migration and this file is meant to be safely re-run any number of
+-- times.
+alter table categories add column if not exists sort_order integer not null default 0;
+
 create table if not exists months (
   id uuid primary key default gen_random_uuid(),
   user_id uuid references auth.users not null default auth.uid(),

@@ -17,6 +17,7 @@ export function CategoryBoard({
   onNotesChange,
   selectedIds,
   onToggleSelect,
+  onToggleSelectAll,
 }: {
   transactions: Transaction[];
   categories: Category[];
@@ -27,6 +28,7 @@ export function CategoryBoard({
   onNotesChange: (id: string, notes: string | null) => void;
   selectedIds: Set<string>;
   onToggleSelect: (id: string) => void;
+  onToggleSelectAll: (ids: string[]) => void;
 }) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -73,6 +75,7 @@ export function CategoryBoard({
             onNotesChange={onNotesChange}
             selectedIds={selectedIds}
             onToggleSelect={onToggleSelect}
+            onToggleSelectAll={onToggleSelectAll}
           />
         ))}
       </div>

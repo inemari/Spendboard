@@ -25,6 +25,7 @@ export function TransactionBoard({
     totals,
     selectedIds,
     toggleSelect,
+    toggleSelectAll,
     clearSelection,
     handleCategoryChange,
     handleCategoryChangeMulti,
@@ -86,6 +87,7 @@ export function TransactionBoard({
             onNotesChange={handleNotesChange}
             selectedIds={selectedIds}
             onToggleSelect={toggleSelect}
+            onToggleSelectAll={toggleSelectAll}
           />
 
           {/* Mobile: flat list, categorize via dropdown */}

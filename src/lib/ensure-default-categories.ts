@@ -16,9 +16,10 @@ export async function ensureDefaultCategories(supabase: SupabaseClient) {
   if (count && count > 0) return;
 
   await supabase.from("categories").insert(
-    DEFAULT_CATEGORY_NAMES.map((name) => ({
+    DEFAULT_CATEGORY_NAMES.map((name, i) => ({
       name,
       is_default: true,
+      sort_order: i,
     })),
   );
 }

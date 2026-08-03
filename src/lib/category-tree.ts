@@ -5,11 +5,13 @@ export type CategoryGroup = {
   children: Category[];
 };
 
-/** Groups categories into top-level parents with their subcategories, both name-sorted. */
+function bySortOrder(a: Category, b: Category): number {
+  return a.sort_order - b.sort_order || a.name.localeCompare(b.name);
+}
+
+/** Groups categories into top-level parents with their subcategories, both ordered by sort_order. */
 export function buildCategoryTree(categories: Category[]): CategoryGroup[] {
-  const topLevel = categories
-    .filter((c) => !c.parent_id)
-    .sort((a, b) => a.name.localeCompare(b.name));
+  const topLevel = categories.filter((c) => !c.parent_id).sort(bySortOrder);
 
   const childrenByParent = new Map<string, Category[]>();
   for (const c of categories) {
@@ -19,7 +21,7 @@ export function buildCategoryTree(categories: Category[]): CategoryGroup[] {
     childrenByParent.set(c.parent_id, siblings);
   }
   for (const siblings of childrenByParent.values()) {
-    siblings.sort((a, b) => a.name.localeCompare(b.name));
+    siblings.sort(bySortOrder);
   }
 
   return topLevel.map((parent) => ({

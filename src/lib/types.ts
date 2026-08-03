@@ -7,6 +7,7 @@ export type Category = {
   color: string | null;
   is_default: boolean;
   parent_id: string | null;
+  sort_order: number;
 };
 
 export type Transaction = {

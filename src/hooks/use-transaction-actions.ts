@@ -66,6 +66,16 @@ export function useTransactionActions(
     setSelectedIds(new Set());
   }
 
+  function toggleSelectAll(ids: string[]) {
+    setSelectedIds((prev) => {
+      const allSelected = ids.length > 0 && ids.every((id) => prev.has(id));
+      const next = new Set(prev);
+      if (allSelected) ids.forEach((id) => next.delete(id));
+      else ids.forEach((id) => next.add(id));
+      return next;
+    });
+  }
+
   function handleCategoryChange(id: string, categoryId: string | null) {
     const previousCategoryId = transactions.find((t) => t.id === id)?.category_id ?? null;
     if (previousCategoryId === categoryId) return;
@@ -128,6 +138,7 @@ export function useTransactionActions(
     totals,
     selectedIds,
     toggleSelect,
+    toggleSelectAll,
     clearSelection,
     handleCategoryChange,
     handleCategoryChangeMulti,

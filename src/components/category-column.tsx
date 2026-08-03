@@ -17,6 +17,7 @@ export function CategoryColumn({
   onNotesChange,
   selectedIds,
   onToggleSelect,
+  onToggleSelectAll,
 }: {
   id: string;
   title: string;
@@ -28,9 +29,11 @@ export function CategoryColumn({
   onNotesChange: (id: string, notes: string | null) => void;
   selectedIds: Set<string>;
   onToggleSelect: (id: string) => void;
+  onToggleSelectAll: (ids: string[]) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id });
   const total = transactions.reduce((sum, t) => sum + t.amount, 0);
+  const allSelected = transactions.length > 0 && transactions.every((t) => selectedIds.has(t.id));
 
   return (
     <div
@@ -41,7 +44,18 @@ export function CategoryColumn({
       )}
     >
       <div className="flex items-center justify-between px-1">
-        <h3 className="text-sm font-medium">{title}</h3>
+        <div className="flex items-center gap-2">
+          {transactions.length > 0 && (
+            <input
+              type="checkbox"
+              checked={allSelected}
+              onChange={() => onToggleSelectAll(transactions.map((t) => t.id))}
+              aria-label={`Select all transactions in ${title}`}
+              className="size-4 cursor-pointer accent-primary"
+            />
+          )}
+          <h3 className="text-sm font-medium">{title}</h3>
+        </div>
         <span className="text-xs font-medium tabular-nums text-muted-foreground">
           {formatAmount(total)}
         </span>
