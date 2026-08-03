@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
-import { toast } from "sonner";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DraggableTransactionCard } from "@/components/draggable-transaction-card";
@@ -34,9 +33,7 @@ export function ReviewMode({
     const { active, over } = event;
     if (!over || !current) return;
 
-    const category = categories.find((c) => c.id === over.id);
     onCategoryChange(String(active.id), String(over.id));
-    toast.success(category ? `Categorized as ${category.name}` : "Categorized");
   }
 
   return (

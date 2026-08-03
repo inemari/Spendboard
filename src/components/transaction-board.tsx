@@ -41,7 +41,21 @@ export function TransactionBoard({
   }
 
   function handleCategoryChange(id: string, categoryId: string | null) {
+    const previousCategoryId = transactions.find((t) => t.id === id)?.category_id ?? null;
+    if (previousCategoryId === categoryId) return;
+
     void updateTransaction(id, { category_id: categoryId });
+
+    const categoryName = categoryId
+      ? (categories.find((c) => c.id === categoryId)?.name ?? "Uncategorized")
+      : "Uncategorized";
+
+    toast.success(`Moved to ${categoryName}`, {
+      action: {
+        label: "Undo",
+        onClick: () => void updateTransaction(id, { category_id: previousCategoryId }),
+      },
+    });
   }
 
   function handleTypeToggle(id: string, currentType: TxType) {
