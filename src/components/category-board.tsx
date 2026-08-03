@@ -2,6 +2,7 @@
 
 import { DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { CategoryColumn } from "@/components/category-column";
+import { flattenWithDepth, getCategoryLabel } from "@/lib/category-tree";
 import type { Category, Transaction } from "@/lib/types";
 
 const UNCATEGORIZED_ID = "uncategorized";
@@ -31,7 +32,10 @@ export function CategoryBoard({
 
   const columns = [
     { id: UNCATEGORIZED_ID, name: "Uncategorized" },
-    ...categories.map((c) => ({ id: c.id, name: c.name })),
+    ...flattenWithDepth(categories).map(({ category: c }) => ({
+      id: c.id,
+      name: getCategoryLabel(c, categories),
+    })),
   ];
 
   return (

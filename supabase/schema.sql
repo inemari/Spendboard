@@ -9,6 +9,11 @@ create table if not exists categories (
   created_at timestamptz not null default now()
 );
 
+-- Optional subcategory support: a category may have a parent category.
+-- One level deep only (a subcategory's parent_id always points at a
+-- top-level category) — enforced by the app, not the schema.
+alter table categories add column if not exists parent_id uuid references categories(id) on delete cascade;
+
 create table if not exists months (
   id uuid primary key default gen_random_uuid(),
   user_id uuid references auth.users not null default auth.uid(),

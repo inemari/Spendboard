@@ -10,6 +10,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { formatAmount, formatDate } from "@/lib/format";
+import { flattenWithDepth } from "@/lib/category-tree";
 import { cn } from "@/lib/utils";
 import type { Category, Transaction } from "@/lib/types";
 
@@ -65,9 +66,13 @@ export function TransactionCard({
           </SelectTrigger>
           <SelectContent>
             <SelectItem value={UNCATEGORIZED_VALUE}>Uncategorized</SelectItem>
-            {categories.map((c) => (
-              <SelectItem key={c.id} value={c.id}>
-                {c.name}
+            {flattenWithDepth(categories).map(({ category: c, depth }) => (
+              <SelectItem
+                key={c.id}
+                value={c.id}
+                className={depth > 0 ? "pl-6 text-muted-foreground" : undefined}
+              >
+                {depth > 0 ? `↳ ${c.name}` : c.name}
               </SelectItem>
             ))}
           </SelectContent>

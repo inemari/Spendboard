@@ -5,6 +5,7 @@ export type Category = {
   name: string;
   color: string | null;
   is_default: boolean;
+  parent_id: string | null;
 };
 
 export type Transaction = {

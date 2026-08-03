@@ -6,6 +6,7 @@ import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DraggableTransactionCard } from "@/components/draggable-transaction-card";
 import { CategoryDropZone } from "@/components/category-drop-zone";
+import { flattenWithDepth, getCategoryLabel } from "@/lib/category-tree";
 import type { Category, Transaction } from "@/lib/types";
 
 export function ReviewMode({
@@ -72,8 +73,8 @@ export function ReviewMode({
               </button>
 
               <div className="grid w-full max-w-2xl grid-cols-2 gap-3 sm:grid-cols-3">
-                {categories.map((c) => (
-                  <CategoryDropZone key={c.id} id={c.id} name={c.name} />
+                {flattenWithDepth(categories).map(({ category: c }) => (
+                  <CategoryDropZone key={c.id} id={c.id} name={getCategoryLabel(c, categories)} />
                 ))}
               </div>
             </>

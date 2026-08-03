@@ -24,7 +24,7 @@ export default async function MonthWorkspacePage({
 
   const { data: categories } = await supabase
     .from("categories")
-    .select("id, name, color, is_default")
+    .select("id, name, color, is_default, parent_id")
     .order("name");
 
   const { data: monthRow } = await supabase
