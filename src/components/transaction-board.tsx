@@ -7,6 +7,8 @@ import { computeTotals } from "@/lib/totals";
 import { SummaryBar } from "@/components/summary-bar";
 import { TransactionCard } from "@/components/transaction-card";
 import { CategoryBoard } from "@/components/category-board";
+import { ReviewMode } from "@/components/review-mode";
+import { Button } from "@/components/ui/button";
 import type { Category, Transaction, TxType } from "@/lib/types";
 
 export function TransactionBoard({
@@ -17,6 +19,7 @@ export function TransactionBoard({
   categories: Category[];
 }) {
   const [transactions, setTransactions] = useState(initialTransactions);
+  const [reviewing, setReviewing] = useState(false);
   const supabase = useMemo(() => createClient(), []);
 
   const totals = useMemo(() => computeTotals(transactions, categories), [transactions, categories]);
@@ -47,6 +50,7 @@ export function TransactionBoard({
   }
 
   const sorted = [...transactions].sort((a, b) => (a.date < b.date ? 1 : -1));
+  const uncategorized = sorted.filter((t) => !t.category_id);
 
   return (
     <div className="flex flex-col gap-6">
@@ -56,6 +60,22 @@ export function TransactionBoard({
         overall={totals.overall}
         uncategorizedCount={totals.uncategorizedCount}
       />
+
+      {totals.uncategorizedCount > 0 && (
+        <Button onClick={() => setReviewing(true)} className="self-start">
+          Review {totals.uncategorizedCount} uncategorized
+        </Button>
+      )}
+
+      {reviewing && (
+        <ReviewMode
+          transactions={uncategorized}
+          categories={categories}
+          onCategoryChange={handleCategoryChange}
+          onTypeToggle={handleTypeToggle}
+          onClose={() => setReviewing(false)}
+        />
+      )}
 
       {sorted.length === 0 ? (
         <p className="rounded-lg border border-dashed p-8 text-center text-muted-foreground">
