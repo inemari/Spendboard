@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { computeTotals } from "@/lib/totals";
 import { SummaryBar } from "@/components/summary-bar";
 import { TransactionCard } from "@/components/transaction-card";
+import { CategoryBoard } from "@/components/category-board";
 import type { Category, Transaction, TxType } from "@/lib/types";
 
 export function TransactionBoard({
@@ -61,17 +62,28 @@ export function TransactionBoard({
           No transactions yet for this month. Upload a statement above to get started.
         </p>
       ) : (
-        <div className="flex flex-col gap-2">
-          {sorted.map((t) => (
-            <TransactionCard
-              key={t.id}
-              transaction={t}
-              categories={categories}
-              onCategoryChange={(categoryId) => handleCategoryChange(t.id, categoryId)}
-              onTypeToggle={() => handleTypeToggle(t.id, t.type)}
-            />
-          ))}
-        </div>
+        <>
+          {/* Desktop: drag-and-drop category columns */}
+          <CategoryBoard
+            transactions={sorted}
+            categories={categories}
+            onCategoryChange={handleCategoryChange}
+            onTypeToggle={handleTypeToggle}
+          />
+
+          {/* Mobile: flat list, categorize via dropdown */}
+          <div className="flex flex-col gap-2 md:hidden">
+            {sorted.map((t) => (
+              <TransactionCard
+                key={t.id}
+                transaction={t}
+                categories={categories}
+                onCategoryChange={(categoryId) => handleCategoryChange(t.id, categoryId)}
+                onTypeToggle={() => handleTypeToggle(t.id, t.type)}
+              />
+            ))}
+          </div>
+        </>
       )}
     </div>
   );

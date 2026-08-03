@@ -56,3 +56,9 @@ create policy "own rows" on months
 
 create policy "own rows" on transactions
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- RLS policies only control *which rows* a role can see/touch — Postgres also
+-- requires a table-level grant before the role can touch the table at all.
+-- Without this, every query fails with "permission denied for table X".
+grant usage on schema public to authenticated;
+grant select, insert, update, delete on categories, months, transactions to authenticated;
