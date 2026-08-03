@@ -26,6 +26,9 @@ export function TransactionCard({
   onCategoryChange: (categoryId: string | null) => void;
   onTypeToggle: () => void;
 }) {
+  const selectedCategoryName =
+    categories.find((c) => c.id === transaction.category_id)?.name ?? "Uncategorized";
+
   return (
     <Card className="flex flex-col gap-3 p-3">
       <div className="flex items-start justify-between gap-2">
@@ -58,7 +61,7 @@ export function TransactionCard({
           }
         >
           <SelectTrigger className="h-8 flex-1 text-xs">
-            <SelectValue placeholder="Category" />
+            <SelectValue placeholder="Category">{selectedCategoryName}</SelectValue>
           </SelectTrigger>
           <SelectContent>
             <SelectItem value={UNCATEGORIZED_VALUE}>Uncategorized</SelectItem>
