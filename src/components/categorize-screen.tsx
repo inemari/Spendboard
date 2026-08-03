@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
-import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DraggableTransactionCard } from "@/components/draggable-transaction-card";
 import { CategoryDropZone } from "@/components/category-drop-zone";
@@ -16,7 +16,7 @@ export function CategorizeScreen({
   onTypeToggle,
   onCardTypeToggle,
   onNotesChange,
-  onClose,
+  backHref,
 }: {
   transactions: Transaction[];
   categories: Category[];
@@ -24,7 +24,7 @@ export function CategorizeScreen({
   onTypeToggle: (id: string, currentType: Transaction["type"]) => void;
   onCardTypeToggle: (id: string, currentCardType: Transaction["card_type"]) => void;
   onNotesChange: (id: string, notes: string | null) => void;
-  onClose: () => void;
+  backHref: string;
 }) {
   const [skipped, setSkipped] = useState<Set<string>>(new Set());
   const sensors = useSensors(
@@ -42,18 +42,18 @@ export function CategorizeScreen({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-background">
-      <header className="flex items-center justify-between border-b p-4">
+    <div className="flex flex-1 flex-col">
+      <div className="flex items-center justify-between border-b p-4">
         <div>
           <h2 className="font-semibold">Categorize</h2>
           <p className="text-sm text-muted-foreground">
             {remaining.length} left{skipped.size > 0 ? ` · ${skipped.size} skipped` : ""}
           </p>
         </div>
-        <Button variant="ghost" size="icon" onClick={onClose}>
-          <X className="size-4" />
+        <Button variant="outline" size="sm" render={<Link href={backHref} />}>
+          Done
         </Button>
-      </header>
+      </div>
 
       <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
         <div className="flex flex-1 flex-col items-center justify-center gap-8 overflow-y-auto p-6">
@@ -94,7 +94,7 @@ export function CategorizeScreen({
                   Review skipped ({skipped.size})
                 </Button>
               )}
-              <Button onClick={onClose}>Close</Button>
+              <Button render={<Link href={backHref} />}>Back to overview</Button>
             </div>
           )}
         </div>

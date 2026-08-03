@@ -15,14 +15,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import type { Category } from "@/lib/types";
 
@@ -93,7 +85,7 @@ function CategoryRow({ category, indent = false }: { category: Category; indent?
   );
 }
 
-export function CategoryManagerDialog({ categories }: { categories: Category[] }) {
+export function CategoryManagerPanel({ categories }: { categories: Category[] }) {
   const router = useRouter();
   const [newName, setNewName] = useState("");
   const [parentId, setParentId] = useState(NO_PARENT_VALUE);
@@ -125,70 +117,65 @@ export function CategoryManagerDialog({ categories }: { categories: Category[] }
   }
 
   return (
-    <Dialog>
-      <DialogTrigger render={<Button variant="outline" size="sm" />}>
-        Manage categories
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Categories</DialogTitle>
-          <DialogDescription>
-            Rename or delete categories and subcategories. Deleting one moves its
-            transactions back to Uncategorized.
-          </DialogDescription>
-        </DialogHeader>
+    <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 p-6">
+      <div>
+        <h2 className="text-lg font-semibold">Categories</h2>
+        <p className="text-sm text-muted-foreground">
+          Rename or delete categories and subcategories. Deleting one moves its
+          transactions back to Uncategorized.
+        </p>
+      </div>
 
-        <div className="flex max-h-80 flex-col gap-3 overflow-y-auto">
-          {tree.map(({ parent, children }) => (
-            <div key={parent.id} className="flex flex-col gap-2">
-              <CategoryRow category={parent} />
-              {children.map((child) => (
-                <CategoryRow key={child.id} category={child} indent />
-              ))}
-            </div>
-          ))}
-        </div>
-
-        <div className="flex flex-col gap-2 border-t pt-4">
-          <div className="flex items-center gap-2">
-            <Input
-              placeholder="New category name"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") void handleCreate();
-              }}
-              className="h-8"
-            />
-            <Button
-              type="button"
-              size="sm"
-              onClick={() => void handleCreate()}
-              disabled={creating || !newName.trim()}
-            >
-              Add
-            </Button>
+      <div className="flex flex-col gap-3">
+        {tree.map(({ parent, children }) => (
+          <div key={parent.id} className="flex flex-col gap-2">
+            <CategoryRow category={parent} />
+            {children.map((child) => (
+              <CategoryRow key={child.id} category={child} indent />
+            ))}
           </div>
+        ))}
+      </div>
 
-          <Select value={parentId} onValueChange={(value) => setParentId(value ?? NO_PARENT_VALUE)}>
-            <SelectTrigger className="h-8 w-full text-xs">
-              <SelectValue placeholder="Parent category">
-                {parentId === NO_PARENT_VALUE
-                  ? "No parent (top-level category)"
-                  : topLevelCategories.find((c) => c.id === parentId)?.name}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={NO_PARENT_VALUE}>No parent (top-level category)</SelectItem>
-              {topLevelCategories.map((c) => (
-                <SelectItem key={c.id} value={c.id}>
-                  Subcategory of {c.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+      <div className="flex flex-col gap-2 border-t pt-4">
+        <div className="flex items-center gap-2">
+          <Input
+            placeholder="New category name"
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") void handleCreate();
+            }}
+            className="h-8"
+          />
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => void handleCreate()}
+            disabled={creating || !newName.trim()}
+          >
+            Add
+          </Button>
         </div>
-      </DialogContent>
-    </Dialog>
+
+        <Select value={parentId} onValueChange={(value) => setParentId(value ?? NO_PARENT_VALUE)}>
+          <SelectTrigger className="h-8 w-full text-xs">
+            <SelectValue placeholder="Parent category">
+              {parentId === NO_PARENT_VALUE
+                ? "No parent (top-level category)"
+                : topLevelCategories.find((c) => c.id === parentId)?.name}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={NO_PARENT_VALUE}>No parent (top-level category)</SelectItem>
+            {topLevelCategories.map((c) => (
+              <SelectItem key={c.id} value={c.id}>
+                Subcategory of {c.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    </div>
   );
 }
