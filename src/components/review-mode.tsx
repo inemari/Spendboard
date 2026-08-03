@@ -55,10 +55,10 @@ export function ReviewMode({
         </Button>
       </header>
 
-      <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
-        <div className="flex flex-1 flex-col items-center justify-center gap-8 overflow-y-auto p-6">
-          {current ? (
-            <>
+      {current ? (
+        <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto md:flex-row md:overflow-hidden">
+            <div className="flex shrink-0 flex-col items-center gap-4 p-6 md:w-96 md:justify-center md:overflow-y-auto">
               <div className="w-full max-w-sm">
                 <DraggableTransactionCard
                   transaction={current}
@@ -77,28 +77,30 @@ export function ReviewMode({
               >
                 Skip for now
               </button>
+            </div>
 
-              <div className="grid w-full max-w-2xl grid-cols-2 gap-3 sm:grid-cols-3">
+            <div className="min-h-0 flex-1 border-t p-6 md:overflow-y-auto md:border-t-0 md:border-l">
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-3">
                 {flattenWithDepth(categories).map(({ category: c }) => (
                   <CategoryDropZone key={c.id} id={c.id} name={getCategoryLabel(c, categories)} />
                 ))}
               </div>
-            </>
-          ) : (
-            <div className="flex flex-col items-center gap-4 text-center">
-              <p className="text-lg font-medium">
-                {skipped.size > 0 ? "Everything left has been skipped." : "All caught up!"}
-              </p>
-              {skipped.size > 0 && (
-                <Button variant="outline" onClick={() => setSkipped(new Set())}>
-                  Review skipped ({skipped.size})
-                </Button>
-              )}
-              <Button onClick={onClose}>Close</Button>
             </div>
+          </div>
+        </DndContext>
+      ) : (
+        <div className="flex flex-1 flex-col items-center justify-center gap-4 p-6 text-center">
+          <p className="text-lg font-medium">
+            {skipped.size > 0 ? "Everything left has been skipped." : "All caught up!"}
+          </p>
+          {skipped.size > 0 && (
+            <Button variant="outline" onClick={() => setSkipped(new Set())}>
+              Review skipped ({skipped.size})
+            </Button>
           )}
+          <Button onClick={onClose}>Close</Button>
         </div>
-      </DndContext>
+      )}
     </div>
   );
 }

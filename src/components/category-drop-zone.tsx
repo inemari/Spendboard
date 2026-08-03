@@ -10,7 +10,7 @@ export function CategoryDropZone({ id, name }: { id: string; name: string }) {
     <div
       ref={setNodeRef}
       className={cn(
-        "flex h-24 items-center justify-center rounded-xl border-2 border-dashed p-4 text-center text-sm font-medium transition-colors",
+        "flex h-16 items-center justify-center rounded-xl border-2 border-dashed p-2 text-center text-xs font-medium transition-colors sm:text-sm",
         isOver ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground",
       )}
     >

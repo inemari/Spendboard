@@ -48,7 +48,7 @@ export default async function MonthWorkspacePage({
   }
 
   return (
-    <div className="mx-auto flex min-h-svh w-full max-w-6xl flex-col gap-6 p-6">
+    <div className="mx-auto flex min-h-svh w-full max-w-[1600px] flex-col gap-6 p-6">
       <header className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold">
