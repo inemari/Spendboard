@@ -3,6 +3,7 @@ import { ensureDefaultCategories } from "@/lib/ensure-default-categories";
 import { SignOutButton } from "@/components/sign-out-button";
 import { UploadDropzone } from "@/components/upload-dropzone";
 import { TransactionBoard } from "@/components/transaction-board";
+import { CategoryManagerDialog } from "@/components/category-manager-dialog";
 import type { Category, Transaction } from "@/lib/types";
 
 export default async function MonthWorkspacePage({
@@ -51,7 +52,10 @@ export default async function MonthWorkspacePage({
           </h1>
           <p className="text-sm text-muted-foreground">Signed in as {user?.email}</p>
         </div>
-        <SignOutButton />
+        <div className="flex items-center gap-2">
+          <CategoryManagerDialog categories={(categories ?? []) as Category[]} />
+          <SignOutButton />
+        </div>
       </header>
 
       <UploadDropzone year={yearNum} month={monthNum} />
