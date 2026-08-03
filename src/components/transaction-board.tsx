@@ -1,13 +1,15 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useTransactionActions } from "@/hooks/use-transaction-actions";
 import { SummaryBar } from "@/components/summary-bar";
 import { TransactionCard } from "@/components/transaction-card";
 import { CategoryBoard } from "@/components/category-board";
 import { BulkActionBar } from "@/components/bulk-action-bar";
+import { TypeOverviewSheet } from "@/components/type-overview-sheet";
 import { Button } from "@/components/ui/button";
-import type { Category, Transaction } from "@/lib/types";
+import type { Category, Transaction, TxType } from "@/lib/types";
 
 export function TransactionBoard({
   initialTransactions,
@@ -33,6 +35,8 @@ export function TransactionBoard({
     handleNotesChange,
   } = useTransactionActions(initialTransactions, categories);
 
+  const [overviewType, setOverviewType] = useState<TxType | null>(null);
+
   const sorted = [...transactions].sort((a, b) => (a.date < b.date ? 1 : -1));
 
   return (
@@ -44,6 +48,18 @@ export function TransactionBoard({
         overall={totals.overall}
         uncategorizedCount={totals.uncategorizedCount}
         needReviewCount={totals.needReviewCount}
+        onSelectType={setOverviewType}
+      />
+
+      <TypeOverviewSheet
+        type={overviewType}
+        transactions={transactions}
+        categories={categories}
+        onOpenChange={(open) => !open && setOverviewType(null)}
+        onCategoryChange={handleCategoryChange}
+        onTypeToggle={handleTypeToggle}
+        onCardTypeToggle={handleCardTypeToggle}
+        onNotesChange={handleNotesChange}
       />
 
       {totals.uncategorizedCount > 0 && (
