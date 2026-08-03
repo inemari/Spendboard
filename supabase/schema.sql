@@ -1,4 +1,10 @@
 -- Run this in the Supabase SQL editor (Project > SQL Editor > New query).
+--
+-- NOTE on `alter type tx_type add value`: Postgres refuses to run this
+-- statement inside a transaction block, and pasting a whole multi-statement
+-- script into one query often runs as one implicit transaction. If you get
+-- "ALTER TYPE ... ADD VALUE cannot run inside a transaction block", run just
+-- that one line by itself first, then run the rest of this file.
 
 create table if not exists categories (
   id uuid primary key default gen_random_uuid(),
@@ -29,21 +35,37 @@ exception
   when duplicate_object then null;
 end $$;
 
+-- Third state: "undecided yet" — distinct from being uncategorized (no category_id).
+alter type tx_type add value if not exists 'need_review';
+
+do $$ begin
+  create type card_type as enum ('regular', 'credit');
+exception
+  when duplicate_object then null;
+end $$;
+
 create table if not exists transactions (
   id uuid primary key default gen_random_uuid(),
   user_id uuid references auth.users not null default auth.uid(),
   month_id uuid references months(id) on delete cascade not null,
   date date not null,
-  description text not null,
+  description text not null, -- card title (from the "Spesifikasjon" column)
+  location text, -- card subtitle (from the "Sted" column), if present
+  notes text,
   amount numeric not null, -- negative = expense, positive = income
   category_id uuid references categories(id) on delete set null,
   type tx_type not null default 'personal',
+  card_type card_type not null default 'regular',
   source_hash text not null, -- hash(date+description+amount), used to de-dupe re-imports
   raw_row jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (month_id, source_hash)
 );
+
+alter table transactions add column if not exists location text;
+alter table transactions add column if not exists notes text;
+alter table transactions add column if not exists card_type card_type not null default 'regular';
 
 alter table categories enable row level security;
 alter table months enable row level security;

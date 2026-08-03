@@ -59,6 +59,7 @@ export async function POST(request: NextRequest) {
     month_id: monthRow.id,
     date: t.date,
     description: t.description,
+    location: t.location,
     amount: t.amount,
     source_hash: t.sourceHash,
     raw_row: t.rawRow,

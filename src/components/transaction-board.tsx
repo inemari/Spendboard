@@ -59,8 +59,19 @@ export function TransactionBoard({
   }
 
   function handleTypeToggle(id: string, currentType: TxType) {
-    const nextType: TxType = currentType === "common" ? "personal" : "common";
+    const cycle: TxType[] = ["personal", "common", "need_review"];
+    const nextType = cycle[(cycle.indexOf(currentType) + 1) % cycle.length];
     void updateTransaction(id, { type: nextType });
+  }
+
+  function handleCardTypeToggle(id: string, currentCardType: Transaction["card_type"]) {
+    void updateTransaction(id, {
+      card_type: currentCardType === "credit" ? "regular" : "credit",
+    });
+  }
+
+  function handleNotesChange(id: string, notes: string | null) {
+    void updateTransaction(id, { notes });
   }
 
   const sorted = [...transactions].sort((a, b) => (a.date < b.date ? 1 : -1));
@@ -71,8 +82,10 @@ export function TransactionBoard({
       <SummaryBar
         common={totals.common}
         personal={totals.personal}
+        needReview={totals.needReview}
         overall={totals.overall}
         uncategorizedCount={totals.uncategorizedCount}
+        needReviewCount={totals.needReviewCount}
       />
 
       {totals.uncategorizedCount > 0 && (
@@ -87,6 +100,8 @@ export function TransactionBoard({
           categories={categories}
           onCategoryChange={handleCategoryChange}
           onTypeToggle={handleTypeToggle}
+          onCardTypeToggle={handleCardTypeToggle}
+          onNotesChange={handleNotesChange}
           onClose={() => setReviewing(false)}
         />
       )}
@@ -103,6 +118,8 @@ export function TransactionBoard({
             categories={categories}
             onCategoryChange={handleCategoryChange}
             onTypeToggle={handleTypeToggle}
+            onCardTypeToggle={handleCardTypeToggle}
+            onNotesChange={handleNotesChange}
           />
 
           {/* Mobile: flat list, categorize via dropdown */}
@@ -114,6 +131,8 @@ export function TransactionBoard({
                 categories={categories}
                 onCategoryChange={(categoryId) => handleCategoryChange(t.id, categoryId)}
                 onTypeToggle={() => handleTypeToggle(t.id, t.type)}
+                onCardTypeToggle={() => handleCardTypeToggle(t.id, t.card_type)}
+                onNotesChange={(notes) => handleNotesChange(t.id, notes)}
               />
             ))}
           </div>

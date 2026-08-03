@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 export type ParsedTransaction = {
   date: string; // ISO yyyy-mm-dd
   description: string;
+  location: string | null;
   amount: number;
   sourceHash: string;
   rawRow: Record<string, unknown>;
@@ -21,6 +22,7 @@ const DESCRIPTION_HEADER_ALIASES = [
   "melding",
 ];
 const AMOUNT_HEADER_ALIASES = ["amount", "beløp", "belop", "sum", "value"];
+const LOCATION_HEADER_ALIASES = ["sted", "location", "place", "merchant"];
 
 // Section titles above a table that indicate the rows below are debits/expenses
 // shown as positive numbers (common in Norwegian bank exports, e.g. "Kjøp/uttak").
@@ -31,6 +33,7 @@ type HeaderMapping = {
   dateIdx: number;
   amountIdx: number;
   descIdx?: number;
+  locationIdx?: number;
   headerLabels: string[];
 };
 
@@ -60,11 +63,13 @@ function tryMatchHeaderRow(row: unknown[]): HeaderMapping | null {
   if (dateIdx === undefined || amountIdx === undefined) return null;
 
   const descIdx = findAliasIndex(cellsText, DESCRIPTION_HEADER_ALIASES);
+  const locationIdx = findAliasIndex(cellsText, LOCATION_HEADER_ALIASES);
 
   return {
     dateIdx,
     amountIdx,
     descIdx,
+    locationIdx,
     headerLabels: row.map((c) => (c === null || c === undefined ? "" : String(c).trim())),
   };
 }
@@ -176,6 +181,10 @@ function rowsToTransactions(rows: unknown[][]): ParsedTransaction[] {
     const description = String(
       mapping.descIdx !== undefined ? (row[mapping.descIdx] ?? "") : "",
     ).trim();
+    const location =
+      mapping.locationIdx !== undefined
+        ? String(row[mapping.locationIdx] ?? "").trim() || null
+        : null;
 
     if (!date || amount === null || !description) continue;
 
@@ -192,6 +201,7 @@ function rowsToTransactions(rows: unknown[][]): ParsedTransaction[] {
     transactions.push({
       date,
       description,
+      location,
       amount,
       sourceHash: computeSourceHash(date, description, amount),
       rawRow,

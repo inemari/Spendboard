@@ -14,12 +14,16 @@ export function ReviewMode({
   categories,
   onCategoryChange,
   onTypeToggle,
+  onCardTypeToggle,
+  onNotesChange,
   onClose,
 }: {
   transactions: Transaction[];
   categories: Category[];
   onCategoryChange: (id: string, categoryId: string | null) => void;
   onTypeToggle: (id: string, currentType: Transaction["type"]) => void;
+  onCardTypeToggle: (id: string, currentCardType: Transaction["card_type"]) => void;
+  onNotesChange: (id: string, notes: string | null) => void;
   onClose: () => void;
 }) {
   const [skipped, setSkipped] = useState<Set<string>>(new Set());
@@ -61,6 +65,8 @@ export function ReviewMode({
                   categories={categories}
                   onCategoryChange={(categoryId) => onCategoryChange(current.id, categoryId)}
                   onTypeToggle={() => onTypeToggle(current.id, current.type)}
+                  onCardTypeToggle={() => onCardTypeToggle(current.id, current.card_type)}
+                  onNotesChange={(notes) => onNotesChange(current.id, notes)}
                 />
               </div>
 

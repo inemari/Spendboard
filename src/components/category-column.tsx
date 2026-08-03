@@ -13,6 +13,8 @@ export function CategoryColumn({
   categories,
   onCategoryChange,
   onTypeToggle,
+  onCardTypeToggle,
+  onNotesChange,
 }: {
   id: string;
   title: string;
@@ -20,6 +22,8 @@ export function CategoryColumn({
   categories: Category[];
   onCategoryChange: (id: string, categoryId: string | null) => void;
   onTypeToggle: (id: string, currentType: Transaction["type"]) => void;
+  onCardTypeToggle: (id: string, currentCardType: Transaction["card_type"]) => void;
+  onNotesChange: (id: string, notes: string | null) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id });
   const total = transactions.reduce((sum, t) => sum + t.amount, 0);
@@ -52,6 +56,8 @@ export function CategoryColumn({
             categories={categories}
             onCategoryChange={(categoryId) => onCategoryChange(t.id, categoryId)}
             onTypeToggle={() => onTypeToggle(t.id, t.type)}
+            onCardTypeToggle={() => onCardTypeToggle(t.id, t.card_type)}
+            onNotesChange={(notes) => onNotesChange(t.id, notes)}
           />
         ))}
       </div>

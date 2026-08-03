@@ -4,13 +4,20 @@ export function computeTotals(transactions: Transaction[], categories: Category[
   const byCategory = new Map<string, number>();
   let common = 0;
   let personal = 0;
+  let needReview = 0;
   let overall = 0;
   let uncategorizedCount = 0;
+  let needReviewCount = 0;
 
   for (const t of transactions) {
     overall += t.amount;
+
     if (t.type === "common") common += t.amount;
-    else personal += t.amount;
+    else if (t.type === "personal") personal += t.amount;
+    else {
+      needReview += t.amount;
+      needReviewCount += 1;
+    }
 
     if (!t.category_id) {
       uncategorizedCount += 1;
@@ -24,5 +31,13 @@ export function computeTotals(transactions: Transaction[], categories: Category[
     total: byCategory.get(c.id) ?? 0,
   }));
 
-  return { common, personal, overall, uncategorizedCount, categoryTotals };
+  return {
+    common,
+    personal,
+    needReview,
+    overall,
+    uncategorizedCount,
+    needReviewCount,
+    categoryTotals,
+  };
 }

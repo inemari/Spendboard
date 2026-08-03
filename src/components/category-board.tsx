@@ -12,11 +12,15 @@ export function CategoryBoard({
   categories,
   onCategoryChange,
   onTypeToggle,
+  onCardTypeToggle,
+  onNotesChange,
 }: {
   transactions: Transaction[];
   categories: Category[];
   onCategoryChange: (id: string, categoryId: string | null) => void;
   onTypeToggle: (id: string, currentType: Transaction["type"]) => void;
+  onCardTypeToggle: (id: string, currentCardType: Transaction["card_type"]) => void;
+  onNotesChange: (id: string, notes: string | null) => void;
 }) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -52,6 +56,8 @@ export function CategoryBoard({
             categories={categories}
             onCategoryChange={onCategoryChange}
             onTypeToggle={onTypeToggle}
+            onCardTypeToggle={onCardTypeToggle}
+            onNotesChange={onNotesChange}
           />
         ))}
       </div>

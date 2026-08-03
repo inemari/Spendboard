@@ -35,12 +35,16 @@ export default async function MonthWorkspacePage({
     .maybeSingle();
 
   let transactions: Transaction[] = [];
+  let transactionsError: string | null = null;
   if (monthRow) {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("transactions")
-      .select("id, month_id, date, description, amount, category_id, type")
+      .select(
+        "id, month_id, date, description, location, notes, amount, category_id, type, card_type",
+      )
       .eq("month_id", monthRow.id);
     transactions = data ?? [];
+    transactionsError = error?.message ?? null;
   }
 
   return (
@@ -61,6 +65,12 @@ export default async function MonthWorkspacePage({
       {categoriesError && (
         <p className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
           Failed to load categories: {categoriesError.message}
+        </p>
+      )}
+
+      {transactionsError && (
+        <p className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
+          Failed to load transactions: {transactionsError}
         </p>
       )}
 
