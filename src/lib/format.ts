@@ -1,3 +1,5 @@
+import type { TxType } from "@/lib/types";
+
 const currencyFormatter = new Intl.NumberFormat("nb-NO", {
   style: "currency",
   currency: "NOK",
@@ -14,4 +16,8 @@ export function formatAmount(amount: number): string {
 
 export function formatDate(isoDate: string): string {
   return dateFormatter.format(new Date(`${isoDate}T00:00:00`));
+}
+
+export function formatTxType(type: TxType): string {
+  return type === "need_review" ? "Need review" : type[0].toUpperCase() + type.slice(1);
 }

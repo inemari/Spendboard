@@ -55,7 +55,7 @@ create table if not exists transactions (
   amount numeric not null, -- negative = expense, positive = income
   category_id uuid references categories(id) on delete set null,
   type tx_type not null default 'personal',
-  card_type card_type not null default 'regular',
+  card_type card_type not null default 'credit',
   source_hash text not null, -- hash(date+description+amount), used to de-dupe re-imports
   raw_row jsonb,
   created_at timestamptz not null default now(),
@@ -65,7 +65,12 @@ create table if not exists transactions (
 
 alter table transactions add column if not exists location text;
 alter table transactions add column if not exists notes text;
-alter table transactions add column if not exists card_type card_type not null default 'regular';
+alter table transactions add column if not exists card_type card_type not null default 'credit';
+
+-- `add column if not exists` above is a no-op once the column already exists,
+-- so this is what actually updates the default for databases that ran an
+-- earlier version of this migration (default was 'regular').
+alter table transactions alter column card_type set default 'credit';
 
 alter table categories enable row level security;
 alter table months enable row level security;

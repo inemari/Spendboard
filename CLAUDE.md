@@ -23,6 +23,10 @@ track common vs. personal spending. See [README.md](README.md) for setup and
 - Custom category create/rename/delete.
 - Per-category, per-month common/personal/overall totals; uncategorized count.
 - Undo action on the toast shown whenever a transaction's category changes.
+- Multi-select transaction cards (checkbox); dragging a selected card in the
+  desktop board moves the whole selection, not just that card. A bulk action
+  bar (bottom of screen) lets you set category / common-personal-need_review /
+  card type across the whole selection at once.
 
 ### Could have (not yet implemented)
 - Upload a PNG/JPG screenshot of transactions (e.g. a bank app screenshot) and
@@ -33,7 +37,7 @@ track common vs. personal spending. See [README.md](README.md) for setup and
   `tx_type`). `need_review` transactions should be excluded from both the
   common and personal totals, but still counted in the overall total — see
   `src/lib/totals.ts`.
-- `transactions.card_type`: `regular` | `credit`, defaults to `regular`. Not
+- `transactions.card_type`: `regular` | `credit`, defaults to `credit`. Not
   auto-detected from the statement — the user sets it manually per transaction.
 - `transactions.location` / `transactions.notes`: nullable text.
 - Schema changes live in `supabase/schema.sql` and must be re-run in the

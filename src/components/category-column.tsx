@@ -15,6 +15,8 @@ export function CategoryColumn({
   onTypeToggle,
   onCardTypeToggle,
   onNotesChange,
+  selectedIds,
+  onToggleSelect,
 }: {
   id: string;
   title: string;
@@ -24,6 +26,8 @@ export function CategoryColumn({
   onTypeToggle: (id: string, currentType: Transaction["type"]) => void;
   onCardTypeToggle: (id: string, currentCardType: Transaction["card_type"]) => void;
   onNotesChange: (id: string, notes: string | null) => void;
+  selectedIds: Set<string>;
+  onToggleSelect: (id: string) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id });
   const total = transactions.reduce((sum, t) => sum + t.amount, 0);
@@ -58,6 +62,8 @@ export function CategoryColumn({
             onTypeToggle={() => onTypeToggle(t.id, t.type)}
             onCardTypeToggle={() => onCardTypeToggle(t.id, t.card_type)}
             onNotesChange={(notes) => onNotesChange(t.id, notes)}
+            selected={selectedIds.has(t.id)}
+            onToggleSelect={() => onToggleSelect(t.id)}
           />
         ))}
       </div>

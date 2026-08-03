@@ -11,16 +11,22 @@ export function CategoryBoard({
   transactions,
   categories,
   onCategoryChange,
+  onCategoryChangeMulti,
   onTypeToggle,
   onCardTypeToggle,
   onNotesChange,
+  selectedIds,
+  onToggleSelect,
 }: {
   transactions: Transaction[];
   categories: Category[];
   onCategoryChange: (id: string, categoryId: string | null) => void;
+  onCategoryChangeMulti: (ids: string[], categoryId: string | null) => void;
   onTypeToggle: (id: string, currentType: Transaction["type"]) => void;
   onCardTypeToggle: (id: string, currentCardType: Transaction["card_type"]) => void;
   onNotesChange: (id: string, notes: string | null) => void;
+  selectedIds: Set<string>;
+  onToggleSelect: (id: string) => void;
 }) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -31,7 +37,14 @@ export function CategoryBoard({
     if (!over) return;
 
     const categoryId = over.id === UNCATEGORIZED_ID ? null : String(over.id);
-    onCategoryChange(String(active.id), categoryId);
+    const activeId = String(active.id);
+
+    // Dragging a card that's part of a multi-selection moves the whole selection.
+    if (selectedIds.has(activeId) && selectedIds.size > 1) {
+      onCategoryChangeMulti(Array.from(selectedIds), categoryId);
+    } else {
+      onCategoryChange(activeId, categoryId);
+    }
   }
 
   const columns = [
@@ -58,6 +71,8 @@ export function CategoryBoard({
             onTypeToggle={onTypeToggle}
             onCardTypeToggle={onCardTypeToggle}
             onNotesChange={onNotesChange}
+            selectedIds={selectedIds}
+            onToggleSelect={onToggleSelect}
           />
         ))}
       </div>

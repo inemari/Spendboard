@@ -11,16 +11,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { formatAmount, formatDate } from "@/lib/format";
+import { formatAmount, formatDate, formatTxType } from "@/lib/format";
 import { flattenWithDepth } from "@/lib/category-tree";
 import { cn } from "@/lib/utils";
-import type { Category, Transaction, TxType } from "@/lib/types";
+import type { Category, Transaction } from "@/lib/types";
 
 const UNCATEGORIZED_VALUE = "__uncategorized__";
-
-function typeLabel(type: TxType): string {
-  return type === "need_review" ? "Need review" : type[0].toUpperCase() + type.slice(1);
-}
 
 export function TransactionCard({
   transaction,
@@ -29,6 +25,8 @@ export function TransactionCard({
   onTypeToggle,
   onCardTypeToggle,
   onNotesChange,
+  selected = false,
+  onToggleSelect,
 }: {
   transaction: Transaction;
   categories: Category[];
@@ -36,6 +34,8 @@ export function TransactionCard({
   onTypeToggle: () => void;
   onCardTypeToggle: () => void;
   onNotesChange: (notes: string | null) => void;
+  selected?: boolean;
+  onToggleSelect?: () => void;
 }) {
   const [editingNote, setEditingNote] = useState(false);
   const [noteDraft, setNoteDraft] = useState(transaction.notes ?? "");
@@ -52,8 +52,18 @@ export function TransactionCard({
   }
 
   return (
-    <Card className="flex flex-col gap-3 p-3">
+    <Card className={cn("flex flex-col gap-3 p-3", selected && "ring-2 ring-primary")}>
       <div className="flex items-start justify-between gap-2">
+        {onToggleSelect && (
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={onToggleSelect}
+            onClick={(e) => e.stopPropagation()}
+            aria-label="Select transaction"
+            className="mt-0.5 size-4 shrink-0 cursor-pointer accent-primary"
+          />
+        )}
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold">{transaction.description}</p>
           {transaction.location && (
@@ -112,7 +122,7 @@ export function TransactionCard({
             transaction.type === "need_review" && "border-destructive/40 bg-destructive/10 text-destructive",
           )}
         >
-          {typeLabel(transaction.type)}
+          {formatTxType(transaction.type)}
         </button>
 
         <button

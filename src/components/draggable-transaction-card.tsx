@@ -13,6 +13,8 @@ export function DraggableTransactionCard({
   onTypeToggle,
   onCardTypeToggle,
   onNotesChange,
+  selected = false,
+  onToggleSelect,
 }: {
   transaction: Transaction;
   categories: Category[];
@@ -20,6 +22,8 @@ export function DraggableTransactionCard({
   onTypeToggle: () => void;
   onCardTypeToggle: () => void;
   onNotesChange: (notes: string | null) => void;
+  selected?: boolean;
+  onToggleSelect?: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: transaction.id,
@@ -42,6 +46,8 @@ export function DraggableTransactionCard({
         onTypeToggle={onTypeToggle}
         onCardTypeToggle={onCardTypeToggle}
         onNotesChange={onNotesChange}
+        selected={selected}
+        onToggleSelect={onToggleSelect}
       />
     </div>
   );
