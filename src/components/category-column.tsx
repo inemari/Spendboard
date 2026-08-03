@@ -28,7 +28,7 @@ export function CategoryColumn({
     <div
       ref={setNodeRef}
       className={cn(
-        "flex w-72 shrink-0 flex-col gap-2 rounded-lg border p-3 transition-colors",
+        "flex w-72 shrink-0 flex-col gap-2 rounded-xl border p-3 transition-colors",
         isOver ? "border-primary bg-muted/60" : "border-border",
       )}
     >
