@@ -13,6 +13,8 @@ import { formatAmount, formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { Category, Transaction } from "@/lib/types";
 
+const UNCATEGORIZED_VALUE = "__uncategorized__";
+
 export function TransactionCard({
   transaction,
   categories,
@@ -50,13 +52,16 @@ export function TransactionCard({
 
       <div className="flex items-center gap-2">
         <Select
-          value={transaction.category_id ?? undefined}
-          onValueChange={(value) => onCategoryChange(value)}
+          value={transaction.category_id ?? UNCATEGORIZED_VALUE}
+          onValueChange={(value) =>
+            onCategoryChange(value === UNCATEGORIZED_VALUE ? null : value)
+          }
         >
           <SelectTrigger className="h-8 flex-1 text-xs">
             <SelectValue placeholder="Category" />
           </SelectTrigger>
           <SelectContent>
+            <SelectItem value={UNCATEGORIZED_VALUE}>Uncategorized</SelectItem>
             {categories.map((c) => (
               <SelectItem key={c.id} value={c.id}>
                 {c.name}
