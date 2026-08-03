@@ -10,39 +10,63 @@ export type ParsedTransaction = {
   rawRow: Record<string, unknown>;
 };
 
-const DATE_HEADER_ALIASES = ["date", "dato", "transaction date", "bokføringsdato"];
+const DATE_HEADER_ALIASES = ["date", "dato", "transaction date", "bokføringsdato", "bokført"];
 const DESCRIPTION_HEADER_ALIASES = [
   "description",
   "beskrivelse",
   "tekst",
   "forklaring",
+  "spesifikasjon",
   "text",
   "melding",
 ];
-const AMOUNT_HEADER_ALIASES = [
-  "amount",
-  "beløp",
-  "belop",
-  "sum",
-  "value",
-];
+const AMOUNT_HEADER_ALIASES = ["amount", "beløp", "belop", "sum", "value"];
 
-function normalizeHeader(header: string): string {
-  return header.trim().toLowerCase();
+// Section titles above a table that indicate the rows below are debits/expenses
+// shown as positive numbers (common in Norwegian bank exports, e.g. "Kjøp/uttak").
+// If matched, positive amounts in that section are flipped to negative.
+const EXPENSE_SECTION_PATTERN = /uttak|kjøp|belastning|trekk|gebyr/i;
+
+type HeaderMapping = {
+  dateIdx: number;
+  amountIdx: number;
+  descIdx?: number;
+  headerLabels: string[];
+};
+
+function cellToText(cell: unknown): string {
+  if (cell === null || cell === undefined) return "";
+  if (cell instanceof Date) return "";
+  return String(cell).trim().toLowerCase();
 }
 
-function findColumn(headers: string[], aliases: string[]): string | undefined {
-  const normalized = headers.map((h) => ({ original: h, normalized: normalizeHeader(h) }));
+function findAliasIndex(cellsText: string[], aliases: string[]): number | undefined {
   for (const alias of aliases) {
-    const match = normalized.find((h) => h.normalized === alias);
-    if (match) return match.original;
+    const idx = cellsText.findIndex((t) => t === alias);
+    if (idx !== -1) return idx;
   }
-  // fall back to partial match
   for (const alias of aliases) {
-    const match = normalized.find((h) => h.normalized.includes(alias));
-    if (match) return match.original;
+    const idx = cellsText.findIndex((t) => t.includes(alias));
+    if (idx !== -1) return idx;
   }
   return undefined;
+}
+
+function tryMatchHeaderRow(row: unknown[]): HeaderMapping | null {
+  const cellsText = row.map(cellToText);
+  const dateIdx = findAliasIndex(cellsText, DATE_HEADER_ALIASES);
+  const amountIdx = findAliasIndex(cellsText, AMOUNT_HEADER_ALIASES);
+
+  if (dateIdx === undefined || amountIdx === undefined) return null;
+
+  const descIdx = findAliasIndex(cellsText, DESCRIPTION_HEADER_ALIASES);
+
+  return {
+    dateIdx,
+    amountIdx,
+    descIdx,
+    headerLabels: row.map((c) => (c === null || c === undefined ? "" : String(c).trim())),
+  };
 }
 
 function parseAmount(raw: unknown): number | null {
@@ -117,37 +141,67 @@ function computeSourceHash(date: string, description: string, amount: number): s
     .digest("hex");
 }
 
-function rowsToTransactions(rows: Record<string, unknown>[]): ParsedTransaction[] {
-  if (rows.length === 0) return [];
-
-  const headers = Object.keys(rows[0]);
-  const dateCol = findColumn(headers, DATE_HEADER_ALIASES);
-  const descCol = findColumn(headers, DESCRIPTION_HEADER_ALIASES);
-  const amountCol = findColumn(headers, AMOUNT_HEADER_ALIASES);
-
-  if (!dateCol || !descCol || !amountCol) {
-    throw new Error(
-      `Could not identify required columns. Found headers: ${headers.join(", ")}. ` +
-        `Expected columns for date, description, and amount.`,
-    );
-  }
-
+/**
+ * Scans a sheet given as an array of raw rows (array-of-arrays) for one or more
+ * tables. Handles real-world bank exports where a section title row (e.g.
+ * "Kjøp/uttak") sits above the header row, and where a single sheet may contain
+ * multiple such sections stacked on top of each other, each with its own header.
+ */
+function rowsToTransactions(rows: unknown[][]): ParsedTransaction[] {
   const transactions: ParsedTransaction[] = [];
+  let mapping: HeaderMapping | null = null;
+  let section: string | null = null;
 
   for (const row of rows) {
-    const date = parseDate(row[dateCol]);
-    const amount = parseAmount(row[amountCol]);
-    const description = String(row[descCol] ?? "").trim();
+    const nonEmpty = row.filter((c) => cellToText(c) !== "");
+    if (nonEmpty.length === 0) continue;
+
+    const headerMatch = tryMatchHeaderRow(row);
+    if (headerMatch) {
+      mapping = headerMatch;
+      continue;
+    }
+
+    // A row with a single populated cell (and no other columns filled) is
+    // treated as a section title, e.g. "Kjøp/uttak" above its own header row.
+    if (nonEmpty.length === 1) {
+      section = String(nonEmpty[0]).trim();
+      continue;
+    }
+
+    if (!mapping) continue; // data appeared before any recognizable header row
+
+    const date = parseDate(row[mapping.dateIdx]);
+    let amount = parseAmount(row[mapping.amountIdx]);
+    const description = String(
+      mapping.descIdx !== undefined ? (row[mapping.descIdx] ?? "") : "",
+    ).trim();
 
     if (!date || amount === null || !description) continue;
+
+    if (section && amount > 0 && EXPENSE_SECTION_PATTERN.test(section)) {
+      amount = -amount;
+    }
+
+    const rawRow: Record<string, unknown> = {};
+    mapping.headerLabels.forEach((label, i) => {
+      rawRow[label || `col_${i}`] = row[i];
+    });
+    if (section) rawRow._section = section;
 
     transactions.push({
       date,
       description,
       amount,
       sourceHash: computeSourceHash(date, description, amount),
-      rawRow: row,
+      rawRow,
     });
+  }
+
+  if (!mapping) {
+    throw new Error(
+      "Could not find a header row with recognizable date/description/amount columns.",
+    );
   }
 
   return transactions;
@@ -158,10 +212,9 @@ export async function parseTransactionFile(file: File): Promise<ParsedTransactio
 
   if (isCsv) {
     const text = await file.text();
-    const result = Papa.parse<Record<string, unknown>>(text, {
-      header: true,
+    const result = Papa.parse<unknown[]>(text, {
+      header: false,
       skipEmptyLines: true,
-      dynamicTyping: false,
     });
     return rowsToTransactions(result.data);
   }
@@ -169,6 +222,10 @@ export async function parseTransactionFile(file: File): Promise<ParsedTransactio
   const buffer = await file.arrayBuffer();
   const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
   const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(firstSheet, { raw: true });
+  const rows = XLSX.utils.sheet_to_json<unknown[]>(firstSheet, {
+    header: 1,
+    raw: true,
+    blankrows: false,
+  });
   return rowsToTransactions(rows);
 }
