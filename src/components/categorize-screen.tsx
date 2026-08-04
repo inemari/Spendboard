@@ -1,13 +1,28 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+import { Plus } from "lucide-react";
 import { DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { createClient } from "@/lib/supabase/client";
+import { createCategory } from "@/lib/create-category";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { DraggableTransactionCard } from "@/components/draggable-transaction-card";
 import { CategoryDropZone } from "@/components/category-drop-zone";
-import { flattenWithDepth, getCategoryLabel } from "@/lib/category-tree";
+import { buildCategoryTree } from "@/lib/category-tree";
 import type { Category, Transaction } from "@/lib/types";
+
+const NO_PARENT_VALUE = "__none__";
 
 export function CategorizeScreen({
   transactions,
@@ -26,10 +41,40 @@ export function CategorizeScreen({
   onNotesChange: (id: string, notes: string | null) => void;
   backHref: string;
 }) {
+  const router = useRouter();
+  const supabase = useMemo(() => createClient(), []);
   const [skipped, setSkipped] = useState<Set<string>>(new Set());
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [newCategoryParentId, setNewCategoryParentId] = useState(NO_PARENT_VALUE);
+  const [creatingCategory, setCreatingCategory] = useState(false);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
   );
+
+  const tree = buildCategoryTree(categories);
+  const topLevelCategories = tree.map((g) => g.parent);
+
+  async function handleCreateCategory() {
+    if (!newCategoryName.trim()) return;
+
+    setCreatingCategory(true);
+    const { error } = await createCategory(
+      supabase,
+      categories,
+      newCategoryName,
+      newCategoryParentId === NO_PARENT_VALUE ? null : newCategoryParentId,
+    );
+    setCreatingCategory(false);
+
+    if (error) {
+      toast.error("Failed to create category.");
+      return;
+    }
+
+    setNewCategoryName("");
+    setNewCategoryParentId(NO_PARENT_VALUE);
+    router.refresh();
+  }
 
   const remaining = transactions.filter((t) => !skipped.has(t.id));
   const current = remaining[0];
@@ -78,10 +123,60 @@ export function CategorizeScreen({
                 Skip for now
               </button>
 
-              <div className="grid w-full max-w-5xl grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-4">
-                {flattenWithDepth(categories).map(({ category: c }) => (
-                  <CategoryDropZone key={c.id} id={c.id} name={getCategoryLabel(c, categories)} />
+              <div className="grid w-full max-w-5xl grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4">
+                {tree.map(({ parent, children }) => (
+                  <div key={parent.id} className="flex flex-col gap-2 rounded-xl border bg-muted/30 p-2">
+                    <CategoryDropZone id={parent.id} name={parent.name} variant="parent" />
+                    {children.length > 0 && (
+                      <div className="flex flex-col gap-1.5 pl-3">
+                        {children.map((c) => (
+                          <CategoryDropZone key={c.id} id={c.id} name={c.name} variant="sub" />
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 ))}
+              </div>
+
+              <div className="flex w-full max-w-5xl flex-col gap-2 rounded-xl border p-3 sm:flex-row sm:items-center">
+                <Input
+                  placeholder="New category name"
+                  value={newCategoryName}
+                  onChange={(e) => setNewCategoryName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void handleCreateCategory();
+                  }}
+                  className="h-9 flex-1"
+                />
+                <Select
+                  value={newCategoryParentId}
+                  onValueChange={(value) => setNewCategoryParentId(value ?? NO_PARENT_VALUE)}
+                >
+                  <SelectTrigger className="h-9 sm:w-56">
+                    <SelectValue placeholder="Parent category">
+                      {newCategoryParentId === NO_PARENT_VALUE
+                        ? "No parent"
+                        : topLevelCategories.find((c) => c.id === newCategoryParentId)?.name}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NO_PARENT_VALUE}>No parent (top-level category)</SelectItem>
+                    {topLevelCategories.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        Subcategory of {c.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => void handleCreateCategory()}
+                  disabled={creatingCategory || !newCategoryName.trim()}
+                >
+                  <Plus className="size-4" />
+                  Add category
+                </Button>
               </div>
             </>
           ) : (

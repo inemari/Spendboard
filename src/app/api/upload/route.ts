@@ -74,9 +74,16 @@ export async function POST(request: NextRequest) {
 
   // ignoreDuplicates: re-uploading the same file must not clobber transactions
   // the user has already categorized (matched by month_id + source_hash).
-  const { error: insertError, count } = await supabase
+  // Conflicting (already-existing) rows are skipped entirely, so `.select()`
+  // here returns exactly the rows that were newly inserted.
+  const {
+    data: inserted,
+    error: insertError,
+    count,
+  } = await supabase
     .from("transactions")
-    .upsert(rows, { onConflict: "month_id,source_hash", ignoreDuplicates: true, count: "exact" });
+    .upsert(rows, { onConflict: "month_id,source_hash", ignoreDuplicates: true, count: "exact" })
+    .select("id, month_id, date, description, location, notes, amount, category_id, type, card_type");
 
   if (insertError) {
     return NextResponse.json({ error: insertError.message }, { status: 500 });
@@ -105,5 +112,9 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  return NextResponse.json({ imported: count ?? rows.length, total: rows.length });
+  return NextResponse.json({
+    imported: count ?? rows.length,
+    total: rows.length,
+    inserted: inserted ?? [],
+  });
 }

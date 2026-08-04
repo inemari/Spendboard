@@ -34,7 +34,7 @@ export default async function MonthWorkspacePage({
           </p>
         )}
 
-        <UploadDropzone year={yearNum} month={monthNum} />
+        <UploadDropzone year={yearNum} month={monthNum} categories={categories} />
 
         <TransactionBoard
           initialTransactions={transactions}

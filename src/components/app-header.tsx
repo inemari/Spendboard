@@ -1,5 +1,5 @@
+import { User } from "lucide-react";
 import { NavMenu } from "@/components/nav-menu";
-import { SignOutButton } from "@/components/sign-out-button";
 
 export function AppHeader({
   year,
@@ -18,10 +18,14 @@ export function AppHeader({
           <h1 className="text-xl font-semibold">
             {month}/{year}
           </h1>
-          {userEmail && <p className="text-sm text-muted-foreground">Signed in as {userEmail}</p>}
         </div>
-      </div>
-      <SignOutButton />
+      </div>{" "}
+      {userEmail && (
+        <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+          <User className="size-3.5" />
+          {userEmail}
+        </p>
+      )}
     </header>
   );
 }

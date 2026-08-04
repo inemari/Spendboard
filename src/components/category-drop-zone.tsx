@@ -3,15 +3,28 @@
 import { useDroppable } from "@dnd-kit/core";
 import { cn } from "@/lib/utils";
 
-export function CategoryDropZone({ id, name }: { id: string; name: string }) {
+export function CategoryDropZone({
+  id,
+  name,
+  variant = "parent",
+}: {
+  id: string;
+  name: string;
+  variant?: "parent" | "sub";
+}) {
   const { setNodeRef, isOver } = useDroppable({ id });
 
   return (
     <div
       ref={setNodeRef}
       className={cn(
-        "flex h-28 items-center justify-center rounded-xl border-2 border-dashed p-4 text-center text-base font-medium transition-colors",
-        isOver ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground",
+        "flex items-center justify-center rounded-xl border-dashed text-center transition-colors",
+        variant === "parent" ? "h-24 border-2 p-4 text-base font-semibold" : "h-14 border p-2 text-sm font-medium",
+        isOver
+          ? "border-primary bg-primary/10 text-primary"
+          : variant === "parent"
+            ? "border-border text-foreground"
+            : "border-border/60 text-muted-foreground",
       )}
     >
       {name}
