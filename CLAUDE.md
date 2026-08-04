@@ -2,9 +2,12 @@
 
 # Spendboard
 
-Monthly expense management app: upload bank statements, categorize transactions,
-track common vs. personal spending. See [README.md](README.md) for setup and
-[DESIGN.md](DESIGN.md) for the visual design system.
+Spendboard turns a monthly bank statement into a categorized, at-a-glance view
+of where your money went. Upload an Excel or CSV export, sort transactions by
+drag-and-drop board, dropdown, or one-by-one review, and tag each as Common,
+Personal, or Need review to track shared vs. personal spending side by side.
+See [README.md](README.md) for setup and [DESIGN.md](DESIGN.md) for the
+visual design system.
 
 ## Product requirements
 
