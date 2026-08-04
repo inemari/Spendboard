@@ -227,6 +227,48 @@ export function useTransactionActions(
     void updateTransaction(id, { notes });
   }
 
+  async function deleteTransaction(id: string) {
+    const previous = transactions.find((t) => t.id === id);
+    setTransactions((prev) => prev.filter((t) => t.id !== id));
+
+    const { error } = await supabase.from("transactions").delete().eq("id", id);
+
+    if (error) {
+      if (previous) setTransactions((prev) => [...prev, previous]);
+      toast.error("Failed to delete transaction.");
+      return;
+    }
+
+    toast.success("Transaction deleted");
+  }
+
+  function handleDeleteTransaction(id: string) {
+    if (!window.confirm("Delete this transaction? This can't be undone.")) return;
+    void deleteTransaction(id);
+  }
+
+  async function deleteMulti(ids: string[]) {
+    const previous = transactions.filter((t) => ids.includes(t.id));
+    const idSet = new Set(ids);
+    setTransactions((prev) => prev.filter((t) => !idSet.has(t.id)));
+
+    const { error } = await supabase.from("transactions").delete().in("id", ids);
+
+    if (error) {
+      setTransactions((prev) => [...prev, ...previous]);
+      toast.error("Failed to delete selected transactions.");
+      return;
+    }
+
+    toast.success(`Deleted ${ids.length} transactions`);
+  }
+
+  function handleDeleteMulti(ids: string[]) {
+    if (!window.confirm(`Delete ${ids.length} transactions? This can't be undone.`)) return;
+    void deleteMulti(ids);
+    clearSelection();
+  }
+
   return {
     transactions,
     totals,
@@ -241,6 +283,8 @@ export function useTransactionActions(
     handleCardTypeToggle,
     handleCardTypeChangeMulti,
     handleNotesChange,
+    handleDeleteTransaction,
+    handleDeleteMulti,
     pendingSimilarMove,
     confirmSimilarMove,
     dismissSimilarMove,

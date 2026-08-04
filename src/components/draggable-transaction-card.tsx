@@ -13,6 +13,7 @@ export function DraggableTransactionCard({
   onTypeToggle,
   onCardTypeToggle,
   onNotesChange,
+  onDelete,
   selected = false,
   onToggleSelect,
 }: {
@@ -22,6 +23,7 @@ export function DraggableTransactionCard({
   onTypeToggle: () => void;
   onCardTypeToggle: () => void;
   onNotesChange: (notes: string | null) => void;
+  onDelete: () => void;
   selected?: boolean;
   onToggleSelect?: () => void;
 }) {
@@ -46,6 +48,7 @@ export function DraggableTransactionCard({
         onTypeToggle={onTypeToggle}
         onCardTypeToggle={onCardTypeToggle}
         onNotesChange={onNotesChange}
+        onDelete={onDelete}
         selected={selected}
         onToggleSelect={onToggleSelect}
       />

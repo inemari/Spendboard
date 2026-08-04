@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CreditCard } from "lucide-react";
+import { CreditCard, Trash2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -25,6 +25,7 @@ export function TransactionCard({
   onTypeToggle,
   onCardTypeToggle,
   onNotesChange,
+  onDelete,
   selected = false,
   onToggleSelect,
 }: {
@@ -34,6 +35,7 @@ export function TransactionCard({
   onTypeToggle: () => void;
   onCardTypeToggle: () => void;
   onNotesChange: (notes: string | null) => void;
+  onDelete: () => void;
   selected?: boolean;
   onToggleSelect?: () => void;
 }) {
@@ -132,6 +134,15 @@ export function TransactionCard({
         >
           <CreditCard className="size-3" />
           {transaction.card_type}
+        </button>
+
+        <button
+          type="button"
+          onClick={onDelete}
+          aria-label="Delete transaction"
+          className="ml-auto shrink-0 rounded-full p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+        >
+          <Trash2 className="size-3.5" />
         </button>
       </div>
 

@@ -15,6 +15,7 @@ export function CategoryBoard({
   onTypeToggle,
   onCardTypeToggle,
   onNotesChange,
+  onDelete,
   selectedIds,
   onToggleSelect,
   onToggleSelectAll,
@@ -26,6 +27,7 @@ export function CategoryBoard({
   onTypeToggle: (id: string, currentType: Transaction["type"]) => void;
   onCardTypeToggle: (id: string, currentCardType: Transaction["card_type"]) => void;
   onNotesChange: (id: string, notes: string | null) => void;
+  onDelete: (id: string) => void;
   selectedIds: Set<string>;
   onToggleSelect: (id: string) => void;
   onToggleSelectAll: (ids: string[]) => void;
@@ -73,6 +75,7 @@ export function CategoryBoard({
             onTypeToggle={onTypeToggle}
             onCardTypeToggle={onCardTypeToggle}
             onNotesChange={onNotesChange}
+            onDelete={onDelete}
             selectedIds={selectedIds}
             onToggleSelect={onToggleSelect}
             onToggleSelectAll={onToggleSelectAll}

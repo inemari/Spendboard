@@ -38,6 +38,8 @@ visual design system.
   (`src/components/create-rule-dialog.tsx`). Rules are listed/deletable on the
   `/[year]/[month]/rules` page and auto-applied to matching descriptions at
   upload time (`src/app/api/upload/route.ts`).
+- Delete a transaction, single or bulk-selected, with a confirmation prompt
+  (same `window.confirm` pattern as category deletion).
 
 ### Could have (not yet implemented)
 - **View/switch between months, and view a custom timeframe.** Today there is
@@ -55,10 +57,6 @@ visual design system.
      month's snapshot. Would need a range-aware query (currently
      `loadWorkspaceData` in `src/lib/workspace-data.ts` is hard-scoped to one
      `year`/`month`) and probably a lightweight chart (see below).
-- **Delete a transaction.** There is no delete action anywhere (single-card
-  or bulk) — `use-transaction-actions.ts` only ever calls `.update()`. Needed
-  for genuinely mis-imported rows or true duplicates that collide under the
-  hash-collision caveat below.
 - **Edit raw transaction fields.** Only category/type/card_type/notes are
   editable; `description`/`date`/`amount` are rendered as plain text with no
   edit affordance, so a bank-export typo can't be corrected in the app.
@@ -74,10 +72,6 @@ visual design system.
   no bar/pie/trend chart anywhere, despite unused `--color-chart-1..5` theme
   tokens already sitting in `src/app/globals.css` (leftover shadcn scaffold,
   suggesting this was anticipated but never built).
-- **Category color.** `categories.color` is a real DB column, fetched by
-  `loadWorkspaceData`, but never rendered anywhere in the UI — either wire it
-  up (colored dot/border on category tiles and badges) or drop the column;
-  right now it's a dead field with no UI to set it either.
 - **Password reset.** `login-form.tsx` only supports sign-in
   (`signInWithPassword`) — no "forgot password" flow, no sign-up UI (per
   README, new users are created manually via the Supabase dashboard).

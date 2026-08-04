@@ -4,7 +4,6 @@ export type CardType = "regular" | "credit";
 export type Category = {
   id: string;
   name: string;
-  color: string | null;
   is_default: boolean;
   parent_id: string | null;
   sort_order: number;
