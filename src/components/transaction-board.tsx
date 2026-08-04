@@ -8,6 +8,8 @@ import { TransactionCard } from "@/components/transaction-card";
 import { CategoryBoard } from "@/components/category-board";
 import { BulkActionBar } from "@/components/bulk-action-bar";
 import { TypeOverviewSheet } from "@/components/type-overview-sheet";
+import { SimilarTransactionsDialog } from "@/components/similar-transactions-dialog";
+import { CreateRuleDialog } from "@/components/create-rule-dialog";
 import { Button } from "@/components/ui/button";
 import type { Category, Transaction, TxType } from "@/lib/types";
 
@@ -34,6 +36,12 @@ export function TransactionBoard({
     handleCardTypeToggle,
     handleCardTypeChangeMulti,
     handleNotesChange,
+    pendingSimilarMove,
+    confirmSimilarMove,
+    dismissSimilarMove,
+    pendingRulePrompt,
+    confirmCreateRule,
+    dismissCreateRule,
   } = useTransactionActions(initialTransactions, categories);
 
   const [overviewType, setOverviewType] = useState<TxType | null>(null);
@@ -50,6 +58,19 @@ export function TransactionBoard({
         uncategorizedCount={totals.uncategorizedCount}
         needReviewCount={totals.needReviewCount}
         onSelectType={setOverviewType}
+      />
+
+      <SimilarTransactionsDialog
+        pending={pendingSimilarMove}
+        categories={categories}
+        onConfirm={confirmSimilarMove}
+        onDismiss={dismissSimilarMove}
+      />
+
+      <CreateRuleDialog
+        pending={pendingRulePrompt}
+        onConfirm={confirmCreateRule}
+        onDismiss={dismissCreateRule}
       />
 
       <TypeOverviewSheet
