@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { cn } from "@/lib/utils";
 import { useTransactionActions } from "@/hooks/use-transaction-actions";
 import { SummaryBar } from "@/components/summary-bar";
 import { TransactionCard } from "@/components/transaction-card";
@@ -51,7 +52,7 @@ export function TransactionBoard({
   const sorted = [...transactions].sort((a, b) => (a.date < b.date ? 1 : -1));
 
   return (
-    <div className={selectedIds.size > 0 ? "flex flex-col gap-6 pb-16" : "flex flex-col gap-6"}>
+    <div className={cn("flex flex-col gap-6", selectedIds.size > 0 && "pb-16")}>
       <SummaryBar
         common={totals.common}
         personal={totals.personal}
@@ -88,7 +89,7 @@ export function TransactionBoard({
       />
 
       {totals.uncategorizedCount > 0 && (
-        <Button className="self-start" render={<Link href={categorizeHref} />}>
+        <Button className="self-start" nativeButton={false} render={<Link href={categorizeHref} />}>
           Categorize {totals.uncategorizedCount} uncategorized
         </Button>
       )}

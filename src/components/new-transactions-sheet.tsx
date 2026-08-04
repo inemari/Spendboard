@@ -66,7 +66,7 @@ export function NewTransactionsSheet({
 
         {uncategorizedCount > 0 && (
           <div className="p-4 pt-0">
-            <Button className="w-full" render={<Link href={categorizeHref} />}>
+            <Button className="w-full" nativeButton={false} render={<Link href={categorizeHref} />}>
               Categorize {uncategorizedCount} now
             </Button>
           </div>

@@ -5,10 +5,12 @@ export function AppHeader({
   year,
   month,
   userEmail,
+  actions,
 }: {
   year: number;
   month: number;
   userEmail?: string;
+  actions?: React.ReactNode;
 }) {
   return (
     <header className="flex items-center justify-between border-b p-4">
@@ -19,13 +21,16 @@ export function AppHeader({
             {month}/{year}
           </h1>
         </div>
-      </div>{" "}
-      {userEmail && (
-        <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
-          <User className="size-3.5" />
-          {userEmail}
-        </p>
-      )}
+      </div>
+      <div className="flex items-center gap-4">
+        {actions}
+        {userEmail && (
+          <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+            <User className="size-3.5" />
+            {userEmail}
+          </p>
+        )}
+      </div>
     </header>
   );
 }

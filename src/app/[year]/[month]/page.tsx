@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { loadWorkspaceData } from "@/lib/workspace-data";
 import { AppHeader } from "@/components/app-header";
-import { UploadDropzone } from "@/components/upload-dropzone";
+import { UploadButton } from "@/components/upload-button";
 import { TransactionBoard } from "@/components/transaction-board";
 
 export default async function MonthWorkspacePage({
@@ -19,7 +19,12 @@ export default async function MonthWorkspacePage({
 
   return (
     <div className="mx-auto flex min-h-svh w-full max-w-[1600px] flex-col">
-      <AppHeader year={yearNum} month={monthNum} userEmail={userEmail} />
+      <AppHeader
+        year={yearNum}
+        month={monthNum}
+        userEmail={userEmail}
+        actions={<UploadButton year={yearNum} month={monthNum} categories={categories} />}
+      />
 
       <div className="flex flex-col gap-6 p-6">
         {categoriesError && (
@@ -33,8 +38,6 @@ export default async function MonthWorkspacePage({
             Failed to load transactions: {transactionsError}
           </p>
         )}
-
-        <UploadDropzone year={yearNum} month={monthNum} categories={categories} />
 
         <TransactionBoard
           initialTransactions={transactions}

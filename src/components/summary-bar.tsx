@@ -28,7 +28,7 @@ export function SummaryBar({
   ];
 
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
       {items.map((item) => (
         <Card
           key={item.label}
@@ -44,22 +44,22 @@ export function SummaryBar({
               : undefined
           }
           className={cn(
-            "p-4 text-left",
+            "flex items-center justify-between gap-2 px-3 py-2 text-left",
             item.type && "cursor-pointer hover:ring-2 hover:ring-primary",
           )}
           {...(item.type ? { role: "button", tabIndex: 0 } : {})}
         >
-          <p className="text-sm text-muted-foreground">{item.label}</p>
-          <p className="text-lg font-semibold tabular-nums">{formatAmount(item.value)}</p>
+          <p className="text-xs text-muted-foreground">{item.label}</p>
+          <p className="text-sm font-semibold tabular-nums">{formatAmount(item.value)}</p>
         </Card>
       ))}
-      <Card className="p-4">
-        <p className="text-sm text-muted-foreground">Uncategorized</p>
-        <p className="text-lg font-semibold tabular-nums">
+      <Card className="flex items-center justify-between gap-2 px-3 py-2">
+        <p className="text-xs text-muted-foreground">Uncategorized</p>
+        <p className="flex items-baseline gap-1 text-sm font-semibold tabular-nums">
           {uncategorizedCount}
           {needReviewCount > 0 && (
-            <span className="ml-1 text-xs font-normal text-muted-foreground">
-              · {needReviewCount} need review
+            <span className="text-[10px] font-normal text-muted-foreground">
+              · {needReviewCount} review
             </span>
           )}
         </p>

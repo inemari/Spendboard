@@ -39,10 +39,3 @@ export function flattenWithDepth(categories: Category[]): Array<{ category: Cate
   }
   return flat;
 }
-
-/** A display label for contexts where hierarchy can't be shown spatially (e.g. a flat column header). */
-export function getCategoryLabel(category: Category, categories: Category[]): string {
-  if (!category.parent_id) return category.name;
-  const parent = categories.find((c) => c.id === category.parent_id);
-  return parent ? `${parent.name} · ${category.name}` : category.name;
-}

@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { CreditCard, Trash2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -54,8 +53,8 @@ export function TransactionCard({
   }
 
   return (
-    <Card className={cn("flex flex-col gap-3 p-3", selected && "ring-2 ring-primary")}>
-      <div className="flex items-start justify-between gap-2">
+    <Card className={cn("flex flex-col gap-1.5 p-2", selected && "ring-2 ring-primary")}>
+      <div className="flex items-start gap-1.5 border-b border-border/60 pb-1.5">
         {onToggleSelect && (
           <input
             type="checkbox"
@@ -63,26 +62,22 @@ export function TransactionCard({
             onChange={onToggleSelect}
             onClick={(e) => e.stopPropagation()}
             aria-label="Select transaction"
-            className="mt-0.5 size-4 shrink-0 cursor-pointer accent-primary"
+            className="mt-0.5 size-3.5 shrink-0 cursor-pointer accent-primary"
           />
         )}
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold">{transaction.description}</p>
+          <p className="truncate text-xs font-semibold">{transaction.description}</p>
           {transaction.location && (
-            <p className="truncate text-xs text-muted-foreground">{transaction.location}</p>
+            <p className="truncate text-[11px] text-muted-foreground">{transaction.location}</p>
           )}
-          <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
-            <span>{formatDate(transaction.date)}</span>
-            {!transaction.category_id && (
-              <Badge variant="destructive" className="text-[10px]">
-                Uncategorized
-              </Badge>
-            )}
-          </div>
         </div>
+      </div>
+
+      <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+        <span>{formatDate(transaction.date)}</span>
         <span
           className={cn(
-            "shrink-0 text-sm font-semibold tabular-nums",
+            "text-xs font-semibold tabular-nums",
             transaction.amount < 0 ? "text-red-600" : "text-green-600",
           )}
         >
@@ -90,37 +85,40 @@ export function TransactionCard({
         </span>
       </div>
 
-      <div className="flex items-center gap-2">
-        <Select
-          value={transaction.category_id ?? UNCATEGORIZED_VALUE}
-          onValueChange={(value) =>
-            onCategoryChange(value === UNCATEGORIZED_VALUE ? null : value)
-          }
+      <Select
+        value={transaction.category_id ?? UNCATEGORIZED_VALUE}
+        onValueChange={(value) =>
+          onCategoryChange(value === UNCATEGORIZED_VALUE ? null : value)
+        }
+      >
+        <SelectTrigger
+          className={cn(
+            "h-7 w-full text-[11px]",
+            !transaction.category_id && "border-destructive/40 text-destructive",
+          )}
         >
-          <SelectTrigger className="h-8 flex-1 text-xs">
-            <SelectValue placeholder="Category">{selectedCategoryName}</SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={UNCATEGORIZED_VALUE}>Uncategorized</SelectItem>
-            {flattenWithDepth(categories).map(({ category: c, depth }) => (
-              <SelectItem
-                key={c.id}
-                value={c.id}
-                className={depth > 0 ? "pl-6 text-muted-foreground" : undefined}
-              >
-                {depth > 0 ? `↳ ${c.name}` : c.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+          <SelectValue placeholder="Category">{selectedCategoryName}</SelectValue>
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={UNCATEGORIZED_VALUE}>Uncategorized</SelectItem>
+          {flattenWithDepth(categories).map(({ category: c, depth }) => (
+            <SelectItem
+              key={c.id}
+              value={c.id}
+              className={depth > 0 ? "pl-6 text-muted-foreground" : undefined}
+            >
+              {depth > 0 ? `↳ ${c.name}` : c.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
 
-      <div className="flex flex-wrap items-center gap-1.5">
+      <div className="flex flex-wrap items-center gap-1">
         <button
           type="button"
           onClick={onTypeToggle}
           className={cn(
-            "shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors hover:bg-muted",
+            "shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-medium transition-colors hover:bg-muted",
             transaction.type === "need_review" && "border-destructive/40 bg-destructive/10 text-destructive",
           )}
         >
@@ -130,9 +128,9 @@ export function TransactionCard({
         <button
           type="button"
           onClick={onCardTypeToggle}
-          className="flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium capitalize transition-colors hover:bg-muted"
+          className="flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium capitalize transition-colors hover:bg-muted"
         >
-          <CreditCard className="size-3" />
+          <CreditCard className="size-2.5" />
           {transaction.card_type}
         </button>
 
@@ -140,9 +138,9 @@ export function TransactionCard({
           type="button"
           onClick={onDelete}
           aria-label="Delete transaction"
-          className="ml-auto shrink-0 rounded-full p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+          className="ml-auto shrink-0 rounded-full p-1 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
         >
-          <Trash2 className="size-3.5" />
+          <Trash2 className="size-3" />
         </button>
       </div>
 
@@ -154,13 +152,13 @@ export function TransactionCard({
           onChange={(e) => setNoteDraft(e.target.value)}
           onBlur={saveNote}
           placeholder="Add a note…"
-          className="w-full rounded-lg border border-input bg-transparent p-2 text-xs outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+          className="w-full rounded-lg border border-input bg-transparent p-1.5 text-[11px] outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
         />
       ) : transaction.notes ? (
         <button
           type="button"
           onClick={() => setEditingNote(true)}
-          className="rounded-lg bg-muted/60 p-2 text-left text-xs text-muted-foreground italic hover:text-foreground"
+          className="rounded-lg bg-muted/60 p-1.5 text-left text-[11px] text-muted-foreground italic hover:text-foreground"
         >
           {transaction.notes}
         </button>
@@ -168,7 +166,7 @@ export function TransactionCard({
         <button
           type="button"
           onClick={() => setEditingNote(true)}
-          className="self-start text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+          className="self-start text-[11px] text-muted-foreground underline underline-offset-2 hover:text-foreground"
         >
           + Add note
         </button>

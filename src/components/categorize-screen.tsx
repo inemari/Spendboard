@@ -104,7 +104,7 @@ export function CategorizeScreen({
             {remaining.length} left{skipped.size > 0 ? ` · ${skipped.size} skipped` : ""}
           </p>
         </div>
-        <Button variant="outline" size="sm" render={<Link href={backHref} />}>
+        <Button variant="outline" size="sm" nativeButton={false} render={<Link href={backHref} />}>
           Done
         </Button>
       </div>
@@ -199,7 +199,7 @@ export function CategorizeScreen({
                   Review skipped ({skipped.size})
                 </Button>
               )}
-              <Button render={<Link href={backHref} />}>Back to overview</Button>
+              <Button nativeButton={false} render={<Link href={backHref} />}>Back to overview</Button>
             </div>
           )}
         </div>
