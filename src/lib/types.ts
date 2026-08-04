@@ -22,3 +22,18 @@ export type Transaction = {
   type: TxType;
   card_type: CardType;
 };
+
+export type RuleCondition =
+  | { field: "name"; operator: "equals" | "contains"; value: string }
+  | { field: "subtitle"; operator: "contains" | "not_contains"; value: string };
+
+/** Conditions within a group are OR'd together. */
+export type RuleConditionGroup = RuleCondition[];
+
+export type Rule = {
+  id: string;
+  category_id: string;
+  /** Groups are AND'd together. */
+  groups: RuleConditionGroup[];
+  created_at: string;
+};

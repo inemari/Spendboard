@@ -23,6 +23,7 @@ export function NavMenu({ year, month }: { year: number; month: number }) {
     { href: base, label: "Overview" },
     { href: `${base}/categorize`, label: "Categorize" },
     { href: `${base}/categories`, label: "Manage categories" },
+    { href: `${base}/rules`, label: "Rules" },
   ];
 
   return (

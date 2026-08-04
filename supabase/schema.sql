@@ -81,13 +81,39 @@ alter table transactions add column if not exists card_type card_type not null d
 -- earlier version of this migration (default was 'regular').
 alter table transactions alter column card_type set default 'credit';
 
+-- A rule auto-categorizes future transactions matching its conditions on
+-- upload (src/app/api/upload/route.ts). `conditions` is an array of OR-groups
+-- that are AND'd together — each group is an array of leaf conditions
+-- ({ field: "name" | "subtitle", operator, value }) that are OR'd within the
+-- group. See src/lib/apply-rules.ts for the matching engine and
+-- src/lib/rule-description.ts for turning this into plain English.
+create table if not exists rules (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users not null default auth.uid(),
+  category_id uuid references categories(id) on delete cascade not null,
+  conditions jsonb not null,
+  created_at timestamptz not null default now()
+);
+
+-- `create table if not exists` above is a no-op if an earlier version of
+-- this table (with `match_texts` instead of `conditions`) was already
+-- created, so add the new column explicitly for that case too. Default
+-- `[]` satisfies `not null` for any pre-existing rows.
+alter table rules add column if not exists conditions jsonb not null default '[]'::jsonb;
+
+-- Superseded by `conditions` above — drop if an earlier version of this
+-- table was created.
+alter table rules drop column if exists match_texts;
+
 alter table categories enable row level security;
 alter table months enable row level security;
 alter table transactions enable row level security;
+alter table rules enable row level security;
 
 drop policy if exists "own rows" on categories;
 drop policy if exists "own rows" on months;
 drop policy if exists "own rows" on transactions;
+drop policy if exists "own rows" on rules;
 
 create policy "own rows" on categories
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
@@ -98,8 +124,11 @@ create policy "own rows" on months
 create policy "own rows" on transactions
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
+create policy "own rows" on rules
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
 -- RLS policies only control *which rows* a role can see/touch — Postgres also
 -- requires a table-level grant before the role can touch the table at all.
 -- Without this, every query fails with "permission denied for table X".
 grant usage on schema public to authenticated;
-grant select, insert, update, delete on categories, months, transactions to authenticated;
+grant select, insert, update, delete on categories, months, transactions, rules to authenticated;

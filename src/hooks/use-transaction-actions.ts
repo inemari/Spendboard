@@ -1,12 +1,26 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRouter, usePathname } from "next/navigation";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { computeTotals } from "@/lib/totals";
 import { formatTxType } from "@/lib/format";
-import { findSimilarTransactions } from "@/lib/similar-transactions";
+import { findSimilarTransactions, normalizeDescription } from "@/lib/similar-transactions";
 import type { Category, Transaction, TxType, CardType } from "@/lib/types";
+
+export type PendingSimilarMove = {
+  target: Transaction;
+  categoryId: string;
+  categoryName: string;
+  candidates: Transaction[];
+};
+
+export type PendingRulePrompt = {
+  rawNames: string[];
+  categoryId: string;
+  categoryName: string;
+};
 
 export function useTransactionActions(
   initialTransactions: Transaction[],
@@ -14,7 +28,15 @@ export function useTransactionActions(
 ) {
   const [transactions, setTransactions] = useState(initialTransactions);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [pendingSimilarMove, setPendingSimilarMove] = useState<PendingSimilarMove | null>(null);
+  const [pendingRulePrompt, setPendingRulePrompt] = useState<PendingRulePrompt | null>(null);
   const supabase = useMemo(() => createClient(), []);
+  const router = useRouter();
+  const pathname = usePathname();
+  const rulesHref = useMemo(() => {
+    const [, year, month] = pathname.split("/");
+    return `/${year}/${month}/rules`;
+  }, [pathname]);
 
   const totals = useMemo(() => computeTotals(transactions, categories), [transactions, categories]);
 
@@ -96,26 +118,72 @@ export function useTransactionActions(
     });
 
     if (categoryId && target) {
-      const similar = findSimilarTransactions(transactions, target, categoryId);
-      if (similar.length > 0) {
-        const similarIds = similar.map((t) => t.id);
-        toast(
-          `Move ${similar.length} similar transaction${similar.length > 1 ? "s" : ""} to ${categoryName} too?`,
-          {
-            description: target.description,
-            action: {
-              label: "Move all",
-              onClick: () =>
-                void bulkUpdate(
-                  similarIds,
-                  { category_id: categoryId },
-                  `Moved ${similarIds.length} similar transactions to ${categoryName}`,
-                ),
-            },
-          },
-        );
+      const candidates = findSimilarTransactions(transactions, target, categoryId);
+      if (candidates.length > 0) {
+        setPendingSimilarMove({ target, categoryId, categoryName, candidates });
       }
     }
+  }
+
+  function confirmSimilarMove(selectedIds: string[]) {
+    const pending = pendingSimilarMove;
+    setPendingSimilarMove(null);
+    if (!pending || selectedIds.length === 0) return;
+
+    void bulkUpdate(
+      selectedIds,
+      { category_id: pending.categoryId },
+      `Moved ${selectedIds.length} similar transactions to ${pending.categoryName}`,
+    );
+
+    const movedDescriptions = pending.candidates
+      .filter((t) => selectedIds.includes(t.id))
+      .map((t) => t.description);
+    setPendingRulePrompt({
+      rawNames: Array.from(new Set([pending.target.description, ...movedDescriptions])),
+      categoryId: pending.categoryId,
+      categoryName: pending.categoryName,
+    });
+  }
+
+  function dismissSimilarMove() {
+    setPendingSimilarMove(null);
+  }
+
+  function confirmCreateRule() {
+    const pending = pendingRulePrompt;
+    setPendingRulePrompt(null);
+    if (!pending) return;
+    void createRule(pending.rawNames, pending.categoryId);
+  }
+
+  function dismissCreateRule() {
+    setPendingRulePrompt(null);
+  }
+
+  async function createRule(rawNames: string[], categoryId: string) {
+    const matchTexts = Array.from(new Set(rawNames.map(normalizeDescription).filter(Boolean)));
+    if (matchTexts.length === 0) return;
+
+    const groups = [
+      matchTexts.map((value) => ({ field: "name" as const, operator: "equals" as const, value })),
+    ];
+
+    const { error } = await supabase
+      .from("rules")
+      .insert({ conditions: groups, category_id: categoryId });
+
+    if (error) {
+      toast.error("Failed to create rule.");
+      return;
+    }
+
+    toast.success("Rule added", {
+      action: {
+        label: "View rules",
+        onClick: () => router.push(rulesHref),
+      },
+    });
   }
 
   function handleCategoryChangeMulti(ids: string[], categoryId: string | null) {
@@ -171,5 +239,11 @@ export function useTransactionActions(
     handleCardTypeToggle,
     handleCardTypeChangeMulti,
     handleNotesChange,
+    pendingSimilarMove,
+    confirmSimilarMove,
+    dismissSimilarMove,
+    pendingRulePrompt,
+    confirmCreateRule,
+    dismissCreateRule,
   };
 }

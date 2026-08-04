@@ -2,6 +2,8 @@
 
 import { useTransactionActions } from "@/hooks/use-transaction-actions";
 import { CategorizeScreen } from "@/components/categorize-screen";
+import { SimilarTransactionsDialog } from "@/components/similar-transactions-dialog";
+import { CreateRuleDialog } from "@/components/create-rule-dialog";
 import type { Category, Transaction } from "@/lib/types";
 
 export function CategorizePageClient({
@@ -13,20 +15,44 @@ export function CategorizePageClient({
   categories: Category[];
   backHref: string;
 }) {
-  const { transactions, handleCategoryChange, handleTypeToggle, handleCardTypeToggle, handleNotesChange } =
-    useTransactionActions(initialTransactions, categories);
+  const {
+    transactions,
+    handleCategoryChange,
+    handleTypeToggle,
+    handleCardTypeToggle,
+    handleNotesChange,
+    pendingSimilarMove,
+    confirmSimilarMove,
+    dismissSimilarMove,
+    pendingRulePrompt,
+    confirmCreateRule,
+    dismissCreateRule,
+  } = useTransactionActions(initialTransactions, categories);
 
   const uncategorized = transactions.filter((t) => !t.category_id);
 
   return (
-    <CategorizeScreen
-      transactions={uncategorized}
-      categories={categories}
-      onCategoryChange={handleCategoryChange}
-      onTypeToggle={handleTypeToggle}
-      onCardTypeToggle={handleCardTypeToggle}
-      onNotesChange={handleNotesChange}
-      backHref={backHref}
-    />
+    <>
+      <SimilarTransactionsDialog
+        pending={pendingSimilarMove}
+        categories={categories}
+        onConfirm={confirmSimilarMove}
+        onDismiss={dismissSimilarMove}
+      />
+      <CreateRuleDialog
+        pending={pendingRulePrompt}
+        onConfirm={confirmCreateRule}
+        onDismiss={dismissCreateRule}
+      />
+      <CategorizeScreen
+        transactions={uncategorized}
+        categories={categories}
+        onCategoryChange={handleCategoryChange}
+        onTypeToggle={handleTypeToggle}
+        onCardTypeToggle={handleCardTypeToggle}
+        onNotesChange={handleNotesChange}
+        backHref={backHref}
+      />
+    </>
   );
 }

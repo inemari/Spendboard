@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { parseTransactionFile } from "@/lib/parse-transactions";
+import { categoryIdForTransaction } from "@/lib/apply-rules";
+import type { Rule } from "@/lib/types";
 
 export async function POST(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -55,6 +57,10 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const { data: rules } = await supabase
+    .from("rules")
+    .select("id, category_id, created_at, groups:conditions");
+
   const rows = parsed.map((t) => ({
     month_id: monthRow.id,
     date: t.date,
@@ -63,6 +69,7 @@ export async function POST(request: NextRequest) {
     amount: t.amount,
     source_hash: t.sourceHash,
     raw_row: t.rawRow,
+    category_id: categoryIdForTransaction(t.description, t.location, (rules ?? []) as Rule[]),
   }));
 
   // ignoreDuplicates: re-uploading the same file must not clobber transactions
@@ -73,6 +80,29 @@ export async function POST(request: NextRequest) {
 
   if (insertError) {
     return NextResponse.json({ error: insertError.message }, { status: 500 });
+  }
+
+  // The upsert above never touches rows that already exist, so it can't fill in
+  // `location` for transactions imported before "Sted" column parsing existed.
+  // Backfill just that field on re-upload, without touching category/type/notes.
+  const parsedLocationByHash = new Map(
+    parsed.filter((t) => t.location).map((t) => [t.sourceHash, t.location]),
+  );
+
+  if (parsedLocationByHash.size > 0) {
+    const { data: existingWithoutLocation } = await supabase
+      .from("transactions")
+      .select("id, source_hash")
+      .eq("month_id", monthRow.id)
+      .is("location", null)
+      .in("source_hash", Array.from(parsedLocationByHash.keys()));
+
+    for (const row of existingWithoutLocation ?? []) {
+      const location = parsedLocationByHash.get(row.source_hash);
+      if (location) {
+        await supabase.from("transactions").update({ location }).eq("id", row.id);
+      }
+    }
   }
 
   return NextResponse.json({ imported: count ?? rows.length, total: rows.length });

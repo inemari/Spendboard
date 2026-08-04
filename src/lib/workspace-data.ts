@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ensureDefaultCategories } from "@/lib/ensure-default-categories";
-import type { Category, Transaction } from "@/lib/types";
+import type { Category, Rule, Transaction } from "@/lib/types";
 
 export async function loadWorkspaceData(supabase: SupabaseClient, year: number, month: number) {
   const {
@@ -36,11 +36,18 @@ export async function loadWorkspaceData(supabase: SupabaseClient, year: number, 
     transactionsError = error?.message ?? null;
   }
 
+  const { data: rules, error: rulesError } = await supabase
+    .from("rules")
+    .select("id, category_id, created_at, groups:conditions")
+    .order("created_at", { ascending: false });
+
   return {
     userEmail: user?.email,
     categories: (categories ?? []) as Category[],
     categoriesError: categoriesError?.message ?? null,
     transactions,
     transactionsError,
+    rules: (rules ?? []) as Rule[],
+    rulesError: rulesError?.message ?? null,
   };
 }
