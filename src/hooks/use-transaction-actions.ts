@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { computeTotals } from "@/lib/totals";
 import { formatTxType } from "@/lib/format";
+import { findSimilarTransactions } from "@/lib/similar-transactions";
 import type { Category, Transaction, TxType, CardType } from "@/lib/types";
 
 export function useTransactionActions(
@@ -77,7 +78,8 @@ export function useTransactionActions(
   }
 
   function handleCategoryChange(id: string, categoryId: string | null) {
-    const previousCategoryId = transactions.find((t) => t.id === id)?.category_id ?? null;
+    const target = transactions.find((t) => t.id === id);
+    const previousCategoryId = target?.category_id ?? null;
     if (previousCategoryId === categoryId) return;
 
     void updateTransaction(id, { category_id: categoryId });
@@ -92,6 +94,28 @@ export function useTransactionActions(
         onClick: () => void updateTransaction(id, { category_id: previousCategoryId }),
       },
     });
+
+    if (categoryId && target) {
+      const similar = findSimilarTransactions(transactions, target, categoryId);
+      if (similar.length > 0) {
+        const similarIds = similar.map((t) => t.id);
+        toast(
+          `Move ${similar.length} similar transaction${similar.length > 1 ? "s" : ""} to ${categoryName} too?`,
+          {
+            description: target.description,
+            action: {
+              label: "Move all",
+              onClick: () =>
+                void bulkUpdate(
+                  similarIds,
+                  { category_id: categoryId },
+                  `Moved ${similarIds.length} similar transactions to ${categoryName}`,
+                ),
+            },
+          },
+        );
+      }
+    }
   }
 
   function handleCategoryChangeMulti(ids: string[], categoryId: string | null) {
