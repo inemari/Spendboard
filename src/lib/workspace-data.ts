@@ -11,7 +11,7 @@ export async function loadWorkspaceData(supabase: SupabaseClient, year: number, 
 
   const { data: categories, error: categoriesError } = await supabase
     .from("categories")
-    .select("id, name, color, is_default, parent_id, sort_order")
+    .select("id, name, is_default, parent_id, sort_order")
     .order("sort_order")
     .order("name");
 

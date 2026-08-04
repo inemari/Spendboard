@@ -31,6 +31,7 @@ export function CategorizeScreen({
   onTypeToggle,
   onCardTypeToggle,
   onNotesChange,
+  onDelete,
   backHref,
 }: {
   transactions: Transaction[];
@@ -39,6 +40,7 @@ export function CategorizeScreen({
   onTypeToggle: (id: string, currentType: Transaction["type"]) => void;
   onCardTypeToggle: (id: string, currentCardType: Transaction["card_type"]) => void;
   onNotesChange: (id: string, notes: string | null) => void;
+  onDelete: (id: string) => void;
   backHref: string;
 }) {
   const router = useRouter();
@@ -112,6 +114,7 @@ export function CategorizeScreen({
                   onTypeToggle={() => onTypeToggle(current.id, current.type)}
                   onCardTypeToggle={() => onCardTypeToggle(current.id, current.card_type)}
                   onNotesChange={(notes) => onNotesChange(current.id, notes)}
+                  onDelete={() => onDelete(current.id)}
                 />
               </div>
 

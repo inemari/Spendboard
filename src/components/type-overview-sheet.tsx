@@ -14,6 +14,7 @@ export function TypeOverviewSheet({
   onTypeToggle,
   onCardTypeToggle,
   onNotesChange,
+  onDelete,
 }: {
   type: TxType | null;
   transactions: Transaction[];
@@ -23,6 +24,7 @@ export function TypeOverviewSheet({
   onTypeToggle: (id: string, currentType: TxType) => void;
   onCardTypeToggle: (id: string, currentCardType: Transaction["card_type"]) => void;
   onNotesChange: (id: string, notes: string | null) => void;
+  onDelete: (id: string) => void;
 }) {
   const filtered = type
     ? transactions.filter((t) => t.type === type).sort((a, b) => (a.date < b.date ? 1 : -1))
@@ -52,6 +54,7 @@ export function TypeOverviewSheet({
                 onTypeToggle={() => onTypeToggle(t.id, t.type)}
                 onCardTypeToggle={() => onCardTypeToggle(t.id, t.card_type)}
                 onNotesChange={(notes) => onNotesChange(t.id, notes)}
+                onDelete={() => onDelete(t.id)}
               />
             ))
           )}

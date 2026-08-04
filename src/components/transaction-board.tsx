@@ -36,6 +36,8 @@ export function TransactionBoard({
     handleCardTypeToggle,
     handleCardTypeChangeMulti,
     handleNotesChange,
+    handleDeleteTransaction,
+    handleDeleteMulti,
     pendingSimilarMove,
     confirmSimilarMove,
     dismissSimilarMove,
@@ -82,6 +84,7 @@ export function TransactionBoard({
         onTypeToggle={handleTypeToggle}
         onCardTypeToggle={handleCardTypeToggle}
         onNotesChange={handleNotesChange}
+        onDelete={handleDeleteTransaction}
       />
 
       {totals.uncategorizedCount > 0 && (
@@ -106,6 +109,7 @@ export function TransactionBoard({
             onTypeToggle={handleTypeToggle}
             onCardTypeToggle={handleCardTypeToggle}
             onNotesChange={handleNotesChange}
+            onDelete={handleDeleteTransaction}
             selectedIds={selectedIds}
             onToggleSelect={toggleSelect}
             onToggleSelectAll={toggleSelectAll}
@@ -122,6 +126,7 @@ export function TransactionBoard({
                 onTypeToggle={() => handleTypeToggle(t.id, t.type)}
                 onCardTypeToggle={() => handleCardTypeToggle(t.id, t.card_type)}
                 onNotesChange={(notes) => handleNotesChange(t.id, notes)}
+                onDelete={() => handleDeleteTransaction(t.id)}
                 selected={selectedIds.has(t.id)}
                 onToggleSelect={() => toggleSelect(t.id)}
               />
@@ -141,6 +146,7 @@ export function TransactionBoard({
           onCardTypeChange={(cardType) =>
             handleCardTypeChangeMulti(Array.from(selectedIds), cardType)
           }
+          onDelete={() => handleDeleteMulti(Array.from(selectedIds))}
           onClear={clearSelection}
         />
       )}

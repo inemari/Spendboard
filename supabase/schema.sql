@@ -10,10 +10,12 @@ create table if not exists categories (
   id uuid primary key default gen_random_uuid(),
   user_id uuid references auth.users not null default auth.uid(),
   name text not null,
-  color text,
   is_default boolean not null default false,
   created_at timestamptz not null default now()
 );
+
+-- Never rendered anywhere in the UI — dropped rather than wired up.
+alter table categories drop column if exists color;
 
 -- Optional subcategory support: a category may have a parent category.
 -- One level deep only (a subcategory's parent_id always points at a

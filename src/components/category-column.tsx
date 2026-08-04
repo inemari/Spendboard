@@ -15,6 +15,7 @@ export function CategoryColumn({
   onTypeToggle,
   onCardTypeToggle,
   onNotesChange,
+  onDelete,
   selectedIds,
   onToggleSelect,
   onToggleSelectAll,
@@ -27,6 +28,7 @@ export function CategoryColumn({
   onTypeToggle: (id: string, currentType: Transaction["type"]) => void;
   onCardTypeToggle: (id: string, currentCardType: Transaction["card_type"]) => void;
   onNotesChange: (id: string, notes: string | null) => void;
+  onDelete: (id: string) => void;
   selectedIds: Set<string>;
   onToggleSelect: (id: string) => void;
   onToggleSelectAll: (ids: string[]) => void;
@@ -76,6 +78,7 @@ export function CategoryColumn({
             onTypeToggle={() => onTypeToggle(t.id, t.type)}
             onCardTypeToggle={() => onCardTypeToggle(t.id, t.card_type)}
             onNotesChange={(notes) => onNotesChange(t.id, notes)}
+            onDelete={() => onDelete(t.id)}
             selected={selectedIds.has(t.id)}
             onToggleSelect={() => onToggleSelect(t.id)}
           />

@@ -1,6 +1,6 @@
 "use client";
 
-import { X } from "lucide-react";
+import { Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -23,6 +23,7 @@ export function BulkActionBar({
   onCategoryChange,
   onTypeChange,
   onCardTypeChange,
+  onDelete,
   onClear,
 }: {
   count: number;
@@ -30,6 +31,7 @@ export function BulkActionBar({
   onCategoryChange: (categoryId: string | null) => void;
   onTypeChange: (type: TxType) => void;
   onCardTypeChange: (cardType: CardType) => void;
+  onDelete: () => void;
   onClear: () => void;
 }) {
   return (
@@ -85,7 +87,12 @@ export function BulkActionBar({
         ))}
       </div>
 
-      <Button size="sm" variant="ghost" className="ml-auto" onClick={onClear}>
+      <Button size="sm" variant="outline" className="ml-auto text-destructive hover:text-destructive" onClick={onDelete}>
+        <Trash2 className="size-4" />
+        Delete
+      </Button>
+
+      <Button size="sm" variant="ghost" onClick={onClear}>
         <X className="size-4" />
         Clear
       </Button>

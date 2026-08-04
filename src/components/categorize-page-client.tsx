@@ -21,6 +21,7 @@ export function CategorizePageClient({
     handleTypeToggle,
     handleCardTypeToggle,
     handleNotesChange,
+    handleDeleteTransaction,
     pendingSimilarMove,
     confirmSimilarMove,
     dismissSimilarMove,
@@ -51,6 +52,7 @@ export function CategorizePageClient({
         onTypeToggle={handleTypeToggle}
         onCardTypeToggle={handleCardTypeToggle}
         onNotesChange={handleNotesChange}
+        onDelete={handleDeleteTransaction}
         backHref={backHref}
       />
     </>
