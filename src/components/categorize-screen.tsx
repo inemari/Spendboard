@@ -5,7 +5,14 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Plus } from "lucide-react";
-import { DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import {
+  DndContext,
+  PointerSensor,
+  pointerWithin,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
 import { createClient } from "@/lib/supabase/client";
 import { createCategory } from "@/lib/create-category";
 import { Button } from "@/components/ui/button";
@@ -102,7 +109,7 @@ export function CategorizeScreen({
         </Button>
       </div>
 
-      <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+      <DndContext sensors={sensors} collisionDetection={pointerWithin} onDragEnd={handleDragEnd}>
         <div className="flex flex-1 flex-col items-center justify-center gap-8 overflow-y-auto p-6">
           {current ? (
             <>

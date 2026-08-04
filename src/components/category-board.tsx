@@ -1,6 +1,13 @@
 "use client";
 
-import { DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import {
+  DndContext,
+  PointerSensor,
+  pointerWithin,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
 import { CategoryColumn } from "@/components/category-column";
 import { flattenWithDepth, getCategoryLabel } from "@/lib/category-tree";
 import type { Category, Transaction } from "@/lib/types";
@@ -60,7 +67,7 @@ export function CategoryBoard({
   ];
 
   return (
-    <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+    <DndContext sensors={sensors} collisionDetection={pointerWithin} onDragEnd={handleDragEnd}>
       <div className="hidden gap-4 overflow-x-auto pb-2 md:flex">
         {columns.map((col) => (
           <CategoryColumn
