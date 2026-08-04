@@ -42,6 +42,10 @@ visual design system.
   (same `window.confirm` pattern as category deletion).
 
 ### Could have (not yet implemented)
+- **Group rules by category on the Rules page.** `rules-manager-panel.tsx`
+  currently lists rules as one flat list in `created_at` order; group them by
+  their target category instead, so all rules pointing at e.g. "Apotek" sit
+  together.
 - **View/switch between months, and view a custom timeframe.** Today there is
   no way to reach any month other than the current one except by hand-editing
   the `/[year]/[month]` URL (`src/app/page.tsx` just redirects to the current
