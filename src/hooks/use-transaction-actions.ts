@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
@@ -27,6 +27,8 @@ export function useTransactionActions(
   categories: Category[],
 ) {
   const [transactions, setTransactions] = useState(initialTransactions);
+  useEffect(() => setTransactions(initialTransactions), [initialTransactions]);
+
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [pendingSimilarMove, setPendingSimilarMove] = useState<PendingSimilarMove | null>(null);
   const [pendingRulePrompt, setPendingRulePrompt] = useState<PendingRulePrompt | null>(null);

@@ -13,6 +13,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
+import { SignOutButton } from "./sign-out-button";
 
 export function NavMenu({ year, month }: { year: number; month: number }) {
   const pathname = usePathname();
@@ -43,13 +44,16 @@ export function NavMenu({ year, month }: { year: number; month: number }) {
               onClick={() => setOpen(false)}
               className={cn(
                 "rounded-lg px-3 py-2 text-sm font-medium transition-colors hover:bg-muted",
-                pathname === link.href ? "bg-muted text-primary" : "text-foreground",
+                pathname === link.href
+                  ? "bg-muted text-primary"
+                  : "text-foreground",
               )}
             >
               {link.label}
             </Link>
           ))}
         </nav>
+        <SignOutButton />
       </SheetContent>
     </Sheet>
   );

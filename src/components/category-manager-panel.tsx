@@ -21,6 +21,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { createClient } from "@/lib/supabase/client";
 import { buildCategoryTree } from "@/lib/category-tree";
+import { createCategory } from "@/lib/create-category";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -189,19 +190,15 @@ export function CategoryManagerPanel({ categories }: { categories: Category[] })
   }
 
   async function handleCreate() {
-    const trimmed = newName.trim();
-    if (!trimmed) return;
-
-    const siblingCount = items.filter(
-      (c) => c.parent_id === (parentId === NO_PARENT_VALUE ? null : parentId),
-    ).length;
+    if (!newName.trim()) return;
 
     setCreating(true);
-    const { error } = await supabase.from("categories").insert({
-      name: trimmed,
-      parent_id: parentId === NO_PARENT_VALUE ? null : parentId,
-      sort_order: siblingCount,
-    });
+    const { error } = await createCategory(
+      supabase,
+      items,
+      newName,
+      parentId === NO_PARENT_VALUE ? null : parentId,
+    );
     setCreating(false);
 
     if (error) {

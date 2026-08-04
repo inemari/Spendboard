@@ -39,17 +39,55 @@ visual design system.
   `/[year]/[month]/rules` page and auto-applied to matching descriptions at
   upload time (`src/app/api/upload/route.ts`).
 
-### Should have (not yet implemented)
-- **Verify upload de-duplication holds under partial overlap.** The claim
-  (see "Must have" above and `src/app/api/upload/route.ts`'s
-  `.upsert(rows, { onConflict: "month_id,source_hash", ignoreDuplicates: true })`)
-  is that re-uploading a CSV containing transactions already in the app plus a
-  few new ones only inserts the new ones. This hasn't been explicitly
-  re-verified after later upload-route changes (rule auto-categorization) —
-  double check before relying on it: upload a file, then re-upload the same
-  file plus a handful of new rows, and confirm the count of newly-inserted
-  transactions matches only the new ones (no duplicate cards, existing
-  categorization untouched).
+### Could have (not yet implemented)
+- **View/switch between months, and view a custom timeframe.** Today there is
+  no way to reach any month other than the current one except by hand-editing
+  the `/[year]/[month]` URL (`src/app/page.tsx` just redirects to the current
+  month; `src/components/app-header.tsx` renders `{month}/{year}` as plain
+  text with no prev/next control or picker). Two tiers worth building:
+  1. **Basic month switcher** — prev/next arrows and/or a picker in
+     `AppHeader`/`NavMenu` to jump between months that have data (a `months`
+     row already exists per user per year/month — `supabase/schema.sql`).
+  2. **Timeframe/history view** — a new screen (e.g. `/history` or
+     `/[year]/[month]/history`) showing transactions or totals aggregated
+     across a chosen date range (a quarter, a year, "last 3 months") rather
+     than one month at a time — for spotting trends, not just a single
+     month's snapshot. Would need a range-aware query (currently
+     `loadWorkspaceData` in `src/lib/workspace-data.ts` is hard-scoped to one
+     `year`/`month`) and probably a lightweight chart (see below).
+- **Delete a transaction.** There is no delete action anywhere (single-card
+  or bulk) — `use-transaction-actions.ts` only ever calls `.update()`. Needed
+  for genuinely mis-imported rows or true duplicates that collide under the
+  hash-collision caveat below.
+- **Edit raw transaction fields.** Only category/type/card_type/notes are
+  editable; `description`/`date`/`amount` are rendered as plain text with no
+  edit affordance, so a bank-export typo can't be corrected in the app.
+- **Re-apply rules retroactively.** Rules only affect transactions at upload
+  time (`categoryIdForTransaction` is called only inside the upload route's
+  `parsed.map(...)` in `src/app/api/upload/route.ts`). Creating or editing a
+  rule never re-scans already-uncategorized transactions in any month against
+  it — worth an explicit "apply to existing uncategorized transactions"
+  action on the Rules page.
+- **Search/filter transactions** by text (description/location) or date range
+  — no such control exists on the board or categorize screens today.
+- **Spending charts/visualizations.** `summary-bar.tsx` is text-only numbers;
+  no bar/pie/trend chart anywhere, despite unused `--color-chart-1..5` theme
+  tokens already sitting in `src/app/globals.css` (leftover shadcn scaffold,
+  suggesting this was anticipated but never built).
+- **Category color.** `categories.color` is a real DB column, fetched by
+  `loadWorkspaceData`, but never rendered anywhere in the UI — either wire it
+  up (colored dot/border on category tiles and badges) or drop the column;
+  right now it's a dead field with no UI to set it either.
+- **Password reset.** `login-form.tsx` only supports sign-in
+  (`signInWithPassword`) — no "forgot password" flow, no sign-up UI (per
+  README, new users are created manually via the Supabase dashboard).
+- **Multi-user / household sharing.** Every table's RLS policy is strictly
+  `auth.uid() = user_id` (`supabase/schema.sql`) — there's no way for two
+  people to share one household's data; each Supabase Auth user is fully
+  isolated. Would need a real redesign (e.g. a `households` table) if ever
+  wanted, not a small add-on.
+- Upload a PNG/JPG screenshot of transactions (e.g. a bank app screenshot) and
+  have them OCR'd/parsed into transactions, same as the Excel/CSV import path.
 
 ## Data model notes
 - `transactions.type`: `common` | `personal` | `need_review` (Postgres enum
@@ -68,3 +106,14 @@ visual design system.
   up. Nothing else (category_id/type/card_type/notes) is ever touched this way.
 - Schema changes live in `supabase/schema.sql` and must be re-run in the
   Supabase SQL editor manually — there's no migration runner in this project.
+- **Known correctness risk**: the dedup key (`source_hash` in
+  `src/lib/parse-transactions.ts`'s `computeSourceHash`) is
+  `sha256(date|description.trim().toLowerCase()|amount.toFixed(2))`, enforced
+  via `unique (month_id, source_hash)` in `supabase/schema.sql`. Two genuinely
+  distinct transactions on the same day with the same description and amount
+  (e.g. two identical coffee purchases) hash identically — the upload route's
+  `ignoreDuplicates: true` upsert silently drops the second one on import,
+  with no warning surfaced anywhere. Verified upload de-duplication otherwise
+  works correctly for the common case (re-uploading a file with transactions
+  you already have plus new ones only inserts the new ones, and never touches
+  existing categorization) — see `src/app/api/upload/route.ts`.
