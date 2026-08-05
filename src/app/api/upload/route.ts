@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
 
   const { data: rules } = await supabase
     .from("rules")
-    .select("id, category_id, created_at, groups:conditions");
+    .select("id, category_id, created_at, conditions");
 
   const rows = parsed.map((t) => ({
     month_id: monthRow.id,

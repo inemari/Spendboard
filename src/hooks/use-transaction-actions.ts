@@ -7,7 +7,8 @@ import { createClient } from "@/lib/supabase/client";
 import { computeTotals } from "@/lib/totals";
 import { formatTxType } from "@/lib/format";
 import { findSimilarTransactions, normalizeDescription } from "@/lib/similar-transactions";
-import type { Category, Transaction, TxType, CardType } from "@/lib/types";
+import { findMergeTarget, mergeValuesIntoRule } from "@/lib/rule-merge";
+import type { Category, Transaction, TxType, CardType, Rule } from "@/lib/types";
 
 export type PendingSimilarMove = {
   target: Transaction;
@@ -167,13 +168,30 @@ export function useTransactionActions(
     const matchTexts = Array.from(new Set(rawNames.map(normalizeDescription).filter(Boolean)));
     if (matchTexts.length === 0) return;
 
-    const groups = [
-      matchTexts.map((value) => ({ field: "name" as const, operator: "equals" as const, value })),
-    ];
-
-    const { error } = await supabase
+    // Fold into an existing "name equals" rule for this category instead of
+    // creating a second rule for the same condition, if one already exists.
+    const { data: existingRows, error: fetchError } = await supabase
       .from("rules")
-      .insert({ conditions: groups, category_id: categoryId });
+      .select("id, category_id, conditions")
+      .eq("category_id", categoryId);
+
+    if (fetchError) {
+      toast.error("Failed to create rule.");
+      return;
+    }
+
+    const existingRules = (existingRows ?? []) as unknown as Rule[];
+    const mergeTarget = findMergeTarget(existingRules, categoryId, "name", "equals");
+
+    const error = mergeTarget
+      ? (await supabase.from("rules").update({ conditions: [mergeValuesIntoRule(mergeTarget, matchTexts)] }).eq("id", mergeTarget.id))
+          .error
+      : (
+          await supabase.from("rules").insert({
+            conditions: [{ field: "name" as const, operator: "equals" as const, values: matchTexts }],
+            category_id: categoryId,
+          })
+        ).error;
 
     if (error) {
       toast.error("Failed to create rule.");

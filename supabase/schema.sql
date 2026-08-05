@@ -84,11 +84,13 @@ alter table transactions add column if not exists card_type card_type not null d
 alter table transactions alter column card_type set default 'credit';
 
 -- A rule auto-categorizes future transactions matching its conditions on
--- upload (src/app/api/upload/route.ts). `conditions` is an array of OR-groups
--- that are AND'd together — each group is an array of leaf conditions
--- ({ field: "name" | "subtitle", operator, value }) that are OR'd within the
--- group. See src/lib/apply-rules.ts for the matching engine and
--- src/lib/rule-description.ts for turning this into plain English.
+-- upload (src/app/api/upload/route.ts). `conditions` is an array of
+-- { field: "name" | "subtitle", operator, values: string[] } entries that
+-- are AND'd together — the values within one entry are OR'd. A rule has at
+-- most one entry per field+operator pair (src/lib/rule-merge.ts enforces
+-- this on every write path instead of leaving duplicate entries/rules for
+-- the same condition). See src/lib/apply-rules.ts for the matching engine
+-- and src/lib/rule-description.ts for turning this into plain English.
 create table if not exists rules (
   id uuid primary key default gen_random_uuid(),
   user_id uuid references auth.users not null default auth.uid(),

@@ -38,7 +38,7 @@ export async function loadWorkspaceData(supabase: SupabaseClient, year: number, 
 
   const { data: rules, error: rulesError } = await supabase
     .from("rules")
-    .select("id, category_id, created_at, groups:conditions")
+    .select("id, category_id, created_at, conditions")
     .order("created_at", { ascending: false });
 
   return {

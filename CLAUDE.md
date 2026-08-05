@@ -40,12 +40,15 @@ visual design system.
   upload time (`src/app/api/upload/route.ts`).
 - Delete a transaction, single or bulk-selected, with a confirmation prompt
   (same `window.confirm` pattern as category deletion).
+- The Rules page (`rules-manager-panel.tsx`) groups rules by their target
+  category (parent categories before their subcategories, via
+  `flattenWithDepth`), with rules targeting a deleted category collected into
+  a trailing "Unknown category" group. A search box filters rules by matching
+  against each rule's rendered description text (which already includes the
+  category name), so searching a category name works without a separate
+  filter control.
 
 ### Could have (not yet implemented)
-- **Group rules by category on the Rules page.** `rules-manager-panel.tsx`
-  currently lists rules as one flat list in `created_at` order; group them by
-  their target category instead, so all rules pointing at e.g. "Apotek" sit
-  together.
 - **View/switch between months, and view a custom timeframe.** Today there is
   no way to reach any month other than the current one except by hand-editing
   the `/[year]/[month]` URL (`src/app/page.tsx` just redirects to the current

@@ -2,20 +2,24 @@ import { normalizeDescription } from "@/lib/similar-transactions";
 import type { Rule, RuleCondition } from "@/lib/types";
 
 function matchesCondition(condition: RuleCondition, name: string, subtitle: string): boolean {
-  const value = normalizeDescription(condition.value);
-  if (!value) return false;
+  const haystack = condition.field === "name" ? name : subtitle;
 
-  if (condition.field === "name") {
-    return condition.operator === "equals" ? name === value : name.includes(value);
-  }
+  return condition.values.some((raw) => {
+    const value = normalizeDescription(raw);
+    if (!value) return false;
 
-  const contains = subtitle.includes(value);
-  return condition.operator === "contains" ? contains : !contains;
+    if (condition.field === "name") {
+      return condition.operator === "equals" ? haystack === value : haystack.includes(value);
+    }
+
+    const contains = haystack.includes(value);
+    return condition.operator === "contains" ? contains : !contains;
+  });
 }
 
 function matchesRule(rule: Rule, name: string, subtitle: string): boolean {
-  if (rule.groups.length === 0) return false;
-  return rule.groups.every((group) => group.some((condition) => matchesCondition(condition, name, subtitle)));
+  if (rule.conditions.length === 0) return false;
+  return rule.conditions.every((condition) => matchesCondition(condition, name, subtitle));
 }
 
 export function categoryIdForTransaction(

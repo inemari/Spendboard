@@ -22,17 +22,19 @@ export type Transaction = {
   card_type: CardType;
 };
 
+/** One field+operator with the list of values that satisfy it (OR'd). A rule
+ * has at most one condition per field+operator pair — that invariant is what
+ * lets the UI show one "Name Contains" section with a plain word list under
+ * it, and is enforced by `findMergeTarget`/`mergeValuesIntoRule` in
+ * rule-merge.ts on every write path. */
 export type RuleCondition =
-  | { field: "name"; operator: "equals" | "contains"; value: string }
-  | { field: "subtitle"; operator: "contains" | "not_contains"; value: string };
-
-/** Conditions within a group are OR'd together. */
-export type RuleConditionGroup = RuleCondition[];
+  | { field: "name"; operator: "equals" | "contains"; values: string[] }
+  | { field: "subtitle"; operator: "contains" | "not_contains"; values: string[] };
 
 export type Rule = {
   id: string;
   category_id: string;
-  /** Groups are AND'd together. */
-  groups: RuleConditionGroup[];
+  /** Conditions are AND'd together. */
+  conditions: RuleCondition[];
   created_at: string;
 };
