@@ -3,8 +3,8 @@
 // database level (RLS + the admin-gated RPCs). This check is only for the
 // app to redirect a non-admin away from /admin/rules before it renders;
 // it is not itself a security boundary.
-const ADMIN_EMAIL = "ine@live.no";
+const ADMIN_EMAILS = ["ine@live.no", "inebredes1@gmail.com"];
 
 export function isAdminEmail(email: string | null | undefined): boolean {
-  return email === ADMIN_EMAIL;
+  return !!email && ADMIN_EMAILS.includes(email);
 }

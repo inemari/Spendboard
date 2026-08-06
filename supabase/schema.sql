@@ -157,14 +157,14 @@ grant select, insert, update, delete on categories, months, transactions, rules 
 -- finds-or-creates a category by that name for whichever user it's applied
 -- to (see `apply_rule_template` below).
 --
--- IMPORTANT: replace the email literal in `is_admin()` with your own before
+-- IMPORTANT: replace the email literals in `is_admin()` with your own before
 -- running this — every policy and RPC below gates on it.
 create or replace function is_admin()
 returns boolean
 language sql
 stable
 as $$
-  select auth.jwt() ->> 'email' = 'ine@live.no';
+  select auth.jwt() ->> 'email' in ('ine@live.no', 'inebredes1@gmail.com');
 $$;
 
 create table if not exists rule_templates (
