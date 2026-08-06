@@ -28,6 +28,7 @@ export function TransactionCard({
   selected = false,
   onToggleSelect,
   highlighted = false,
+  compact = false,
 }: {
   transaction: Transaction;
   categories: Category[];
@@ -39,6 +40,12 @@ export function TransactionCard({
   selected?: boolean;
   onToggleSelect?: () => void;
   highlighted?: boolean;
+  /** Drop the category/type/card-type/delete controls, keeping identity fields
+   *  and notes. Used on the board, where a card's job is to be dragged rather
+   *  than edited — that control set stays one click away in the overview list.
+   *  Notes are kept because, unlike those controls, there's no other surface
+   *  where a board card's note is visible. */
+  compact?: boolean;
 }) {
   const [editingNote, setEditingNote] = useState(false);
   const [noteDraft, setNoteDraft] = useState(transaction.notes ?? "");
@@ -63,7 +70,12 @@ export function TransactionCard({
         highlighted && "ring-2 ring-amber-500 shadow-lg shadow-amber-500/30",
       )}
     >
-      <div className="flex items-start gap-1.5 border-b border-border/60 pb-1.5">
+      <div
+        className={cn(
+          "flex items-start gap-1.5",
+          !compact && "border-b border-border/60 pb-1.5",
+        )}
+      >
         {onToggleSelect && (
           <input
             type="checkbox"
@@ -94,6 +106,8 @@ export function TransactionCard({
         </span>
       </div>
 
+      {!compact && (
+      <>
       <Select
         value={transaction.category_id ?? UNCATEGORIZED_VALUE}
         onValueChange={(value) =>
@@ -152,7 +166,12 @@ export function TransactionCard({
           <Trash2 className="size-3" />
         </button>
       </div>
+      </>
+      )}
 
+      {/* Notes stay available even in compact (board) cards — unlike category/type,
+          which are one click away in the overview list, there's no other surface
+          where a board card's note is visible or editable. */}
       {editingNote ? (
         <textarea
           autoFocus

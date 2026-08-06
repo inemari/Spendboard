@@ -17,6 +17,7 @@ export function DraggableTransactionCard({
   selected = false,
   onToggleSelect,
   highlighted = false,
+  compact = false,
 }: {
   transaction: Transaction;
   categories: Category[];
@@ -28,6 +29,7 @@ export function DraggableTransactionCard({
   selected?: boolean;
   onToggleSelect?: () => void;
   highlighted?: boolean;
+  compact?: boolean;
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: transaction.id,
@@ -54,6 +56,7 @@ export function DraggableTransactionCard({
         selected={selected}
         onToggleSelect={onToggleSelect}
         highlighted={highlighted}
+        compact={compact}
       />
     </div>
   );

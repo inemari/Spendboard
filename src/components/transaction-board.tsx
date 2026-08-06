@@ -1,19 +1,22 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { LayoutGrid, List } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTransactionActions } from "@/hooks/use-transaction-actions";
-import { SummaryBar } from "@/components/summary-bar";
-import { TransactionCard } from "@/components/transaction-card";
+import { computeOverview } from "@/lib/overview";
+import { OverviewSummary } from "@/components/overview-summary";
+import { CategoryBreakdown } from "@/components/category-breakdown";
+import { TransactionList } from "@/components/transaction-list";
 import { CategoryBoard } from "@/components/category-board";
 import { BulkActionBar } from "@/components/bulk-action-bar";
 import { TypeOverviewSheet } from "@/components/type-overview-sheet";
 import { SimilarTransactionsDialog } from "@/components/similar-transactions-dialog";
 import { CreateRuleDialog } from "@/components/create-rule-dialog";
-import { Button } from "@/components/ui/button";
 import type { Category, Transaction, TxType } from "@/lib/types";
+
+type View = "overview" | "board";
 
 export function TransactionBoard({
   initialTransactions,
@@ -26,7 +29,6 @@ export function TransactionBoard({
 }) {
   const {
     transactions,
-    totals,
     selectedIds,
     toggleSelect,
     toggleSelectAll,
@@ -49,6 +51,7 @@ export function TransactionBoard({
   } = useTransactionActions(initialTransactions, categories);
 
   const [overviewType, setOverviewType] = useState<TxType | null>(null);
+  const [view, setView] = useState<View>("overview");
 
   const router = useRouter();
   const pathname = usePathname();
@@ -71,22 +74,20 @@ export function TransactionBoard({
     const timeout = setTimeout(() => router.replace(pathname, { scroll: false }), 4000);
     return () => clearTimeout(timeout);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-run when the highlight param itself changes
-  }, [highlightParam]);
+  }, [highlightParam, view]);
 
-  const sorted = [...transactions].sort((a, b) => (a.date < b.date ? 1 : -1));
+  const overview = useMemo(
+    () => computeOverview(transactions, categories),
+    [transactions, categories],
+  );
+
+  const sorted = useMemo(
+    () => [...transactions].sort((a, b) => (a.date < b.date ? 1 : -1)),
+    [transactions],
+  );
 
   return (
-    <div className={cn("flex flex-col gap-6", selectedIds.size > 0 && "pb-16")}>
-      <SummaryBar
-        common={totals.common}
-        personal={totals.personal}
-        needReview={totals.needReview}
-        overall={totals.overall}
-        uncategorizedCount={totals.uncategorizedCount}
-        needReviewCount={totals.needReviewCount}
-        onSelectType={setOverviewType}
-      />
-
+    <div className={cn("flex flex-col gap-4", selectedIds.size > 0 && "pb-20")}>
       <SimilarTransactionsDialog
         pending={pendingSimilarMove}
         categories={categories}
@@ -112,53 +113,79 @@ export function TransactionBoard({
         onDelete={handleDeleteTransaction}
       />
 
-      {totals.uncategorizedCount > 0 && (
-        <Button className="self-start" nativeButton={false} render={<Link href={categorizeHref} />}>
-          Categorize {totals.uncategorizedCount} uncategorized
-        </Button>
-      )}
+      <OverviewSummary
+        overview={overview}
+        categorizeHref={categorizeHref}
+        onSelectType={setOverviewType}
+      />
 
-      {sorted.length === 0 ? (
-        <p className="rounded-lg border border-dashed p-8 text-center text-muted-foreground">
-          No transactions yet for this month. Upload a statement above to get started.
-        </p>
-      ) : (
+      {transactions.length > 0 && (
         <>
-          {/* Desktop: drag-and-drop category columns. Selecting multiple cards and
-              dragging any one of them moves the whole selection. */}
-          <CategoryBoard
-            transactions={sorted}
-            categories={categories}
-            onCategoryChange={handleCategoryChange}
-            onCategoryChangeMulti={handleCategoryChangeMulti}
-            onTypeToggle={handleTypeToggle}
-            onCardTypeToggle={handleCardTypeToggle}
-            onNotesChange={handleNotesChange}
-            onDelete={handleDeleteTransaction}
-            selectedIds={selectedIds}
-            onToggleSelect={toggleSelect}
-            onToggleSelectAll={toggleSelectAll}
-            highlightedIds={highlightedIds}
-          />
-
-          {/* Mobile: flat list, categorize via dropdown */}
-          <div className="flex flex-col gap-2 md:hidden">
-            {sorted.map((t) => (
-              <TransactionCard
-                key={t.id}
-                transaction={t}
-                categories={categories}
-                onCategoryChange={(categoryId) => handleCategoryChange(t.id, categoryId)}
-                onTypeToggle={() => handleTypeToggle(t.id, t.type)}
-                onCardTypeToggle={() => handleCardTypeToggle(t.id, t.card_type)}
-                onNotesChange={(notes) => handleNotesChange(t.id, notes)}
-                onDelete={() => handleDeleteTransaction(t.id)}
-                selected={selectedIds.has(t.id)}
-                onToggleSelect={() => toggleSelect(t.id)}
-                highlighted={highlightedIds.has(t.id)}
-              />
-            ))}
+          {/* The board is still the fastest way to sort a pile of transactions, so
+              it stays — just behind a toggle, rather than dominating the page. */}
+          {/* Toggle is desktop-only: the board needs drag-and-drop and horizontal
+              room, so small screens always get the list. */}
+          <div className="hidden justify-end md:flex">
+            <div className="flex gap-1 rounded-full bg-muted p-0.5">
+              {(
+                [
+                  { value: "overview", label: "Overview", Icon: List },
+                  { value: "board", label: "Board", Icon: LayoutGrid },
+                ] as const
+              ).map(({ value, label, Icon }) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setView(value)}
+                  aria-pressed={view === value}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
+                    view === value
+                      ? "bg-card text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  <Icon className="size-3.5" />
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
+
+          <div className={cn(view === "board" && "md:hidden")}>
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)] lg:items-start">
+              <CategoryBreakdown slices={overview.breakdown} />
+              <TransactionList
+                transactions={transactions}
+                categories={categories}
+                selectedIds={selectedIds}
+                highlightedIds={highlightedIds}
+                onToggleSelect={toggleSelect}
+                onCategoryChange={handleCategoryChange}
+                onTypeToggle={handleTypeToggle}
+                onCardTypeToggle={handleCardTypeToggle}
+                onNotesChange={handleNotesChange}
+                onDelete={handleDeleteTransaction}
+              />
+            </div>
+          </div>
+
+          {view === "board" && (
+            <CategoryBoard
+              transactions={sorted}
+              categories={categories}
+              onCategoryChange={handleCategoryChange}
+              onCategoryChangeMulti={handleCategoryChangeMulti}
+              onTypeToggle={handleTypeToggle}
+              onCardTypeToggle={handleCardTypeToggle}
+              onNotesChange={handleNotesChange}
+              onDelete={handleDeleteTransaction}
+              selectedIds={selectedIds}
+              onToggleSelect={toggleSelect}
+              onToggleSelectAll={toggleSelectAll}
+              highlightedIds={highlightedIds}
+            />
+          )}
         </>
       )}
 

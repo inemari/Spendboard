@@ -21,3 +21,29 @@ export function formatDate(isoDate: string): string {
 export function formatTxType(type: TxType): string {
   return type === "need_review" ? "Need review" : type[0].toUpperCase() + type.slice(1);
 }
+
+const monthFormatter = new Intl.DateTimeFormat("nb-NO", { month: "long", year: "numeric" });
+const dayHeadingFormatter = new Intl.DateTimeFormat("nb-NO", {
+  weekday: "long",
+  day: "numeric",
+  month: "long",
+});
+
+/** "august 2026" — the header's month label. */
+export function formatMonthLabel(year: number, month: number): string {
+  return monthFormatter.format(new Date(year, month - 1, 1));
+}
+
+/** "torsdag 14. august" — the transaction list's day separators. */
+export function formatDayHeading(isoDate: string): string {
+  return dayHeadingFormatter.format(new Date(`${isoDate}T00:00:00`));
+}
+
+/**
+ * Amounts are stored negative for expenses. The overview talks in spend, so it
+ * needs the magnitude without the sign that would otherwise read as "minus" on
+ * a figure already labelled "spent".
+ */
+export function formatSpend(amount: number): string {
+  return currencyFormatter.format(Math.abs(amount));
+}

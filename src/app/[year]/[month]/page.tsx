@@ -26,7 +26,7 @@ export default async function MonthWorkspacePage({
         actions={<UploadButton year={yearNum} month={monthNum} categories={categories} />}
       />
 
-      <div className="flex flex-col gap-6 p-6">
+      <div className="flex flex-col gap-4 px-4 py-5 sm:px-6">
         {categoriesError && (
           <p className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
             Failed to load categories: {categoriesError}

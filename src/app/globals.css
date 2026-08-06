@@ -19,9 +19,7 @@
   --color-sidebar-primary: var(--sidebar-primary);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar: var(--sidebar);
-  --color-chart-5: var(--chart-5);
-  --color-chart-4: var(--chart-4);
-  --color-chart-3: var(--chart-3);
+  --color-chart-track: var(--chart-track);
   --color-chart-2: var(--chart-2);
   --color-chart-1: var(--chart-1);
   --color-ring: var(--ring);
@@ -70,11 +68,16 @@
   --border: #f0d9ec;
   --input: #f0d9ec;
   --ring: #e040a0;
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
+  /* Chart slots. Validated with the dataviz skill's validate_palette.js against
+     this mode's own surface (--card #ffffff / #241521), not eyeballed. Only two
+     categorical slots exist on purpose: "need review" is a state, not a peer
+     series, so it wears muted ink rather than a third hue. Light passes clean
+     (adjacent CVD ΔE 9.0); dark lands in the 6–8 warn band (7.7), which is legal
+     only alongside secondary encoding — hence the 2px surface gaps and the
+     always-present swatch labels on the split meter. */
+  --chart-1: #e040a0; /* categorical slot 1 — common, and every category bar */
+  --chart-2: #0096cc; /* categorical slot 2 — personal */
+  --chart-track: #f4e4f0; /* unfilled meter track */
   --radius: 0.8rem;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
@@ -107,11 +110,11 @@
   --border: #3a2436;
   --input: #3a2436;
   --ring: #ff5cb8;
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
+  /* Same two hues re-stepped for the dark surface, not a flip of the light
+     values — the light steps sit above the dark lightness band. */
+  --chart-1: #ec3f9e;
+  --chart-2: #2f9dc4;
+  --chart-track: #3a2436;
   --sidebar: oklch(0.205 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);

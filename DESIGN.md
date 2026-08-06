@@ -46,6 +46,30 @@ Bold, fun, and energetic. Saturated colors, pill-shaped elements, and bouncy mic
 - Fonts: DM Sans is loaded via `next/font/google` in `src/app/layout.tsx`, exposed as
   the `--font-sans` CSS variable that `globals.css` already expected.
 - Pill shape + hover scale/shadow applied directly in `src/components/ui/button.tsx`,
-  `input.tsx`, `badge.tsx`; lift/shadow on `card.tsx`. Category board columns and the
-  Categorize screen's drop zones (`category-column.tsx`, `category-drop-zone.tsx`) got the
+  `input.tsx`, `badge.tsx`; lift/shadow on `card.tsx`. Category board tiles and the
+  Categorize screen's drop zones (`category-tile.tsx`, `category-drop-zone.tsx`) got the
   same radius treatment since they're central, highly visible UI.
+
+## Data visualization
+
+The overview page's split meter and category bars use `--chart-1` / `--chart-2`
+/ `--chart-track`, which replaced the grayscale shadcn scaffold tokens.
+
+- **Only two categorical slots exist, on purpose.** Slot 1 is brand pink, slot 2
+  is the sky-blue tertiary. Brand pink beside brand purple collapses under
+  protanopia (ΔE 5.5, below the 6 floor), so purple is not a chart slot;
+  reordering to pink → sky blue clears every gate with zero hex changes.
+  "Need review" is a *state*, not a peer series, so it wears muted ink rather
+  than a third hue.
+- **Dark mode is re-stepped, not flipped.** The light steps sit above the dark
+  lightness band, so dark uses `#ec3f9e` / `#2f9dc4`.
+- Light passes clean (adjacent CVD ΔE 9.0). Dark lands at 7.7 — inside the 6–8
+  warn band, which is legal *only* alongside secondary encoding. That's why the
+  meter keeps a 2px surface gap between segments and always shows labelled
+  swatches. Don't remove either without re-validating.
+- **Category bars are all one hue.** Categories are nominal, so colouring them
+  by value would re-encode what bar length already shows. One series also means
+  no legend — the heading names what's plotted.
+- Re-validate with the `dataviz` skill's `validate_palette.js` against this
+  app's own surfaces (`#ffffff` light, `#241521` dark) before changing any of
+  these values — don't eyeball colorblind-safety.
