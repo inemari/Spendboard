@@ -209,6 +209,19 @@ export function RulesManagerPanel({
     return true;
   }
 
+  function addWord(rule: Rule, conditionIndex: number, value: string): boolean {
+    const isDuplicate = rule.conditions[conditionIndex].values.some((v) => v === value);
+    if (isDuplicate) {
+      toast.error("That value is already in this condition.");
+      return false;
+    }
+    const newConditions = rule.conditions.map((condition, ci) =>
+      ci !== conditionIndex ? condition : { ...condition, values: [...condition.values, value] },
+    );
+    void updateRuleConditions(rule, newConditions);
+    return true;
+  }
+
   const searchText = useMemo(() => {
     const map = new Map<string, string>();
     for (const rule of rules) {
@@ -331,6 +344,7 @@ export function RulesManagerPanel({
                       updateWordValue(rule, conditionIndex, valueIndex, value)
                     }
                     onRemoveWord={(conditionIndex, valueIndex) => removeWord(rule, conditionIndex, valueIndex)}
+                    onAddWord={(conditionIndex, value) => addWord(rule, conditionIndex, value)}
                   />
                 ))}
               </div>
@@ -349,6 +363,7 @@ function RuleCard({
   onApplyToExisting,
   onValueChange,
   onRemoveWord,
+  onAddWord,
 }: {
   rule: Rule;
   onEdit: () => void;
@@ -356,6 +371,7 @@ function RuleCard({
   onApplyToExisting: () => void;
   onValueChange: (conditionIndex: number, valueIndex: number, value: string) => boolean;
   onRemoveWord: (conditionIndex: number, valueIndex: number) => void;
+  onAddWord: (conditionIndex: number, value: string) => boolean;
 }) {
   return (
     <div className="group relative flex flex-col gap-2 rounded-lg border border-border/60 bg-card p-3 text-sm">
@@ -411,6 +427,7 @@ function RuleCard({
                 onRemove={() => onRemoveWord(conditionIndex, valueIndex)}
               />
             ))}
+            <AddWordRow onAdd={(value) => onAddWord(conditionIndex, value)} />
           </div>
         </div>
       ))}
@@ -447,6 +464,45 @@ function WordRow({
 
       <Button variant="ghost" size="icon-sm" onClick={onRemove} aria-label="Remove word">
         <Trash2 className="size-3.5" />
+      </Button>
+    </div>
+  );
+}
+
+function AddWordRow({ onAdd }: { onAdd: (value: string) => boolean }) {
+  const [value, setValue] = useState("");
+
+  function commit() {
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    if (onAdd(trimmed)) setValue("");
+  }
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <Input
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key !== "Enter") return;
+          e.preventDefault();
+          commit();
+        }}
+        onBlur={commit}
+        placeholder="Add value…"
+        className="h-8 flex-1 text-xs"
+      />
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        // Keep focus on the input so the button's own click isn't preceded by a
+        // blur-commit, which would then re-add the same value as a duplicate.
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={commit}
+        disabled={!value.trim()}
+        aria-label="Add word"
+      >
+        <Plus className="size-3.5" />
       </Button>
     </div>
   );
