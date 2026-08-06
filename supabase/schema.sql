@@ -164,7 +164,7 @@ returns boolean
 language sql
 stable
 as $$
-  select auth.jwt() ->> 'email' = 'ib@iotsolutions.no';
+  select auth.jwt() ->> 'email' = 'ine@live.no';
 $$;
 
 create table if not exists rule_templates (
