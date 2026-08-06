@@ -18,13 +18,23 @@ visual design system.
   upload button (`upload-button.tsx`) is a format picker, not an auto-
   detector — column names vary enough between exports that guessing the
   right one from header text risks silently mismapping a field, so the user
-  explicitly picks **SAS Eurobonus Kredittkort (Excel/CSV)** or **Nordea
-  Debit (PDF)** before choosing a file. Each format's file-type expectation,
-  accepted extensions, and header aliases live together in
+  explicitly picks **SAS Eurobonus Kredittkort (Excel/CSV)**, **Nordea
+  Debit (PDF)**, or **Nordea Debit (CSV)** before choosing a file. Each
+  format's file-type expectation, accepted extensions, header aliases, and
+  (for CSV formats) field delimiter live together in
   `src/lib/statement-formats.ts` — shared by the upload button (which
   extensions to accept, which format id to send) and `parse-transactions.ts`
-  (which header aliases to match). Adding a new bank/card format means
-  adding one entry there, not touching the parsing logic itself.
+  (which header aliases and delimiter to use). Adding a new bank/card format
+  means adding one entry there, not touching the parsing logic itself.
+  - **Nordea Debit (CSV)** is UTF-8-with-BOM, semicolon-delimited, comma
+    decimals, `YYYY/MM/DD` dates — same columns as the PDF format above, just
+    a different export of the same account. The BOM is stripped for free by
+    `File#text()`'s decoder; the semicolon delimiter is pinned via that
+    format's `csvDelimiter` rather than left to Papaparse's auto-detection;
+    the decimal comma and `YYYY/MM/DD` date are handled by
+    `parseAmount`/`parseDate`'s existing separator-agnostic regexes in
+    `parse-transactions.ts` (`parseDate` accepts `.`/`-`/`/` as the
+    separator for both `DD~MM~YYYY` and `YYYY~MM~DD` orderings).
   - **PDF support only covers text-layer PDFs** (a real bank export, not a
     scanned/photographed page) — `pdfToRows` in `parse-transactions.ts`
     reconstructs table rows from PDF.js's positioned text runs by clustering

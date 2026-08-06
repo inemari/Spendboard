@@ -115,8 +115,8 @@ function parseDate(raw: unknown): string | null {
     return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
   }
 
-  // yyyy-mm-dd already
-  const ymd = trimmed.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  // yyyy-mm-dd, yyyy/mm/dd, or yyyy.mm.dd
+  const ymd = trimmed.match(/^(\d{4})[.\-/](\d{1,2})[.\-/](\d{1,2})$/);
   if (ymd) {
     const [, y, m, d] = ymd;
     return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
@@ -308,16 +308,19 @@ export async function parseTransactionFile(
   file: File,
   formatId: StatementFormatId,
 ): Promise<ParsedTransaction[]> {
-  const { aliases } = getStatementFormat(formatId);
+  const { aliases, csvDelimiter } = getStatementFormat(formatId);
   const name = file.name.toLowerCase();
   const isCsv = name.endsWith(".csv") || file.type === "text/csv";
   const isPdf = name.endsWith(".pdf") || file.type === "application/pdf";
 
   if (isCsv) {
+    // File#text() decodes with TextDecoder, which strips a leading UTF-8 BOM
+    // by default — no separate handling needed for "UTF-8 med BOM" exports.
     const text = await file.text();
     const result = Papa.parse<unknown[]>(text, {
       header: false,
       skipEmptyLines: true,
+      delimiter: csvDelimiter ?? "",
     });
     return rowsToTransactions(result.data, aliases);
   }
