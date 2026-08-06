@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CreditCard, Upload } from "lucide-react";
+import { CreditCard, PartyPopper, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -57,7 +57,9 @@ export function UploadButton({
         return;
       }
 
-      toast.success(`Imported ${data.imported} of ${data.total} transactions.`);
+      toast.success(`Imported ${data.imported} of ${data.total} transactions.`, {
+        icon: <PartyPopper className="size-4" />,
+      });
       router.refresh();
       setNewTransactions(data.inserted ?? []);
     } catch {

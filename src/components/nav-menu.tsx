@@ -3,7 +3,14 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Menu } from "lucide-react";
+import {
+  LayoutDashboard,
+  Menu,
+  MousePointerClick,
+  PiggyBank,
+  Tags,
+  Wand2,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -21,10 +28,10 @@ export function NavMenu({ year, month }: { year: number; month: number }) {
   const base = `/${year}/${month}`;
 
   const links = [
-    { href: base, label: "Overview" },
-    { href: `${base}/categorize`, label: "Categorize" },
-    { href: `${base}/categories`, label: "Manage categories" },
-    { href: `${base}/rules`, label: "Rules" },
+    { href: base, label: "Overview", Icon: LayoutDashboard },
+    { href: `${base}/categorize`, label: "Categorize", Icon: MousePointerClick },
+    { href: `${base}/categories`, label: "Manage categories", Icon: Tags },
+    { href: `${base}/rules`, label: "Rules", Icon: Wand2 },
   ];
 
   return (
@@ -34,7 +41,10 @@ export function NavMenu({ year, month }: { year: number; month: number }) {
       </SheetTrigger>
       <SheetContent side="left">
         <SheetHeader>
-          <SheetTitle>Spendboard</SheetTitle>
+          <SheetTitle className="flex items-center gap-2">
+            <PiggyBank className="size-5 text-primary" />
+            Spendboard
+          </SheetTitle>
         </SheetHeader>
         <nav className="flex flex-col gap-1 px-2">
           {links.map((link) => (
@@ -43,12 +53,13 @@ export function NavMenu({ year, month }: { year: number; month: number }) {
               href={link.href}
               onClick={() => setOpen(false)}
               className={cn(
-                "rounded-lg px-3 py-2 text-sm font-medium transition-colors hover:bg-muted",
+                "flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors hover:bg-muted",
                 pathname === link.href
                   ? "bg-muted text-primary"
                   : "text-foreground",
               )}
             >
+              <link.Icon className="size-4" />
               {link.label}
             </Link>
           ))}

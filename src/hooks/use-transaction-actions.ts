@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { createElement, useEffect, useMemo, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { toast } from "sonner";
+import { Wand2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { computeTotals } from "@/lib/totals";
 import { formatTxType } from "@/lib/format";
@@ -202,6 +203,7 @@ export function useTransactionActions(
     }
 
     toast.success("Rule added", {
+      icon: createElement(Wand2, { className: "size-4" }),
       action: {
         label: "View rules",
         onClick: () => router.push(rulesHref),

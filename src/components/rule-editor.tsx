@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, Wand2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
   Dialog,
@@ -184,7 +184,10 @@ function RuleEditorContent({
       return;
     }
 
-    toast.success(mergeTarget ? "Merged into existing rule" : target.mode === "edit" ? "Rule updated" : "Rule created");
+    toast.success(
+      mergeTarget ? "Merged into existing rule" : target.mode === "edit" ? "Rule updated" : "Rule created",
+      { icon: <Wand2 className="size-4" /> },
+    );
     router.refresh();
     onClose();
   }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useDroppable } from "@dnd-kit/core";
+import { Inbox } from "lucide-react";
 import { DraggableTransactionCard } from "@/components/draggable-transaction-card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { formatSpend } from "@/lib/format";
@@ -45,9 +46,10 @@ function CardList({
 }: ColumnActions & { transactions: Transaction[]; emptyLabel: string }) {
   if (transactions.length === 0) {
     return (
-      <p className="rounded-md border border-dashed p-3 text-center text-[11px] text-muted-foreground">
+      <div className="flex flex-col items-center gap-1 rounded-md border border-dashed p-3 text-center text-[11px] text-muted-foreground">
+        <Inbox className="size-4" />
         {emptyLabel}
-      </p>
+      </div>
     );
   }
 

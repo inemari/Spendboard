@@ -1,5 +1,6 @@
 "use client";
 
+import { Inbox } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { TransactionCard } from "@/components/transaction-card";
 import { formatAmount, formatTxType } from "@/lib/format";
@@ -43,7 +44,10 @@ export function TypeOverviewSheet({
 
         <div className="flex flex-col gap-2 overflow-y-auto p-4">
           {filtered.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No transactions here yet.</p>
+            <div className="flex flex-col items-center gap-2 py-8 text-sm text-muted-foreground">
+              <Inbox className="size-5" />
+              No transactions here yet.
+            </div>
           ) : (
             filtered.map((t) => (
               <TransactionCard

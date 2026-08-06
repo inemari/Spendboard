@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { GripVertical, Trash2 } from "lucide-react";
+import { GripVertical, Plus, Tags, Trash2 } from "lucide-react";
 import {
   DndContext,
   PointerSensor,
@@ -228,7 +228,10 @@ export function CategoryManagerPanel({ categories }: { categories: Category[] })
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 p-6">
       <div>
-        <h2 className="font-heading text-2xl font-bold">Categories</h2>
+        <h2 className="flex items-center gap-2 font-heading text-2xl font-bold">
+          <Tags className="size-6 text-primary" />
+          Categories
+        </h2>
         <p className="text-sm text-muted-foreground">
           Drag the handle to reorder. Deleting a category moves its transactions back to
           Uncategorized.
@@ -271,9 +274,10 @@ export function CategoryManagerPanel({ categories }: { categories: Category[] })
                 <button
                   type="button"
                   onClick={() => handleAddSubcategoryClick(parent)}
-                  className="mt-3 text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+                  className="mt-3 flex items-center gap-1 text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
                 >
-                  + Add subcategory
+                  <Plus className="size-3.5" />
+                  Add subcategory
                 </button>
               </Card>
             ))}
@@ -316,6 +320,7 @@ export function CategoryManagerPanel({ categories }: { categories: Category[] })
             onClick={() => void handleCreate()}
             disabled={creating || !newName.trim()}
           >
+            <Plus className="size-4" />
             Add
           </Button>
         </div>

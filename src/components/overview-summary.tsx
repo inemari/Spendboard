@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { AlertCircle, ArrowRight, TrendingUp } from "lucide-react";
+import { AlertCircle, ArrowRight, TrendingUp, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatSpend } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -106,7 +106,10 @@ export function OverviewSummary({
     <section className="flex flex-col gap-5 rounded-2xl border border-border/60 bg-card p-5 sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="text-sm text-muted-foreground">Spent this month</p>
+          <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+            <Wallet className="size-3.5" />
+            Spent this month
+          </p>
           {/* Hero figure: proportional figures, not tabular — tabular-nums makes a
               large standalone number look loose. */}
           <p className="font-heading text-4xl font-bold sm:text-5xl">{formatSpend(spent)}</p>

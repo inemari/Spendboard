@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { PiggyBank } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -46,7 +47,10 @@ export function LoginForm() {
   return (
     <Card className="w-full max-w-sm">
       <CardHeader>
-        <CardTitle>Spendboard</CardTitle>
+        <CardTitle className="flex items-center gap-2">
+          <PiggyBank className="size-6 text-primary" />
+          Spendboard
+        </CardTitle>
         <CardDescription>Sign in to manage your monthly expenses.</CardDescription>
       </CardHeader>
       <CardContent>

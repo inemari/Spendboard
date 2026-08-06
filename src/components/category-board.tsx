@@ -9,7 +9,7 @@ import {
   useSensors,
   type DragEndEvent,
 } from "@dnd-kit/core";
-import { ChevronLeft, ChevronRight, Search } from "lucide-react";
+import { ChevronLeft, ChevronRight, Search, SearchX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -192,9 +192,10 @@ export function CategoryBoard({
 
           {filteredColumns ? (
             filteredColumns.length === 0 ? (
-              <p className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
+              <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
+                <SearchX className="size-5" />
                 No categories match &ldquo;{query}&rdquo;.
-              </p>
+              </div>
             ) : (
               <div className="grid grid-cols-[repeat(auto-fill,minmax(12rem,1fr))] items-start gap-3">
                 {filteredColumns.map((col) => (

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ChevronDown, CreditCard, Search, Trash2 } from "lucide-react";
+import { ChevronDown, CreditCard, Receipt, Search, SearchX, Trash2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -114,11 +114,19 @@ export function TransactionList({
       </div>
 
       {days.length === 0 ? (
-        <p className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
-          {transactions.length === 0
-            ? "No transactions yet this month. Upload a statement to get started."
-            : "Nothing matches that search."}
-        </p>
+        <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
+          {transactions.length === 0 ? (
+            <>
+              <Receipt className="size-5" />
+              No transactions yet this month. Upload a statement to get started.
+            </>
+          ) : (
+            <>
+              <SearchX className="size-5" />
+              Nothing matches that search.
+            </>
+          )}
+        </div>
       ) : (
         <div className="flex flex-col gap-5">
           {days.map((day) => (

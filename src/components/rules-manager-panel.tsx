@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { GripVertical, Pencil, Plus, Search, Trash2, Wand2 } from "lucide-react";
+import { GripVertical, Pencil, Plus, Search, SearchX, Trash2, Wand2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -271,7 +271,10 @@ export function RulesManagerPanel({
     <div className="flex w-full flex-col gap-6 p-6">
       <div className="mx-auto flex w-full max-w-5xl items-start justify-between gap-4">
         <div>
-          <h2 className="font-heading text-2xl font-bold">Rules</h2>
+          <h2 className="flex items-center gap-2 font-heading text-2xl font-bold">
+            <Wand2 className="size-6 text-primary" />
+            Rules
+          </h2>
           <p className="text-sm text-muted-foreground">
             Rules auto-categorize matching transactions as soon as they&rsquo;re uploaded.
           </p>
@@ -308,13 +311,15 @@ export function RulesManagerPanel({
       )}
 
       {rules.length === 0 ? (
-        <p className="mx-auto w-full max-w-5xl rounded-lg border border-dashed p-8 text-center text-muted-foreground">
+        <div className="mx-auto flex w-full max-w-5xl flex-col items-center gap-2 rounded-lg border border-dashed p-8 text-center text-muted-foreground">
+          <Wand2 className="size-6" />
           No rules yet.
-        </p>
+        </div>
       ) : sections.length === 0 ? (
-        <p className="mx-auto w-full max-w-5xl rounded-lg border border-dashed p-8 text-center text-muted-foreground">
+        <div className="mx-auto flex w-full max-w-5xl flex-col items-center gap-2 rounded-lg border border-dashed p-8 text-center text-muted-foreground">
+          <SearchX className="size-6" />
           No rules match your search.
-        </p>
+        </div>
       ) : (
         <div className="flex gap-4 overflow-x-auto pb-2">
           {sections.map((section, index) => (

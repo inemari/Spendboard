@@ -202,7 +202,7 @@ export function TransactionCard({
         <span
           className={cn(
             "text-xs font-semibold tabular-nums",
-            transaction.amount < 0 ? "text-red-600" : "text-green-600",
+            transaction.amount < 0 ? "text-primary" : "text-green-600",
           )}
         >
           {formatAmount(transaction.amount)}

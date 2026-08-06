@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight, CornerDownRight, PartyPopper, Plus } from "lucide-react";
 import {
   DndContext,
   PointerSensor,
@@ -137,13 +137,13 @@ export function CategorizeScreen({
             Done
           </Button>
         </div>
-        <div className="flex flex-1 flex-col items-center gap-3 overflow-y-auto p-4">
+        <div className="flex flex-1 flex-row items-center gap-3 overflow-y-auto p-4">
           {current ? (
             <>
               {/* A carousel, not a forward-only skip queue: Previous steps
                   back to a transaction you already passed, Next moves on
                   without categorizing it — same stepper either way. */}
-              <div className="flex w-full max-w-sm items-center justify-between">
+              <div className="flex w-full max-w-sm items-center justify-between gap-3">
                 <Button
                   variant="outline"
                   size="icon-sm"
@@ -153,9 +153,22 @@ export function CategorizeScreen({
                 >
                   <ChevronLeft className="size-4" />
                 </Button>
-                <p className="text-xs text-muted-foreground tabular-nums">
-                  {clampedIndex + 1} / {transactions.length}
-                </p>
+
+                <div className="w-full max-w-sm">
+                  <DraggableTransactionCard
+                    transaction={current}
+                    categories={categories}
+                    onCategoryChange={(categoryId) =>
+                      onCategoryChange(current.id, categoryId)
+                    }
+                    onTypeToggle={() => onTypeToggle(current.id, current.type)}
+                    onCardTypeToggle={() =>
+                      onCardTypeToggle(current.id, current.card_type)
+                    }
+                    onNotesChange={(notes) => onNotesChange(current.id, notes)}
+                    onDelete={() => onDelete(current.id)}
+                  />
+                </div>
                 <Button
                   variant="outline"
                   size="icon-sm"
@@ -166,24 +179,7 @@ export function CategorizeScreen({
                   <ChevronRight className="size-4" />
                 </Button>
               </div>
-
-              <div className="w-full max-w-sm">
-                <DraggableTransactionCard
-                  transaction={current}
-                  categories={categories}
-                  onCategoryChange={(categoryId) =>
-                    onCategoryChange(current.id, categoryId)
-                  }
-                  onTypeToggle={() => onTypeToggle(current.id, current.type)}
-                  onCardTypeToggle={() =>
-                    onCardTypeToggle(current.id, current.card_type)
-                  }
-                  onNotesChange={(notes) => onNotesChange(current.id, notes)}
-                  onDelete={() => onDelete(current.id)}
-                />
-              </div>
-
-              <div className="grid w-full max-w-6xl flex-1 grid-cols-[repeat(auto-fill,minmax(150px,1fr))] content-start gap-3">
+              <div className="grid w-full  grid-cols-[repeat(auto-fill,minmax(150px,0.5fr))] content-start gap-3">
                 {tree.map(({ parent, children }) => (
                   <div
                     key={parent.id}
@@ -195,57 +191,63 @@ export function CategorizeScreen({
                       variant="parent"
                     />
                     {children.length > 0 && (
-                      <div className="flex flex-col gap-1.5 pl-3">
+                      <div className="flex flex-col gap-1.5 ">
                         {children.map((c) => (
-                          <CategoryDropZone
+                          <div
+                            className="flex flex-row items-center gap-1 w-full"
                             key={c.id}
-                            id={c.id}
-                            name={c.name}
-                            variant="sub"
-                          />
+                          >
+                            <CornerDownRight className="text-primary/30" />
+                            <CategoryDropZone
+                              key={c.id}
+                              id={c.id}
+                              name={c.name}
+                              variant="sub"
+                            />
+                          </div>
                         ))}
                       </div>
                     )}
                   </div>
                 ))}
-              </div>
 
-              <div className="flex w-full max-w-5xl flex-col gap-1.5 rounded-lg border p-2 sm:flex-row sm:items-center">
-                <Input
-                  placeholder="New category name"
-                  value={newCategoryName}
-                  onChange={(e) => setNewCategoryName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") void handleCreateCategory();
-                  }}
-                  className="h-9 flex-1"
-                />
-                <Select
-                  value={newCategoryParentId}
-                  onValueChange={(value) =>
-                    setNewCategoryParentId(value ?? NO_PARENT_VALUE)
-                  }
-                >
-                  <SelectTrigger className="h-9 sm:w-56">
-                    <SelectValue placeholder="Parent category">
-                      {newCategoryParentId === NO_PARENT_VALUE
-                        ? "No parent"
-                        : topLevelCategories.find(
-                            (c) => c.id === newCategoryParentId,
-                          )?.name}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={NO_PARENT_VALUE}>
-                      No parent (top-level category)
-                    </SelectItem>
-                    {topLevelCategories.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        Subcategory of {c.name}
+                <div className="flex w-full max-w-2xl flex-row gap-1.5 rounded-lg border p-2 sm:flex-col sm:items-start">
+                  <Input
+                    placeholder="New category name"
+                    value={newCategoryName}
+                    onChange={(e) => setNewCategoryName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") void handleCreateCategory();
+                    }}
+                    className="h-9 flex-1"
+                  />
+                  <Select
+                    value={newCategoryParentId}
+                    onValueChange={(value) =>
+                      setNewCategoryParentId(value ?? NO_PARENT_VALUE)
+                    }
+                  >
+                    <SelectTrigger className="h-9 sm:w-56">
+                      <SelectValue placeholder="Parent category">
+                        {newCategoryParentId === NO_PARENT_VALUE
+                          ? "No parent"
+                          : topLevelCategories.find(
+                              (c) => c.id === newCategoryParentId,
+                            )?.name}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NO_PARENT_VALUE}>
+                        No parent (top-level category)
                       </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                      {topLevelCategories.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          Subcategory of {c.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
                 <Button
                   type="button"
                   variant="outline"
@@ -259,6 +261,7 @@ export function CategorizeScreen({
             </>
           ) : (
             <div className="flex flex-col items-center gap-4 text-center">
+              <PartyPopper className="size-10 text-primary" />
               <p className="text-lg font-medium">All caught up!</p>
               <Button nativeButton={false} render={<Link href={backHref} />}>
                 Back to overview
