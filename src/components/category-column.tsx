@@ -26,6 +26,7 @@ type ActionProps = {
   selectedIds: Set<string>;
   onToggleSelect: (id: string) => void;
   onToggleSelectAll: (ids: string[]) => void;
+  highlightedIds: Set<string>;
 };
 
 function TransactionList({
@@ -39,6 +40,7 @@ function TransactionList({
   onDelete,
   selectedIds,
   onToggleSelect,
+  highlightedIds,
 }: ActionProps & { transactions: Transaction[]; emptyLabel: string }) {
   if (transactions.length === 0) {
     return (
@@ -62,6 +64,7 @@ function TransactionList({
           onDelete={() => onDelete(t.id)}
           selected={selectedIds.has(t.id)}
           onToggleSelect={() => onToggleSelect(t.id)}
+          highlighted={highlightedIds.has(t.id)}
         />
       ))}
     </>

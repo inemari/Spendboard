@@ -32,6 +32,7 @@ export function CategoryBoard({
   selectedIds,
   onToggleSelect,
   onToggleSelectAll,
+  highlightedIds,
 }: {
   transactions: Transaction[];
   categories: Category[];
@@ -47,6 +48,7 @@ export function CategoryBoard({
   selectedIds: Set<string>;
   onToggleSelect: (id: string) => void;
   onToggleSelectAll: (ids: string[]) => void;
+  highlightedIds: Set<string>;
 }) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -114,7 +116,13 @@ export function CategoryBoard({
       1,
       Math.floor((availableWidth + COLUMN_GAP) / (COLUMN_WIDTH + COLUMN_GAP)),
     );
-    setCollapsedIds(new Set(columns.slice(fitCount).map((col) => col.id)));
+    const columnHasHighlight = (col: (typeof columns)[number]) =>
+      col.transactions.some((t) => highlightedIds.has(t.id)) ||
+      col.subcategories.some((sub) => sub.transactions.some((t) => highlightedIds.has(t.id)));
+
+    setCollapsedIds(
+      new Set(columns.slice(fitCount).filter((col) => !columnHasHighlight(col)).map((col) => col.id)),
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount only
   }, []);
 
@@ -152,6 +160,7 @@ export function CategoryBoard({
               selectedIds={selectedIds}
               onToggleSelect={onToggleSelect}
               onToggleSelectAll={onToggleSelectAll}
+              highlightedIds={highlightedIds}
               collapsed={collapsedIds.has(col.id)}
               onToggleCollapsed={() => toggleCollapsed(col.id)}
             />

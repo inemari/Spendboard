@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useTransactionActions } from "@/hooks/use-transaction-actions";
 import { SummaryBar } from "@/components/summary-bar";
@@ -48,6 +49,29 @@ export function TransactionBoard({
   } = useTransactionActions(initialTransactions, categories);
 
   const [overviewType, setOverviewType] = useState<TxType | null>(null);
+
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const highlightParam = searchParams.get("highlight");
+  const highlightedIds = useMemo(
+    () => new Set(highlightParam ? highlightParam.split(",").filter(Boolean) : []),
+    [highlightParam],
+  );
+
+  useEffect(() => {
+    if (highlightedIds.size === 0) return;
+
+    const [firstId] = highlightedIds;
+    document.getElementById(`transaction-${firstId}`)?.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
+
+    const timeout = setTimeout(() => router.replace(pathname, { scroll: false }), 4000);
+    return () => clearTimeout(timeout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-run when the highlight param itself changes
+  }, [highlightParam]);
 
   const sorted = [...transactions].sort((a, b) => (a.date < b.date ? 1 : -1));
 
@@ -114,6 +138,7 @@ export function TransactionBoard({
             selectedIds={selectedIds}
             onToggleSelect={toggleSelect}
             onToggleSelectAll={toggleSelectAll}
+            highlightedIds={highlightedIds}
           />
 
           {/* Mobile: flat list, categorize via dropdown */}
@@ -130,6 +155,7 @@ export function TransactionBoard({
                 onDelete={() => handleDeleteTransaction(t.id)}
                 selected={selectedIds.has(t.id)}
                 onToggleSelect={() => toggleSelect(t.id)}
+                highlighted={highlightedIds.has(t.id)}
               />
             ))}
           </div>

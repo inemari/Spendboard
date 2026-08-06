@@ -3,14 +3,20 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { GripVertical, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { GripVertical, Pencil, Plus, Search, Trash2, Wand2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { RuleEditor, type RuleEditorTarget } from "@/components/rule-editor";
+import {
+  ResolveRuleConflictsDialog,
+  type PendingRuleConflicts,
+  type RuleConflictItem,
+} from "@/components/resolve-rule-conflicts-dialog";
 import { describeRuleConditions } from "@/lib/rule-description";
 import { flattenWithDepth } from "@/lib/category-tree";
+import { ruleMatchesTransaction } from "@/lib/apply-rules";
 import { cn } from "@/lib/utils";
 import type { Category, Rule, RuleCondition } from "@/lib/types";
 
@@ -25,6 +31,11 @@ const CATEGORY_GRADIENTS = [
   "from-teal-200 to-emerald-300",
   "from-amber-200 to-orange-300",
 ];
+
+function highlightHref(date: string, ids: string[]): string {
+  const [year, month] = date.split("-").map(Number);
+  return `/${year}/${month}?highlight=${ids.join(",")}`;
+}
 
 const OPERATOR_LABELS: Record<string, string> = {
   contains: "Contains",
@@ -55,6 +66,7 @@ export function RulesManagerPanel({
   const supabase = useMemo(() => createClient(), []);
   const [editorTarget, setEditorTarget] = useState<RuleEditorTarget | null>(null);
   const [query, setQuery] = useState("");
+  const [pendingConflicts, setPendingConflicts] = useState<PendingRuleConflicts | null>(null);
 
   async function deleteRule(id: string) {
     const { error } = await supabase.from("rules").delete().eq("id", id);
@@ -64,6 +76,97 @@ export function RulesManagerPanel({
       return;
     }
     toast.success("Rule deleted");
+    router.refresh();
+  }
+
+  async function applyRuleToExisting(rule: Rule) {
+    const { data: uncategorized, error: fetchError } = await supabase
+      .from("transactions")
+      .select("id, description, location, amount, date")
+      .is("category_id", null);
+
+    if (fetchError) {
+      toast.error("Failed to load uncategorized transactions.");
+      return;
+    }
+
+    const cleanTx: { id: string; date: string }[] = [];
+    const conflicts: RuleConflictItem[] = [];
+
+    for (const t of uncategorized ?? []) {
+      const matchingRules = rules.filter((r) => ruleMatchesTransaction(r, t.description, t.location));
+      if (!matchingRules.some((r) => r.id === rule.id)) continue;
+
+      const distinctCategoryIds = Array.from(new Set(matchingRules.map((r) => r.category_id)));
+      if (distinctCategoryIds.length <= 1) {
+        cleanTx.push({ id: t.id, date: t.date });
+        continue;
+      }
+
+      conflicts.push({
+        transaction: t,
+        defaultCategoryId: rule.category_id,
+        options: distinctCategoryIds.map((categoryId) => ({
+          categoryId,
+          categoryName: categories.find((c) => c.id === categoryId)?.name ?? "Unknown category",
+        })),
+      });
+    }
+
+    if (cleanTx.length > 0) {
+      const cleanIds = cleanTx.map((t) => t.id);
+      const { error: updateError } = await supabase
+        .from("transactions")
+        .update({ category_id: rule.category_id })
+        .in("id", cleanIds);
+
+      if (updateError) {
+        toast.error("Failed to apply rule.");
+        return;
+      }
+      toast.success(`Categorized ${cleanIds.length} existing transaction${cleanIds.length === 1 ? "" : "s"}.`, {
+        action: {
+          label: "Show",
+          onClick: () => router.push(highlightHref(cleanTx[0].date, cleanIds)),
+        },
+      });
+      router.refresh();
+    }
+
+    if (conflicts.length > 0) {
+      setPendingConflicts({ items: conflicts });
+    } else if (cleanTx.length === 0) {
+      toast.info("No uncategorized transactions match this rule.");
+    }
+  }
+
+  async function resolveRuleConflicts(selections: Map<string, string>, items: RuleConflictItem[]) {
+    const idsByCategory = new Map<string, string[]>();
+    for (const [txId, categoryId] of selections) {
+      const ids = idsByCategory.get(categoryId) ?? [];
+      ids.push(txId);
+      idsByCategory.set(categoryId, ids);
+    }
+
+    for (const [categoryId, ids] of idsByCategory) {
+      const { error } = await supabase.from("transactions").update({ category_id: categoryId }).in("id", ids);
+      if (error) {
+        toast.error("Failed to apply some categorizations.");
+        setPendingConflicts(null);
+        router.refresh();
+        return;
+      }
+    }
+
+    const selectedIds = Array.from(selections.keys());
+    const firstDate = items.find((item) => item.transaction.id === selectedIds[0])?.transaction.date;
+
+    toast.success(`Categorized ${selections.size} transaction${selections.size === 1 ? "" : "s"}.`, {
+      action: firstDate
+        ? { label: "Show", onClick: () => router.push(highlightHref(firstDate, selectedIds)) }
+        : undefined,
+    });
+    setPendingConflicts(null);
     router.refresh();
   }
 
@@ -173,6 +276,12 @@ export function RulesManagerPanel({
         onClose={() => setEditorTarget(null)}
       />
 
+      <ResolveRuleConflictsDialog
+        pending={pendingConflicts}
+        onConfirm={(selections) => void resolveRuleConflicts(selections, pendingConflicts?.items ?? [])}
+        onDismiss={() => setPendingConflicts(null)}
+      />
+
       {rules.length > 0 && (
         <div className="relative mx-auto w-full max-w-5xl">
           <Search className="absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -217,6 +326,7 @@ export function RulesManagerPanel({
                     rule={rule}
                     onEdit={() => setEditorTarget({ mode: "edit", rule })}
                     onDelete={() => void deleteRule(rule.id)}
+                    onApplyToExisting={() => void applyRuleToExisting(rule)}
                     onValueChange={(conditionIndex, valueIndex, value) =>
                       updateWordValue(rule, conditionIndex, valueIndex, value)
                     }
@@ -236,18 +346,30 @@ function RuleCard({
   rule,
   onEdit,
   onDelete,
+  onApplyToExisting,
   onValueChange,
   onRemoveWord,
 }: {
   rule: Rule;
   onEdit: () => void;
   onDelete: () => void;
+  onApplyToExisting: () => void;
   onValueChange: (conditionIndex: number, valueIndex: number, value: string) => boolean;
   onRemoveWord: (conditionIndex: number, valueIndex: number) => void;
 }) {
   return (
     <div className="group relative flex flex-col gap-2 rounded-lg border border-border/60 bg-card p-3 text-sm">
       <div className="absolute top-2 right-2 flex items-center gap-0.5">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={onApplyToExisting}
+          aria-label="Apply rule to existing uncategorized transactions"
+          title="Apply to existing uncategorized transactions"
+          className="opacity-0 transition-opacity group-hover:opacity-100"
+        >
+          <Wand2 className="size-3.5" />
+        </Button>
         <Button
           variant="ghost"
           size="icon-sm"

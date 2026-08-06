@@ -16,6 +16,7 @@ export function DraggableTransactionCard({
   onDelete,
   selected = false,
   onToggleSelect,
+  highlighted = false,
 }: {
   transaction: Transaction;
   categories: Category[];
@@ -26,6 +27,7 @@ export function DraggableTransactionCard({
   onDelete: () => void;
   selected?: boolean;
   onToggleSelect?: () => void;
+  highlighted?: boolean;
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: transaction.id,
@@ -51,6 +53,7 @@ export function DraggableTransactionCard({
         onDelete={onDelete}
         selected={selected}
         onToggleSelect={onToggleSelect}
+        highlighted={highlighted}
       />
     </div>
   );

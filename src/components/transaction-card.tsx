@@ -27,6 +27,7 @@ export function TransactionCard({
   onDelete,
   selected = false,
   onToggleSelect,
+  highlighted = false,
 }: {
   transaction: Transaction;
   categories: Category[];
@@ -37,6 +38,7 @@ export function TransactionCard({
   onDelete: () => void;
   selected?: boolean;
   onToggleSelect?: () => void;
+  highlighted?: boolean;
 }) {
   const [editingNote, setEditingNote] = useState(false);
   const [noteDraft, setNoteDraft] = useState(transaction.notes ?? "");
@@ -53,7 +55,14 @@ export function TransactionCard({
   }
 
   return (
-    <Card className={cn("flex flex-col gap-1.5 p-2", selected && "ring-2 ring-primary")}>
+    <Card
+      id={`transaction-${transaction.id}`}
+      className={cn(
+        "flex flex-col gap-1.5 p-2 transition-shadow",
+        selected && "ring-2 ring-primary",
+        highlighted && "ring-2 ring-amber-500 shadow-lg shadow-amber-500/30",
+      )}
+    >
       <div className="flex items-start gap-1.5 border-b border-border/60 pb-1.5">
         {onToggleSelect && (
           <input

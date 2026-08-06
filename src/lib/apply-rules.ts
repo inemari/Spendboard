@@ -33,3 +33,15 @@ export function categoryIdForTransaction(
 
   return rules.find((rule) => matchesRule(rule, name, subtitle))?.category_id ?? null;
 }
+
+export function ruleMatchesTransaction(
+  rule: Rule,
+  description: string,
+  location: string | null,
+): boolean {
+  const name = normalizeDescription(description);
+  if (!name) return false;
+  const subtitle = location ? normalizeDescription(location) : "";
+
+  return matchesRule(rule, name, subtitle);
+}
