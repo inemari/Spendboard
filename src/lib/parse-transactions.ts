@@ -3,6 +3,7 @@ import Papa from "papaparse";
 import * as pdfjs from "pdfjs-dist/legacy/build/pdf.mjs";
 import { createHash } from "node:crypto";
 import path from "node:path";
+import { getStatementFormat, type HeaderAliases, type StatementFormatId } from "./statement-formats";
 
 export type ParsedTransaction = {
   date: string; // ISO yyyy-mm-dd
@@ -12,19 +13,6 @@ export type ParsedTransaction = {
   sourceHash: string;
   rawRow: Record<string, unknown>;
 };
-
-const DATE_HEADER_ALIASES = ["date", "dato", "transaction date", "bokføringsdato", "bokført"];
-const DESCRIPTION_HEADER_ALIASES = [
-  "description",
-  "beskrivelse",
-  "tekst",
-  "forklaring",
-  "spesifikasjon",
-  "text",
-  "melding",
-];
-const AMOUNT_HEADER_ALIASES = ["amount", "beløp", "belop", "sum", "value"];
-const LOCATION_HEADER_ALIASES = ["sted", "location", "place", "merchant"];
 
 // Section titles above a table that indicate the rows below are debits/expenses
 // shown as positive numbers (common in Norwegian bank exports, e.g. "Kjøp/uttak").
@@ -57,15 +45,15 @@ function findAliasIndex(cellsText: string[], aliases: string[]): number | undefi
   return undefined;
 }
 
-function tryMatchHeaderRow(row: unknown[]): HeaderMapping | null {
+function tryMatchHeaderRow(row: unknown[], aliases: HeaderAliases): HeaderMapping | null {
   const cellsText = row.map(cellToText);
-  const dateIdx = findAliasIndex(cellsText, DATE_HEADER_ALIASES);
-  const amountIdx = findAliasIndex(cellsText, AMOUNT_HEADER_ALIASES);
+  const dateIdx = findAliasIndex(cellsText, aliases.date);
+  const amountIdx = findAliasIndex(cellsText, aliases.amount);
 
   if (dateIdx === undefined || amountIdx === undefined) return null;
 
-  const descIdx = findAliasIndex(cellsText, DESCRIPTION_HEADER_ALIASES);
-  const locationIdx = findAliasIndex(cellsText, LOCATION_HEADER_ALIASES);
+  const descIdx = findAliasIndex(cellsText, aliases.description);
+  const locationIdx = findAliasIndex(cellsText, aliases.location);
 
   return {
     dateIdx,
@@ -154,7 +142,7 @@ function computeSourceHash(date: string, description: string, amount: number): s
  * "Kjøp/uttak") sits above the header row, and where a single sheet may contain
  * multiple such sections stacked on top of each other, each with its own header.
  */
-function rowsToTransactions(rows: unknown[][]): ParsedTransaction[] {
+function rowsToTransactions(rows: unknown[][], aliases: HeaderAliases): ParsedTransaction[] {
   const transactions: ParsedTransaction[] = [];
   let mapping: HeaderMapping | null = null;
   let section: string | null = null;
@@ -163,7 +151,7 @@ function rowsToTransactions(rows: unknown[][]): ParsedTransaction[] {
     const nonEmpty = row.filter((c) => cellToText(c) !== "");
     if (nonEmpty.length === 0) continue;
 
-    const headerMatch = tryMatchHeaderRow(row);
+    const headerMatch = tryMatchHeaderRow(row, aliases);
     if (headerMatch) {
       mapping = headerMatch;
       continue;
@@ -219,24 +207,60 @@ function rowsToTransactions(rows: unknown[][]): ParsedTransaction[] {
   return transactions;
 }
 
+type PdfTextItem = { x: number; text: string; width: number };
+
+// Splits one line's text runs into cells by x-gaps wider than the runs' own
+// character spacing — the same signal a human eye uses to tell "one column"
+// from "the next." Only used before a header row is known (title/section
+// lines) and to find the header row itself; once columns are known, data
+// rows are bucketed by position instead (see below) so a blank cell can't
+// shift every later column left.
+function clusterLineByGap(items: PdfTextItem[]): { x: number; text: string }[] {
+  const sorted = [...items].sort((a, b) => a.x - b.x);
+  const cells: { x: number; text: string }[] = [];
+  let current = "";
+  let startX = 0;
+  let prevEnd: number | null = null;
+  for (const it of sorted) {
+    const gap = prevEnd === null ? 0 : it.x - prevEnd;
+    const avgCharWidth = it.width / Math.max(it.text.length, 1);
+    const gapThreshold = Math.max(avgCharWidth * 2.5, 8);
+    if (prevEnd !== null && gap > gapThreshold) {
+      cells.push({ x: startX, text: current.trim() });
+      current = it.text;
+      startX = it.x;
+    } else {
+      if (!current) startX = it.x;
+      current += current && !current.endsWith(" ") ? ` ${it.text}` : it.text;
+    }
+    prevEnd = it.x + it.width;
+  }
+  if (current) cells.push({ x: startX, text: current.trim() });
+  return cells;
+}
+
 // Reassembles a PDF page's text runs into table-shaped rows. PDF text content
 // has no notion of rows/columns, just positioned glyphs, so lines are
-// reconstructed by clustering runs with near-identical y, and cells within a
-// line by splitting on x-gaps wider than the run's own character spacing —
-// the same signal a human eye uses to tell "one column" from "the next."
-async function pdfToRows(buffer: ArrayBuffer): Promise<unknown[][]> {
+// reconstructed by clustering runs with near-identical y. Once the header
+// row is located (via the same alias matching `rowsToTransactions` uses),
+// every later line is column-aligned by bucketing its runs into the
+// header's own x-positions rather than re-splitting on gaps — a row with a
+// blank cell (e.g. no reference number) has fewer gaps, and re-splitting it
+// would shift every column after the blank one out of alignment.
+async function pdfToRows(buffer: ArrayBuffer, aliases: HeaderAliases): Promise<unknown[][]> {
   const doc = await pdfjs.getDocument({
     data: new Uint8Array(buffer),
     standardFontDataUrl: `${path.join(process.cwd(), "node_modules/pdfjs-dist/standard_fonts")}/`,
   }).promise;
 
   const rows: unknown[][] = [];
+  let columnStarts: number[] | null = null;
 
   for (let pageNum = 1; pageNum <= doc.numPages; pageNum++) {
     const page = await doc.getPage(pageNum);
     const content = await page.getTextContent();
 
-    const lines: { y: number; items: { x: number; text: string; width: number }[] }[] = [];
+    const lines: { y: number; items: PdfTextItem[] }[] = [];
     for (const item of content.items) {
       if (!("str" in item)) continue;
       const text = item.str;
@@ -255,23 +279,24 @@ async function pdfToRows(buffer: ArrayBuffer): Promise<unknown[][]> {
     lines.sort((a, b) => b.y - a.y);
 
     for (const line of lines) {
-      line.items.sort((a, b) => a.x - b.x);
-      const cells: string[] = [];
-      let current = "";
-      let prevEnd: number | null = null;
-      for (const it of line.items) {
-        const gap = prevEnd === null ? 0 : it.x - prevEnd;
-        const avgCharWidth = it.width / Math.max(it.text.length, 1);
-        const gapThreshold = Math.max(avgCharWidth * 2.5, 8);
-        if (prevEnd !== null && gap > gapThreshold) {
-          cells.push(current.trim());
-          current = it.text;
-        } else {
-          current += (current && !current.endsWith(" ") ? " " : "") + it.text;
+      if (!columnStarts) {
+        const cells = clusterLineByGap(line.items);
+        if (tryMatchHeaderRow(cells.map((c) => c.text), aliases)) {
+          columnStarts = cells.map((c) => c.x);
         }
-        prevEnd = it.x + it.width;
+        rows.push(cells.map((c) => c.text));
+        continue;
       }
-      if (current) cells.push(current.trim());
+
+      const cells = new Array(columnStarts.length).fill("") as string[];
+      for (const it of line.items) {
+        let colIdx = 0;
+        for (let i = 0; i < columnStarts.length; i++) {
+          if (it.x >= columnStarts[i] - 2) colIdx = i;
+          else break;
+        }
+        cells[colIdx] = cells[colIdx] ? `${cells[colIdx]} ${it.text}` : it.text;
+      }
       rows.push(cells);
     }
   }
@@ -279,7 +304,11 @@ async function pdfToRows(buffer: ArrayBuffer): Promise<unknown[][]> {
   return rows;
 }
 
-export async function parseTransactionFile(file: File): Promise<ParsedTransaction[]> {
+export async function parseTransactionFile(
+  file: File,
+  formatId: StatementFormatId,
+): Promise<ParsedTransaction[]> {
+  const { aliases } = getStatementFormat(formatId);
   const name = file.name.toLowerCase();
   const isCsv = name.endsWith(".csv") || file.type === "text/csv";
   const isPdf = name.endsWith(".pdf") || file.type === "application/pdf";
@@ -290,13 +319,13 @@ export async function parseTransactionFile(file: File): Promise<ParsedTransactio
       header: false,
       skipEmptyLines: true,
     });
-    return rowsToTransactions(result.data);
+    return rowsToTransactions(result.data, aliases);
   }
 
   if (isPdf) {
     const buffer = await file.arrayBuffer();
-    const rows = await pdfToRows(buffer);
-    return rowsToTransactions(rows);
+    const rows = await pdfToRows(buffer, aliases);
+    return rowsToTransactions(rows, aliases);
   }
 
   const buffer = await file.arrayBuffer();
@@ -307,5 +336,5 @@ export async function parseTransactionFile(file: File): Promise<ParsedTransactio
     raw: true,
     blankrows: false,
   });
-  return rowsToTransactions(rows);
+  return rowsToTransactions(rows, aliases);
 }

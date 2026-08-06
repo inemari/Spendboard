@@ -5,7 +5,14 @@ import { useRouter } from "next/navigation";
 import { Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { NewTransactionsSheet } from "@/components/new-transactions-sheet";
+import { STATEMENT_FORMATS, type StatementFormatId } from "@/lib/statement-formats";
 import type { Category, Transaction } from "@/lib/types";
 
 export function UploadButton({
@@ -19,14 +26,16 @@ export function UploadButton({
 }) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
+  const pendingFormatRef = useRef<StatementFormatId | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [newTransactions, setNewTransactions] = useState<Transaction[] | null>(null);
 
-  async function uploadFile(file: File) {
+  async function uploadFile(file: File, formatId: StatementFormatId) {
     setIsUploading(true);
     try {
       const formData = new FormData();
       formData.set("file", file);
+      formData.set("format", formatId);
 
       const res = await fetch(`/api/upload?year=${year}&month=${month}`, {
         method: "POST",
@@ -49,28 +58,50 @@ export function UploadButton({
     }
   }
 
+  // The picked format decides which header aliases the server applies (e.g.
+  // Nordea's "Navn"/"Betalingstype" vs. the Excel export's "Spesifikasjon"/
+  // "Sted"), so the file input's own accept + the chosen format id have to
+  // travel together — stashed here between the menu click and the input's
+  // onChange, since a native file input can't carry extra payload itself.
+  function pickFormat(formatId: StatementFormatId) {
+    const format = STATEMENT_FORMATS.find((f) => f.id === formatId);
+    if (!format || !inputRef.current) return;
+    pendingFormatRef.current = formatId;
+    inputRef.current.accept = format.accept;
+    inputRef.current.click();
+  }
+
   return (
     <>
       <input
         ref={inputRef}
         type="file"
-        accept=".csv,.xlsx,.xls,.pdf"
         className="hidden"
         onChange={(e) => {
           const file = e.target.files?.[0];
-          if (file) void uploadFile(file);
+          const formatId = pendingFormatRef.current;
+          if (file && formatId) void uploadFile(file, formatId);
           e.target.value = "";
         }}
       />
-      <Button
-        size="sm"
-        variant="outline"
-        disabled={isUploading}
-        onClick={() => inputRef.current?.click()}
-      >
-        <Upload />
-        {isUploading ? "Uploading..." : "Upload statement"}
-      </Button>
+
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <Button size="sm" variant="outline" disabled={isUploading}>
+              <Upload />
+              {isUploading ? "Uploading..." : "Upload statement"}
+            </Button>
+          }
+        />
+        <DropdownMenuContent>
+          {STATEMENT_FORMATS.map((format) => (
+            <DropdownMenuItem key={format.id} onClick={() => pickFormat(format.id)}>
+              {format.label}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
 
       <NewTransactionsSheet
         transactions={newTransactions}

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { parseTransactionFile } from "@/lib/parse-transactions";
 import { categoryIdForTransaction } from "@/lib/apply-rules";
+import { STATEMENT_FORMATS, type StatementFormatId } from "@/lib/statement-formats";
 import type { Rule } from "@/lib/types";
 
 export async function POST(request: NextRequest) {
@@ -24,14 +25,22 @@ export async function POST(request: NextRequest) {
 
   const formData = await request.formData();
   const file = formData.get("file");
+  const format = formData.get("format");
 
   if (!(file instanceof File)) {
     return NextResponse.json({ error: "No file uploaded." }, { status: 400 });
   }
 
+  if (
+    typeof format !== "string" ||
+    !STATEMENT_FORMATS.some((f) => f.id === format)
+  ) {
+    return NextResponse.json({ error: "Invalid or missing statement format." }, { status: 400 });
+  }
+
   let parsed;
   try {
-    parsed = await parseTransactionFile(file);
+    parsed = await parseTransactionFile(file, format as StatementFormatId);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to parse file.";
     return NextResponse.json({ error: message }, { status: 422 });
