@@ -19,12 +19,20 @@ visual design system.
   and its **subtitle is the `Sted` (location) column**, when present.
 - The month workspace (`/[year]/[month]`) is an **overview dashboard**
   (`transaction-board.tsx`): a hero "spent this month" figure, a common /
-  personal / need-review split meter, a ranked "Where it went" category
-  breakdown (`category-breakdown.tsx`, subcategory spend rolled into its
+  personal / need-review split meter, a **clickable "Where it went" category
+  sidebar** (`category-sidebar.tsx`, subcategory spend rolled into its
   parent, tail folded into "Other"), and a day-grouped, searchable transaction
   list (`transaction-list.tsx`) whose rows expand to reveal the full editor.
-  A desktop-only **Overview / Board** toggle swaps the list for the
-  drag-and-drop board. Spend-focused aggregates live in `src/lib/overview.ts`,
+  The sidebar is navigation, not just a readout: clicking a category (or "All
+  transactions" / "Uncategorized") scopes the list to it and shows a colored
+  chip beside the "Transactions" heading; clicking the active row again
+  resets to "All." Each category gets its own accent color from a fixed
+  rotation (`src/lib/category-colors.ts`) so it stays recognizable as a filter
+  target — that's an identity/navigation color, unlike the single-hue spend
+  bars this replaced, and doesn't need the categorical CVD palette's 8-hue
+  cap, since the name is always shown as text alongside the color. A
+  desktop-only **Overview / Board** toggle swaps the list for the drag-and-
+  drop board. Spend-focused aggregates live in `src/lib/overview.ts`,
   deliberately separate from `totals.ts` (which nets income against expenses).
 - **Month navigation**: prev/next arrows in `app-header.tsx` via
   `month-nav.tsx`. Any month is reachable; there is no "has data" check, so

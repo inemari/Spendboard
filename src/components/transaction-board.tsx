@@ -6,8 +6,9 @@ import { LayoutGrid, List } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTransactionActions } from "@/hooks/use-transaction-actions";
 import { computeOverview } from "@/lib/overview";
+import { categorySwatch } from "@/lib/category-colors";
 import { OverviewSummary } from "@/components/overview-summary";
-import { CategoryBreakdown } from "@/components/category-breakdown";
+import { CategorySidebar, type CategoryFilter } from "@/components/category-sidebar";
 import { TransactionList } from "@/components/transaction-list";
 import { CategoryBoard } from "@/components/category-board";
 import { BulkActionBar } from "@/components/bulk-action-bar";
@@ -52,6 +53,7 @@ export function TransactionBoard({
 
   const [overviewType, setOverviewType] = useState<TxType | null>(null);
   const [view, setView] = useState<View>("overview");
+  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>({ kind: "all" });
 
   const router = useRouter();
   const pathname = usePathname();
@@ -85,6 +87,29 @@ export function TransactionBoard({
     () => [...transactions].sort((a, b) => (a.date < b.date ? 1 : -1)),
     [transactions],
   );
+
+  // The category sidebar is the sole source of truth for which category is
+  // selected — the list below never re-derives it, it just renders what it's given.
+  const categoryFilteredTransactions = useMemo(() => {
+    switch (categoryFilter.kind) {
+      case "all":
+        return transactions;
+      case "uncategorized":
+        return transactions.filter((t) => !t.category_id);
+      case "category":
+        return transactions.filter((t) => t.category_id && categoryFilter.categoryIds.includes(t.category_id));
+    }
+  }, [transactions, categoryFilter]);
+
+  const filterChip = useMemo(() => {
+    if (categoryFilter.kind === "uncategorized") {
+      return { label: "Uncategorized", className: "bg-primary/10 text-primary" };
+    }
+    if (categoryFilter.kind === "category") {
+      return { label: categoryFilter.name, className: categorySwatch(categoryFilter.swatchIndex).soft };
+    }
+    return null;
+  }, [categoryFilter]);
 
   return (
     <div className={cn("flex flex-col gap-4", selectedIds.size > 0 && "pb-20")}>
@@ -154,12 +179,20 @@ export function TransactionBoard({
 
           <div className={cn(view === "board" && "md:hidden")}>
             <div className="grid gap-4 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)] lg:items-start">
-              <CategoryBreakdown slices={overview.breakdown} />
+              <CategorySidebar
+                breakdown={overview.breakdown}
+                totalCount={transactions.length}
+                uncategorizedCount={overview.uncategorizedCount}
+                uncategorizedSpent={overview.uncategorizedSpent}
+                filter={categoryFilter}
+                onSelectFilter={setCategoryFilter}
+              />
               <TransactionList
-                transactions={transactions}
+                transactions={categoryFilteredTransactions}
                 categories={categories}
                 selectedIds={selectedIds}
                 highlightedIds={highlightedIds}
+                filterChip={filterChip}
                 onToggleSelect={toggleSelect}
                 onCategoryChange={handleCategoryChange}
                 onTypeToggle={handleTypeToggle}

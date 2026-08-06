@@ -52,8 +52,9 @@ Bold, fun, and energetic. Saturated colors, pill-shaped elements, and bouncy mic
 
 ## Data visualization
 
-The overview page's split meter and category bars use `--chart-1` / `--chart-2`
-/ `--chart-track`, which replaced the grayscale shadcn scaffold tokens.
+The overview page's common/personal/need-review split meter uses `--chart-1`
+/ `--chart-2` / `--chart-track`, which replaced the grayscale shadcn scaffold
+tokens.
 
 - **Only two categorical slots exist, on purpose.** Slot 1 is brand pink, slot 2
   is the sky-blue tertiary. Brand pink beside brand purple collapses under
@@ -67,9 +68,19 @@ The overview page's split meter and category bars use `--chart-1` / `--chart-2`
   warn band, which is legal *only* alongside secondary encoding. That's why the
   meter keeps a 2px surface gap between segments and always shows labelled
   swatches. Don't remove either without re-validating.
-- **Category bars are all one hue.** Categories are nominal, so colouring them
-  by value would re-encode what bar length already shows. One series also means
-  no legend — the heading names what's plotted.
 - Re-validate with the `dataviz` skill's `validate_palette.js` against this
   app's own surfaces (`#ffffff` light, `#241521` dark) before changing any of
   these values — don't eyeball colorblind-safety.
+
+**The "Where it went" category sidebar is a different color job and doesn't
+use this palette.** It's a clickable filter list (`category-sidebar.tsx`), not
+a magnitude chart — every row always shows the category's name and amount as
+text, so a color there never carries meaning alone. Each category gets its own
+identity color from a fixed rotation (`src/lib/category-colors.ts`, same
+principle as the Rules page's column-header gradients in
+`rules-manager-panel.tsx`), so it stays recognizable as a filter target across
+clicks. Because the color is never the sole channel — the name is always
+printed next to it — this rotation is *not* run through the categorical CVD
+validator the way the split meter's palette is; it can safely exceed 8 hues if
+more categories are added, which the validated categorical palette by
+definition cannot.

@@ -17,19 +17,14 @@ import type { Category, Transaction } from "@/lib/types";
 
 const UNCATEGORIZED_VALUE = "__uncategorized__";
 
-type Filter = "all" | "uncategorized" | "need_review";
-
-const FILTERS: { value: Filter; label: string }[] = [
-  { value: "all", label: "All" },
-  { value: "uncategorized", label: "Uncategorized" },
-  { value: "need_review", label: "Need review" },
-];
+export type ActiveFilterChip = { label: string; className: string };
 
 export function TransactionList({
   transactions,
   categories,
   selectedIds,
   highlightedIds,
+  filterChip,
   onToggleSelect,
   onCategoryChange,
   onTypeToggle,
@@ -41,6 +36,8 @@ export function TransactionList({
   categories: Category[];
   selectedIds: Set<string>;
   highlightedIds: Set<string>;
+  /** Set by the category sidebar's active selection; null when scoped to "all". */
+  filterChip: ActiveFilterChip | null;
   onToggleSelect: (id: string) => void;
   onCategoryChange: (id: string, categoryId: string | null) => void;
   onTypeToggle: (id: string, currentType: Transaction["type"]) => void;
@@ -49,20 +46,15 @@ export function TransactionList({
   onDelete: (id: string) => void;
 }) {
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<Filter>("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return transactions.filter((t) => {
-      if (filter === "uncategorized" && t.category_id) return false;
-      if (filter === "need_review" && t.type !== "need_review") return false;
-      if (!q) return true;
-      return (
-        t.description.toLowerCase().includes(q) || (t.location?.toLowerCase().includes(q) ?? false)
-      );
-    });
-  }, [transactions, query, filter]);
+    if (!q) return transactions;
+    return transactions.filter(
+      (t) => t.description.toLowerCase().includes(q) || (t.location?.toLowerCase().includes(q) ?? false),
+    );
+  }, [transactions, query]);
 
   // Group by day, newest first, so the list reads like a statement.
   const days = useMemo(() => {
@@ -82,39 +74,24 @@ export function TransactionList({
   return (
     <section className="flex flex-col gap-4 rounded-2xl border border-border/60 bg-card p-5 sm:p-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h2 className="font-heading text-base font-bold">
+        <h2 className="flex items-center gap-2 font-heading text-base font-bold">
           Transactions
-          <span className="ml-2 text-sm font-normal text-muted-foreground">{visible.length}</span>
+          {filterChip && (
+            <span className={cn("rounded-full px-2.5 py-0.5 text-xs font-medium", filterChip.className)}>
+              {filterChip.label}
+            </span>
+          )}
+          <span className="text-sm font-normal text-muted-foreground">{visible.length}</span>
         </h2>
 
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <div className="relative">
-            <Search className="absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search…"
-              className="h-8 w-full pl-8 text-xs sm:w-48"
-            />
-          </div>
-
-          <div className="flex gap-1 rounded-full bg-muted p-0.5">
-            {FILTERS.map((f) => (
-              <button
-                key={f.value}
-                type="button"
-                onClick={() => setFilter(f.value)}
-                className={cn(
-                  "rounded-full px-3 py-1 text-xs font-medium transition-colors",
-                  filter === f.value
-                    ? "bg-card text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {f.label}
-              </button>
-            ))}
-          </div>
+        <div className="relative">
+          <Search className="absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search…"
+            className="h-8 w-full pl-8 text-xs sm:w-48"
+          />
         </div>
       </div>
 

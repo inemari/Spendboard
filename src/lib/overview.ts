@@ -11,6 +11,9 @@ export type CategorySlice = {
   /** 0–1 of total spend, used for the bar width. */
   share: number;
   transactionCount: number;
+  /** The real category ids this slice rolls up (parent + subcategories, or the
+   *  whole folded tail for "Other") — what a click on this slice filters by. */
+  categoryIds: string[];
 };
 
 /**
@@ -71,6 +74,7 @@ export function computeOverview(transactions: Transaction[], categories: Categor
       spent: ids.reduce((sum, id) => sum + (spentByCategory.get(id) ?? 0), 0),
       share: 0,
       transactionCount: ids.reduce((sum, id) => sum + (countByCategory.get(id) ?? 0), 0),
+      categoryIds: ids,
     };
   });
 
@@ -89,6 +93,7 @@ export function computeOverview(transactions: Transaction[], categories: Categor
       spent: tail.reduce((sum, slice) => sum + slice.spent, 0),
       share: 0,
       transactionCount: tail.reduce((sum, slice) => sum + slice.transactionCount, 0),
+      categoryIds: tail.flatMap((slice) => slice.categoryIds),
     });
   }
 
