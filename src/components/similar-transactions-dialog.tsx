@@ -10,6 +10,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { formatAmount, formatDate } from "@/lib/format";
 import type { PendingSimilarMove } from "@/hooks/use-transaction-actions";
 import type { Category } from "@/lib/types";
@@ -84,11 +85,10 @@ function SimilarTransactionsDialogContent({
               key={t.id}
               className="flex items-start gap-3 rounded-lg border p-2 text-sm has-checked:border-primary/50 has-checked:bg-primary/5"
             >
-              <input
-                type="checkbox"
+              <Checkbox
                 checked={selected.has(t.id)}
-                onChange={() => toggle(t.id)}
-                className="mt-0.5 size-4 shrink-0 accent-primary"
+                onCheckedChange={() => toggle(t.id)}
+                className="mt-0.5 size-4 shrink-0"
               />
               <div className="min-w-0 flex-1">
                 <div className="flex items-start justify-between gap-2">

@@ -32,6 +32,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 import type { Category } from "@/lib/types";
 
@@ -40,9 +50,11 @@ const NO_PARENT_VALUE = "__none__";
 function SortableCategoryRow({
   category,
   indent = false,
+  onRequestDelete,
 }: {
   category: Category;
   indent?: boolean;
+  onRequestDelete: (category: Category, indent: boolean) => void;
 }) {
   const router = useRouter();
   const [name, setName] = useState(category.name);
@@ -69,22 +81,6 @@ function SortableCategoryRow({
       toast.error("Failed to rename category.");
       return;
     }
-    router.refresh();
-  }
-
-  async function handleDelete() {
-    const warning = indent
-      ? `Delete "${category.name}"? Its transactions will become uncategorized.`
-      : `Delete "${category.name}"? Its subcategories will be deleted too, and all their transactions will become uncategorized.`;
-    if (!window.confirm(warning)) return;
-
-    const { error } = await supabase.from("categories").delete().eq("id", category.id);
-
-    if (error) {
-      toast.error("Failed to delete category.");
-      return;
-    }
-    toast.success(`Deleted "${category.name}".`);
     router.refresh();
   }
 
@@ -122,7 +118,7 @@ function SortableCategoryRow({
         variant="ghost"
         size="icon-sm"
         className="shrink-0 text-muted-foreground hover:text-destructive"
-        onClick={handleDelete}
+        onClick={() => onRequestDelete(category, indent)}
       >
         <Trash2 className="size-4" />
       </Button>
@@ -136,6 +132,9 @@ export function CategoryManagerPanel({ categories }: { categories: Category[] })
   const [newName, setNewName] = useState("");
   const [parentId, setParentId] = useState(NO_PARENT_VALUE);
   const [creating, setCreating] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<{ category: Category; indent: boolean } | null>(
+    null,
+  );
   const supabase = useMemo(() => createClient(), []);
   const newNameInputRef = useRef<HTMLInputElement>(null);
 
@@ -181,6 +180,21 @@ export function CategoryManagerPanel({ categories }: { categories: Category[] })
     const reorderedMap = new Map(reordered.map((c) => [c.id, c]));
     setItems((prev) => prev.map((c) => reorderedMap.get(c.id) ?? c));
     void persistOrder(reordered.map((c) => ({ id: c.id, sort_order: c.sort_order })));
+  }
+
+  async function confirmDeleteCategory() {
+    const pending = pendingDelete;
+    setPendingDelete(null);
+    if (!pending) return;
+
+    const { error } = await supabase.from("categories").delete().eq("id", pending.category.id);
+
+    if (error) {
+      toast.error("Failed to delete category.");
+      return;
+    }
+    toast.success(`Deleted "${pending.category.name}".`);
+    router.refresh();
   }
 
   function handleAddSubcategoryClick(parent: Category) {
@@ -229,7 +243,10 @@ export function CategoryManagerPanel({ categories }: { categories: Category[] })
           <div className="flex flex-col gap-3">
             {tree.map(({ parent, children }) => (
               <Card key={parent.id} className="p-4">
-                <SortableCategoryRow category={parent} />
+                <SortableCategoryRow
+                  category={parent}
+                  onRequestDelete={(category, indent) => setPendingDelete({ category, indent })}
+                />
 
                 {children.length > 0 && (
                   <SortableContext
@@ -238,7 +255,14 @@ export function CategoryManagerPanel({ categories }: { categories: Category[] })
                   >
                     <div className="mt-2 flex flex-col gap-2 border-l-2 border-border pl-3">
                       {children.map((child) => (
-                        <SortableCategoryRow key={child.id} category={child} indent />
+                        <SortableCategoryRow
+                          key={child.id}
+                          category={child}
+                          indent
+                          onRequestDelete={(category, indent) =>
+                            setPendingDelete({ category, indent })
+                          }
+                        />
                       ))}
                     </div>
                   </SortableContext>
@@ -296,6 +320,30 @@ export function CategoryManagerPanel({ categories }: { categories: Category[] })
           </Button>
         </div>
       </Card>
+
+      <AlertDialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => !open && setPendingDelete(null)}
+      >
+        {pendingDelete && (
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete &ldquo;{pendingDelete.category.name}&rdquo;?</AlertDialogTitle>
+              <AlertDialogDescription>
+                {pendingDelete.indent
+                  ? "Its transactions will become uncategorized."
+                  : "Its subcategories will be deleted too, and all their transactions will become uncategorized."}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction variant="destructive" onClick={() => void confirmDeleteCategory()}>
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        )}
+      </AlertDialog>
     </div>
   );
 }

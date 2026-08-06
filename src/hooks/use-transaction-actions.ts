@@ -23,6 +23,8 @@ export type PendingRulePrompt = {
   categoryName: string;
 };
 
+export type PendingDelete = { ids: string[] };
+
 export function useTransactionActions(
   initialTransactions: Transaction[],
   categories: Category[],
@@ -33,6 +35,7 @@ export function useTransactionActions(
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [pendingSimilarMove, setPendingSimilarMove] = useState<PendingSimilarMove | null>(null);
   const [pendingRulePrompt, setPendingRulePrompt] = useState<PendingRulePrompt | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
   const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
   const pathname = usePathname();
@@ -232,7 +235,7 @@ export function useTransactionActions(
 
   function handleCardTypeToggle(id: string, currentCardType: CardType) {
     void updateTransaction(id, {
-      card_type: currentCardType === "credit" ? "regular" : "credit",
+      card_type: currentCardType === "credit" ? "debit" : "credit",
     });
   }
 
@@ -261,8 +264,7 @@ export function useTransactionActions(
   }
 
   function handleDeleteTransaction(id: string) {
-    if (!window.confirm("Delete this transaction? This can't be undone.")) return;
-    void deleteTransaction(id);
+    setPendingDelete({ ids: [id] });
   }
 
   async function deleteMulti(ids: string[]) {
@@ -282,9 +284,24 @@ export function useTransactionActions(
   }
 
   function handleDeleteMulti(ids: string[]) {
-    if (!window.confirm(`Delete ${ids.length} transactions? This can't be undone.`)) return;
-    void deleteMulti(ids);
-    clearSelection();
+    setPendingDelete({ ids });
+  }
+
+  function confirmDelete() {
+    const pending = pendingDelete;
+    setPendingDelete(null);
+    if (!pending) return;
+
+    if (pending.ids.length === 1) {
+      void deleteTransaction(pending.ids[0]);
+    } else {
+      void deleteMulti(pending.ids);
+      clearSelection();
+    }
+  }
+
+  function dismissDelete() {
+    setPendingDelete(null);
   }
 
   return {
@@ -309,5 +326,8 @@ export function useTransactionActions(
     pendingRulePrompt,
     confirmCreateRule,
     dismissCreateRule,
+    pendingDelete,
+    confirmDelete,
+    dismissDelete,
   };
 }

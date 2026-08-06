@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { ChevronDown, CreditCard, Search, Trash2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -207,13 +208,12 @@ function TransactionRow({
       )}
     >
       <div className="flex items-center gap-3 px-2 py-2.5">
-        <input
-          type="checkbox"
+        <Checkbox
           checked={selected}
-          onChange={onToggleSelect}
+          onCheckedChange={onToggleSelect}
           aria-label={`Select ${t.description}`}
           className={cn(
-            "size-3.5 shrink-0 cursor-pointer accent-primary transition-opacity",
+            "size-3.5 shrink-0 cursor-pointer transition-opacity",
             !selected &&
               "opacity-0 group-hover:opacity-100 focus-visible:opacity-100",
           )}

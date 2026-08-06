@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { CreditCard, Trash2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -88,13 +90,12 @@ export function TransactionCard({
           )}
         </div>{" "}
         {onToggleSelect && (
-          <input
-            type="checkbox"
+          <Checkbox
             checked={selected}
-            onChange={onToggleSelect}
+            onCheckedChange={onToggleSelect}
             onClick={(e) => e.stopPropagation()}
             aria-label="Select transaction"
-            className="mt-0.5 group-hover:opacity-100 opacity-0 size-3 shrink-0 cursor-pointer accent-primary"
+            className="mt-0.5 size-3 shrink-0 cursor-pointer opacity-0 group-hover:opacity-100"
           />
         )}
       </div>
@@ -170,14 +171,14 @@ export function TransactionCard({
           which are one click away in the overview list, there's no other surface
           where a board card's note is visible or editable. */}
       {editingNote ? (
-        <textarea
+        <Textarea
           autoFocus
           rows={2}
           value={noteDraft}
           onChange={(e) => setNoteDraft(e.target.value)}
           onBlur={saveNote}
           placeholder="Add a note…"
-          className="w-full rounded-lg border border-input bg-transparent p-1.5 text-[11px] outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+          className="min-h-0 p-1.5 text-[11px]"
         />
       ) : transaction.notes ? (
         <button

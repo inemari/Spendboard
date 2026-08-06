@@ -15,6 +15,7 @@ import { BulkActionBar } from "@/components/bulk-action-bar";
 import { TypeOverviewSheet } from "@/components/type-overview-sheet";
 import { SimilarTransactionsDialog } from "@/components/similar-transactions-dialog";
 import { CreateRuleDialog } from "@/components/create-rule-dialog";
+import { DeleteConfirmDialog } from "@/components/delete-confirm-dialog";
 import type { Category, Transaction, TxType } from "@/lib/types";
 
 type View = "overview" | "board";
@@ -49,6 +50,9 @@ export function TransactionBoard({
     pendingRulePrompt,
     confirmCreateRule,
     dismissCreateRule,
+    pendingDelete,
+    confirmDelete,
+    dismissDelete,
   } = useTransactionActions(initialTransactions, categories);
 
   const [overviewType, setOverviewType] = useState<TxType | null>(null);
@@ -129,6 +133,12 @@ export function TransactionBoard({
         pending={pendingRulePrompt}
         onConfirm={confirmCreateRule}
         onDismiss={dismissCreateRule}
+      />
+
+      <DeleteConfirmDialog
+        pending={pendingDelete}
+        onConfirm={confirmDelete}
+        onDismiss={dismissDelete}
       />
 
       <TypeOverviewSheet

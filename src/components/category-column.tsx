@@ -2,6 +2,7 @@
 
 import { useDroppable } from "@dnd-kit/core";
 import { DraggableTransactionCard } from "@/components/draggable-transaction-card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { formatSpend } from "@/lib/format";
 import type { CategorySwatch } from "@/lib/category-colors";
 import { cn } from "@/lib/utils";
@@ -95,14 +96,13 @@ function SubcategorySection({
     >
       <div className="flex items-center gap-1.5">
         {section.transactions.length > 0 && (
-          <input
-            type="checkbox"
+          <Checkbox
             checked={allSelected}
-            onChange={() =>
+            onCheckedChange={() =>
               actions.onToggleSelectAll(section.transactions.map((t) => t.id))
             }
             aria-label={`Select all in ${section.title}`}
-            className="size-3 shrink-0 cursor-pointer accent-primary group-hover/subcategory:opacity-100 focus-visible:opacity-100 opacity-0"
+            className="size-3 shrink-0 cursor-pointer opacity-0 group-hover/subcategory:opacity-100 focus-visible:opacity-100"
           />
         )}
         <h4 className="min-w-0 flex-1 truncate text-[11px] font-medium text-muted-foreground">
@@ -184,14 +184,13 @@ export function CategoryColumn({
       >
         <div className="flex items-center gap-1.5 ">
           {allTransactions.length > 0 && (
-            <input
-              type="checkbox"
+            <Checkbox
               checked={allSelected}
-              onChange={() =>
+              onCheckedChange={() =>
                 actions.onToggleSelectAll(allTransactions.map((t) => t.id))
               }
               aria-label={`Select all in ${title}`}
-              className="size-3 shrink-0 cursor-pointer accent-current opacity-0 group-hover/category:opacity-100 focus-visible:opacity-100"
+              className="size-3 shrink-0 cursor-pointer opacity-0 group-hover/category:opacity-100 focus-visible:opacity-100"
             />
           )}
           <h3 className="min-w-0 flex-1 truncate text-xs font-semibold">

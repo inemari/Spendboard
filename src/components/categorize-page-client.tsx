@@ -4,6 +4,7 @@ import { useTransactionActions } from "@/hooks/use-transaction-actions";
 import { CategorizeScreen } from "@/components/categorize-screen";
 import { SimilarTransactionsDialog } from "@/components/similar-transactions-dialog";
 import { CreateRuleDialog } from "@/components/create-rule-dialog";
+import { DeleteConfirmDialog } from "@/components/delete-confirm-dialog";
 import type { Category, Transaction } from "@/lib/types";
 
 export function CategorizePageClient({
@@ -28,6 +29,9 @@ export function CategorizePageClient({
     pendingRulePrompt,
     confirmCreateRule,
     dismissCreateRule,
+    pendingDelete,
+    confirmDelete,
+    dismissDelete,
   } = useTransactionActions(initialTransactions, categories);
 
   const uncategorized = transactions.filter((t) => !t.category_id);
@@ -44,6 +48,11 @@ export function CategorizePageClient({
         pending={pendingRulePrompt}
         onConfirm={confirmCreateRule}
         onDismiss={dismissCreateRule}
+      />
+      <DeleteConfirmDialog
+        pending={pendingDelete}
+        onConfirm={confirmDelete}
+        onDismiss={dismissDelete}
       />
       <CategorizeScreen
         transactions={uncategorized}
