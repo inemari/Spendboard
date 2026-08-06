@@ -80,7 +80,14 @@ visual design system.
   `month-nav.tsx`. Any month is reachable; there is no "has data" check, so
   stepping into an empty month shows the empty state.
 - Categorize transactions via dropdown, drag-and-drop board (desktop), or the
-  one-by-one "Categorize" screen (drag a card onto its category).
+  one-by-one "Categorize" screen (drag a card onto its category — or use its
+  Prev/Next arrows to step through the uncategorized list without touching
+  it, same as the board carousel's stepper below). `categorize-screen.tsx`
+  is a plain index into the uncategorized list, not a forward-only skip
+  queue — Previous and Next are the same stepper, so "skip" and "go back"
+  aren't two different mechanisms. Categorizing (or deleting) the current
+  transaction removes it from the underlying list, which slides the next
+  one into the same index for free, no separate "advance" step needed.
 - The board (`category-board.tsx`) is built for **10+ categories with 0–5
   subcategories each** as a real kanban board (`category-column.tsx`: cards
   always visible, not hidden behind an expand click), scaled two ways instead

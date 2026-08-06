@@ -19,7 +19,7 @@ export function CategoryDropZone({
       ref={setNodeRef}
       className={cn(
         "flex items-center justify-center rounded-xl border-dashed text-center transition-colors",
-        variant === "parent" ? "h-24 border-2 p-4 text-base font-semibold" : "h-14 border p-2 text-sm font-medium",
+        variant === "parent" ? "h-32 border-2 p-4 text-base font-semibold" : "h-20 border p-2 text-sm font-medium",
         isOver
           ? "border-primary bg-primary/10 text-primary"
           : variant === "parent"
