@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { parseTransactionFile } from "@/lib/parse-transactions";
 import { categoryIdForTransaction } from "@/lib/apply-rules";
-import { STATEMENT_FORMATS, type StatementFormatId } from "@/lib/statement-formats";
 import type { CardType, Rule } from "@/lib/types";
 
 const CARD_TYPES: CardType[] = ["credit", "debit"];
@@ -27,18 +26,10 @@ export async function POST(request: NextRequest) {
 
   const formData = await request.formData();
   const file = formData.get("file");
-  const format = formData.get("format");
   const cardType = formData.get("cardType");
 
   if (!(file instanceof File)) {
     return NextResponse.json({ error: "No file uploaded." }, { status: 400 });
-  }
-
-  if (
-    typeof format !== "string" ||
-    !STATEMENT_FORMATS.some((f) => f.id === format)
-  ) {
-    return NextResponse.json({ error: "Invalid or missing statement format." }, { status: 400 });
   }
 
   if (typeof cardType !== "string" || !CARD_TYPES.includes(cardType as CardType)) {
@@ -47,7 +38,7 @@ export async function POST(request: NextRequest) {
 
   let parsed;
   try {
-    parsed = await parseTransactionFile(file, format as StatementFormatId);
+    parsed = await parseTransactionFile(file);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to parse file.";
     return NextResponse.json({ error: message }, { status: 422 });

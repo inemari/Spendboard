@@ -3,7 +3,7 @@ import Papa from "papaparse";
 import * as pdfjs from "pdfjs-dist/legacy/build/pdf.mjs";
 import { createHash } from "node:crypto";
 import path from "node:path";
-import { getStatementFormat, type HeaderAliases, type StatementFormatId } from "./statement-formats";
+import { STATEMENT_FORMATS, type HeaderAliases } from "./statement-formats";
 
 export type ParsedTransaction = {
   date: string; // ISO yyyy-mm-dd
@@ -198,12 +198,10 @@ function rowsToTransactions(rows: unknown[][], aliases: HeaderAliases): ParsedTr
     });
   }
 
-  if (!mapping) {
-    throw new Error(
-      "Could not find a header row with recognizable date/description/amount columns.",
-    );
-  }
-
+  // No header row matched this alias set at all — same outcome as matching
+  // a header but finding zero data rows under it, so no separate error:
+  // `transactions` is already empty whenever `mapping` never got set, since
+  // every row before a mapping exists is skipped above.
   return transactions;
 }
 
@@ -304,31 +302,49 @@ async function pdfToRows(buffer: ArrayBuffer, aliases: HeaderAliases): Promise<u
   return rows;
 }
 
-export async function parseTransactionFile(
-  file: File,
-  formatId: StatementFormatId,
-): Promise<ParsedTransaction[]> {
-  const { aliases, csvDelimiter } = getStatementFormat(formatId);
+// The user picks a file, not a bank — so instead of asking which format it
+// is, every format whose accepted extensions include this file's extension
+// gets tried against the actual content, and whichever extracts the most
+// transactions wins. This is what lets one file's real columns (which are
+// what they are, regardless of what the user assumes their bank calls them —
+// see the Nordea CSV whose "Navn" column is always blank) settle the
+// ambiguity instead of a name picked from a dropdown.
+export async function parseTransactionFile(file: File): Promise<ParsedTransaction[]> {
   const name = file.name.toLowerCase();
   const isCsv = name.endsWith(".csv") || file.type === "text/csv";
   const isPdf = name.endsWith(".pdf") || file.type === "application/pdf";
+  const extension = isPdf ? ".pdf" : isCsv ? ".csv" : ".xlsx";
+
+  const candidates = STATEMENT_FORMATS.filter((f) =>
+    f.accept.split(",").includes(extension),
+  );
+
+  let best: ParsedTransaction[] = [];
+
+  if (isPdf) {
+    const buffer = await file.arrayBuffer();
+    for (const format of candidates) {
+      const rows = await pdfToRows(buffer, format.aliases);
+      const transactions = rowsToTransactions(rows, format.aliases);
+      if (transactions.length > best.length) best = transactions;
+    }
+    return best;
+  }
 
   if (isCsv) {
     // File#text() decodes with TextDecoder, which strips a leading UTF-8 BOM
     // by default — no separate handling needed for "UTF-8 med BOM" exports.
     const text = await file.text();
-    const result = Papa.parse<unknown[]>(text, {
-      header: false,
-      skipEmptyLines: true,
-      delimiter: csvDelimiter ?? "",
-    });
-    return rowsToTransactions(result.data, aliases);
-  }
-
-  if (isPdf) {
-    const buffer = await file.arrayBuffer();
-    const rows = await pdfToRows(buffer, aliases);
-    return rowsToTransactions(rows, aliases);
+    for (const format of candidates) {
+      const result = Papa.parse<unknown[]>(text, {
+        header: false,
+        skipEmptyLines: true,
+        delimiter: format.csvDelimiter ?? "",
+      });
+      const transactions = rowsToTransactions(result.data, format.aliases);
+      if (transactions.length > best.length) best = transactions;
+    }
+    return best;
   }
 
   const buffer = await file.arrayBuffer();
@@ -339,5 +355,9 @@ export async function parseTransactionFile(
     raw: true,
     blankrows: false,
   });
-  return rowsToTransactions(rows, aliases);
+  for (const format of candidates) {
+    const transactions = rowsToTransactions(rows, format.aliases);
+    if (transactions.length > best.length) best = transactions;
+  }
+  return best;
 }

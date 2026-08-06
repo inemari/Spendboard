@@ -15,17 +15,23 @@ visual design system.
 
 - Upload a bank statement for a given month; transactions are parsed,
   de-duplicated (by date+description+amount hash), and shown as cards. The
-  upload button (`upload-button.tsx`) is a format picker, not an auto-
-  detector — column names vary enough between exports that guessing the
-  right one from header text risks silently mismapping a field, so the user
-  explicitly picks **SAS Eurobonus Kredittkort (Excel/CSV)**, **Nordea
-  Debit (PDF)**, or **Nordea Debit (CSV)** before choosing a file. Each
-  format's file-type expectation, accepted extensions, header aliases, and
-  (for CSV formats) field delimiter live together in
-  `src/lib/statement-formats.ts` — shared by the upload button (which
-  extensions to accept, which format id to send) and `parse-transactions.ts`
-  (which header aliases and delimiter to use). Adding a new bank/card format
-  means adding one entry there, not touching the parsing logic itself.
+  upload button (`upload-button.tsx`) only asks for the file and the card
+  type (Credit/Debit — see below); it does **not** ask which bank/export
+  format the file is. `parseTransactionFile` in `parse-transactions.ts`
+  auto-detects that instead: every format in `src/lib/statement-formats.ts`
+  whose accepted extensions include the uploaded file's extension gets
+  tried against the file's actual content (header aliases, and for CSV,
+  field delimiter), and whichever extraction yields the most transactions
+  wins — so the file's real columns settle any ambiguity, not a name picked
+  from a dropdown. Known formats today: **SAS Eurobonus Kredittkort**
+  (Excel/CSV), **Nordea Debit (PDF)**, **Nordea Debit (CSV)**. Adding a new
+  bank/card format means adding one entry to `STATEMENT_FORMATS`, not
+  touching the detection or parsing logic itself. This auto-detection
+  replaced an earlier explicit format-picker dropdown — kept losing to real
+  files whose actual columns didn't match what the user assumed their own
+  bank's export was called (see the Nordea CSV note below), so matching
+  against real content instead of a self-reported label proved more
+  reliable in practice.
   - **Nordea Debit (CSV)** is UTF-8-with-BOM, semicolon-delimited, comma
     decimals, `YYYY/MM/DD` dates — same columns as the PDF format above, just
     a different export of the same account. The BOM is stripped for free by
@@ -116,11 +122,11 @@ visual design system.
   (a third state for "haven't decided yet" — distinct from being uncategorized).
 - Free-text **note** field per transaction.
 - Per-transaction **card type**: Credit vs. Debit card. Chosen once per
-  upload (`upload-button.tsx`'s card-type dialog, between picking the
-  statement format and picking the file) and applied to every transaction
-  parsed from that file — not auto-detected, and not editable per-file
-  after the fact. Individual transactions can still be corrected afterward
-  via the per-card toggle or the bulk action bar.
+  upload (`upload-button.tsx`'s card-type dialog, shown before the file
+  picker opens) and applied to every transaction parsed from that file —
+  not auto-detected (unlike the statement format itself), and not editable
+  per-file after the fact. Individual transactions can still be corrected
+  afterward via the per-card toggle or the bulk action bar.
 - Custom category create/rename/delete.
 - Per-category, per-month common/personal/overall totals; uncategorized count.
 - Undo action on the toast shown whenever a transaction's category changes.
