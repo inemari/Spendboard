@@ -35,7 +35,7 @@ export function CategorySidebar({
   const max = Math.max(1, ...breakdown.map((s) => s.spent));
 
   return (
-    <section className="flex flex-col gap-3">
+    <section className="flex flex-col gap-1.5">
       <h2 className="px-1 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
         Where it went
       </h2>
@@ -44,7 +44,7 @@ export function CategorySidebar({
         type="button"
         onClick={() => onSelectFilter({ kind: "all" })}
         className={cn(
-          "flex items-center justify-between rounded-xl border bg-card px-4 py-3 text-sm font-medium transition-colors",
+          "flex items-center justify-between rounded-lg border bg-card px-3 py-2 text-sm font-medium transition-colors",
           filter.kind === "all" ? "border-primary ring-1 ring-primary" : "border-border/60 hover:border-border",
         )}
       >
@@ -74,29 +74,29 @@ export function CategorySidebar({
               )
             }
             className={cn(
-              "flex flex-col gap-1.5 rounded-xl border bg-card px-4 py-3 text-left transition-colors",
+              "flex flex-col gap-1 rounded-lg border bg-card px-3 py-1.5 text-left transition-colors",
               active ? cn("border-transparent ring-2", swatch.ring) : "border-border/60 hover:border-border",
             )}
           >
-            <div className="flex items-baseline justify-between gap-3">
-              <span className="min-w-0 truncate text-sm font-semibold">{slice.name}</span>
+            <div className="flex items-baseline gap-2">
+              <span className={cn("size-1.5 shrink-0 rounded-full", swatch.bar)} />
+              <span className="min-w-0 flex-1 truncate text-sm font-medium">{slice.name}</span>
               <span className={cn("shrink-0 text-xs font-semibold tabular-nums", swatch.text)}>
                 {Math.round(slice.share * 100)}%
               </span>
+              <span className="shrink-0 text-sm font-semibold tabular-nums">
+                {formatSpend(slice.spent)}
+              </span>
+              <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                {slice.transactionCount}
+              </span>
             </div>
 
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-chart-track">
+            <div className="h-1 w-full overflow-hidden rounded-full bg-chart-track">
               <div
                 className={cn("h-full rounded-r-full", swatch.bar)}
                 style={{ width: `${Math.max((slice.spent / max) * 100, 1.5)}%` }}
               />
-            </div>
-
-            <div className="flex items-baseline justify-between gap-3">
-              <span className="text-sm font-semibold tabular-nums">{formatSpend(slice.spent)}</span>
-              <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                {slice.transactionCount}
-              </span>
             </div>
           </button>
         );
@@ -107,7 +107,7 @@ export function CategorySidebar({
           type="button"
           onClick={() => onSelectFilter(filter.kind === "uncategorized" ? { kind: "all" } : { kind: "uncategorized" })}
           className={cn(
-            "flex items-center justify-between gap-3 rounded-xl border bg-card px-4 py-3 text-left transition-colors",
+            "flex items-center justify-between gap-3 rounded-lg border bg-card px-3 py-2 text-left transition-colors",
             filter.kind === "uncategorized"
               ? "border-primary ring-1 ring-primary"
               : "border-border/60 hover:border-border",
