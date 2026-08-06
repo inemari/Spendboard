@@ -46,8 +46,8 @@ Bold, fun, and energetic. Saturated colors, pill-shaped elements, and bouncy mic
 - Fonts: DM Sans is loaded via `next/font/google` in `src/app/layout.tsx`, exposed as
   the `--font-sans` CSS variable that `globals.css` already expected.
 - Pill shape + hover scale/shadow applied directly in `src/components/ui/button.tsx`,
-  `input.tsx`, `badge.tsx`; lift/shadow on `card.tsx`. Category board tiles and the
-  Categorize screen's drop zones (`category-tile.tsx`, `category-drop-zone.tsx`) got the
+  `input.tsx`, `badge.tsx`; lift/shadow on `card.tsx`. Category board columns and the
+  Categorize screen's drop zones (`category-column.tsx`, `category-drop-zone.tsx`) got the
   same radius treatment since they're central, highly visible UI.
 
 ## Data visualization
@@ -72,15 +72,17 @@ tokens.
   app's own surfaces (`#ffffff` light, `#241521` dark) before changing any of
   these values — don't eyeball colorblind-safety.
 
-**The "Where it went" category sidebar is a different color job and doesn't
-use this palette.** It's a clickable filter list (`category-sidebar.tsx`), not
-a magnitude chart — every row always shows the category's name and amount as
-text, so a color there never carries meaning alone. Each category gets its own
-identity color from a fixed rotation (`src/lib/category-colors.ts`, same
-principle as the Rules page's column-header gradients in
-`rules-manager-panel.tsx`), so it stays recognizable as a filter target across
-clicks. Because the color is never the sole channel — the name is always
-printed next to it — this rotation is *not* run through the categorical CVD
+**The "Where it went" sidebar and the board's kanban columns share a
+different color job and don't use the palette above.** Neither is a
+magnitude chart — every sidebar row and every column header always shows the
+category's name and amount as text, so a color there never carries meaning
+alone. Each category gets its own identity color from a fixed rotation
+(`src/lib/category-colors.ts`'s `buildCategoryColorMap`, same principle as
+the Rules page's column-header gradients in `rules-manager-panel.tsx`), keyed
+by sort order among siblings — not spend rank — so a category's color is the
+same in the sidebar and on the board, and doesn't shift from month to month.
+Because the color is never the sole channel — the name is always printed
+next to it — this rotation is *not* run through the categorical CVD
 validator the way the split meter's palette is; it can safely exceed 8 hues if
 more categories are added, which the validated categorical palette by
 definition cannot.

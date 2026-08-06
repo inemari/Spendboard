@@ -6,7 +6,7 @@ import { LayoutGrid, List } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTransactionActions } from "@/hooks/use-transaction-actions";
 import { computeOverview } from "@/lib/overview";
-import { categorySwatch } from "@/lib/category-colors";
+import { buildCategoryColorMap, NEUTRAL_SWATCH, UNCATEGORIZED_SWATCH } from "@/lib/category-colors";
 import { OverviewSummary } from "@/components/overview-summary";
 import { CategorySidebar, type CategoryFilter } from "@/components/category-sidebar";
 import { TransactionList } from "@/components/transaction-list";
@@ -88,6 +88,10 @@ export function TransactionBoard({
     [transactions],
   );
 
+  // Shared by the sidebar and the board's kanban columns, so a category's
+  // color is the same in both places instead of each view deriving its own.
+  const colorMap = useMemo(() => buildCategoryColorMap(categories), [categories]);
+
   // The category sidebar is the sole source of truth for which category is
   // selected — the list below never re-derives it, it just renders what it's given.
   const categoryFilteredTransactions = useMemo(() => {
@@ -103,13 +107,14 @@ export function TransactionBoard({
 
   const filterChip = useMemo(() => {
     if (categoryFilter.kind === "uncategorized") {
-      return { label: "Uncategorized", className: "bg-primary/10 text-primary" };
+      return { label: "Uncategorized", className: UNCATEGORIZED_SWATCH.soft };
     }
     if (categoryFilter.kind === "category") {
-      return { label: categoryFilter.name, className: categorySwatch(categoryFilter.swatchIndex).soft };
+      const swatch = colorMap.get(categoryFilter.sliceId) ?? NEUTRAL_SWATCH;
+      return { label: categoryFilter.name, className: swatch.soft };
     }
     return null;
-  }, [categoryFilter]);
+  }, [categoryFilter, colorMap]);
 
   return (
     <div className={cn("flex flex-col gap-4", selectedIds.size > 0 && "pb-20")}>
@@ -184,6 +189,7 @@ export function TransactionBoard({
                 totalCount={transactions.length}
                 uncategorizedCount={overview.uncategorizedCount}
                 uncategorizedSpent={overview.uncategorizedSpent}
+                colorMap={colorMap}
                 filter={categoryFilter}
                 onSelectFilter={setCategoryFilter}
               />
@@ -207,6 +213,7 @@ export function TransactionBoard({
             <CategoryBoard
               transactions={sorted}
               categories={categories}
+              colorMap={colorMap}
               onCategoryChange={handleCategoryChange}
               onCategoryChangeMulti={handleCategoryChangeMulti}
               onTypeToggle={handleTypeToggle}

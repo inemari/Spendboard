@@ -1,92 +1,40 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   DndContext,
   PointerSensor,
   pointerWithin,
-  useDroppable,
   useSensor,
   useSensors,
   type DragEndEvent,
 } from "@dnd-kit/core";
-import { Search } from "lucide-react";
+import { ChevronLeft, ChevronRight, Search } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { DraggableTransactionCard } from "@/components/draggable-transaction-card";
-import { CategoryTile, type TileActions } from "@/components/category-tile";
+import {
+  CategoryColumn,
+  type ColumnActions,
+} from "@/components/category-column";
 import { buildCategoryTree } from "@/lib/category-tree";
-import { cn } from "@/lib/utils";
+import {
+  UNCATEGORIZED_SWATCH,
+  type CategorySwatch,
+} from "@/lib/category-colors";
 import type { Category, Transaction } from "@/lib/types";
 
 const UNCATEGORIZED_ID = "uncategorized";
 
-/**
- * The uncategorized queue — the pile you drag *from*, so it stays pinned beside
- * the categories rather than scrolling away as the first column of a long row.
- */
-function UncategorizedPane({
-  transactions,
-  ...actions
-}: { transactions: Transaction[] } & TileActions) {
-  const { setNodeRef, isOver } = useDroppable({ id: UNCATEGORIZED_ID });
-  const allSelected =
-    transactions.length > 0 && transactions.every((t) => actions.selectedIds.has(t.id));
-
-  return (
-    <div
-      ref={setNodeRef}
-      className={cn(
-        "flex flex-col rounded-xl border bg-card md:sticky md:top-20 md:max-h-[calc(100svh-6.5rem)]",
-        isOver ? "border-primary bg-primary/5" : "border-border/60",
-      )}
-    >
-      <div className="flex items-center gap-2 border-b border-border/60 px-3 py-2.5">
-        {transactions.length > 0 && (
-          <input
-            type="checkbox"
-            checked={allSelected}
-            onChange={() => actions.onToggleSelectAll(transactions.map((t) => t.id))}
-            aria-label="Select all uncategorized"
-            className="size-3 shrink-0 cursor-pointer accent-primary"
-          />
-        )}
-        <h3 className="min-w-0 flex-1 truncate text-xs font-semibold">Uncategorized</h3>
-        <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-primary">
-          {transactions.length}
-        </span>
-      </div>
-
-      <div className="flex flex-col gap-1.5 overflow-y-auto p-2.5">
-        {transactions.length === 0 ? (
-          <p className="rounded-lg border border-dashed p-4 text-center text-[11px] text-muted-foreground">
-            Nothing left to sort. Drop a card here to un-categorize it.
-          </p>
-        ) : (
-          transactions.map((t) => (
-            <DraggableTransactionCard
-              key={t.id}
-              transaction={t}
-              categories={actions.categories}
-              onCategoryChange={(categoryId) => actions.onCategoryChange(t.id, categoryId)}
-              onTypeToggle={() => actions.onTypeToggle(t.id, t.type)}
-              onCardTypeToggle={() => actions.onCardTypeToggle(t.id, t.card_type)}
-              onNotesChange={(notes) => actions.onNotesChange(t.id, notes)}
-              onDelete={() => actions.onDelete(t.id)}
-              selected={actions.selectedIds.has(t.id)}
-              onToggleSelect={() => actions.onToggleSelect(t.id)}
-              highlighted={actions.highlightedIds.has(t.id)}
-              compact
-            />
-          ))
-        )}
-      </div>
-    </div>
-  );
-}
+// Fixed column width (+ the row's gap-3) so a step and a scroll-snap point are
+// the same distance — the arrows and a manual swipe always land in sync.
+const COLUMN_WIDTH = 240;
+const COLUMN_GAP = 12;
+const STEP = COLUMN_WIDTH + COLUMN_GAP;
 
 export function CategoryBoard({
   transactions,
   categories,
+  colorMap,
   onCategoryChange,
   onCategoryChangeMulti,
   onTypeToggle,
@@ -100,10 +48,14 @@ export function CategoryBoard({
 }: {
   transactions: Transaction[];
   categories: Category[];
+  colorMap: Map<string, CategorySwatch>;
   onCategoryChange: (id: string, categoryId: string | null) => void;
   onCategoryChangeMulti: (ids: string[], categoryId: string | null) => void;
   onTypeToggle: (id: string, currentType: Transaction["type"]) => void;
-  onCardTypeToggle: (id: string, currentCardType: Transaction["card_type"]) => void;
+  onCardTypeToggle: (
+    id: string,
+    currentCardType: Transaction["card_type"],
+  ) => void;
   onNotesChange: (id: string, notes: string | null) => void;
   onDelete: (id: string) => void;
   selectedIds: Set<string>;
@@ -111,18 +63,12 @@ export function CategoryBoard({
   onToggleSelectAll: (ids: string[]) => void;
   highlightedIds: Set<string>;
 }) {
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+  );
   const [query, setQuery] = useState("");
-  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
-
-  function toggleExpanded(id: string) {
-    setExpandedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
+  const trackRef = useRef<HTMLDivElement>(null);
+  const [visibleIndex, setVisibleIndex] = useState(0);
 
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
@@ -139,7 +85,7 @@ export function CategoryBoard({
     }
   }
 
-  const actions: TileActions = {
+  const actions: ColumnActions = {
     categories,
     onCategoryChange,
     onTypeToggle,
@@ -152,12 +98,12 @@ export function CategoryBoard({
     highlightedIds,
   };
 
-  const uncategorized = useMemo(
+  const uncategorizedTransactions = useMemo(
     () => transactions.filter((t) => !t.category_id),
     [transactions],
   );
 
-  const tiles = useMemo(
+  const categoryColumns = useMemo(
     () =>
       buildCategoryTree(categories).map(({ parent, children }) => ({
         id: parent.id,
@@ -168,33 +114,65 @@ export function CategoryBoard({
           title: child.name,
           transactions: transactions.filter((t) => t.category_id === child.id),
         })),
+        swatch: colorMap.get(parent.id) ?? UNCATEGORIZED_SWATCH,
       })),
-    [categories, transactions],
+    [transactions, categories, colorMap],
   );
 
-  // With 10+ categories the grid gets tall, so let the user narrow it. Matching a
-  // subcategory keeps its parent tile visible — you still need the parent's box
-  // to reach the sub-slot inside it.
-  const visibleTiles = useMemo(() => {
+  // Filtering steps outside the carousel entirely: matches are usually a
+  // handful, so they wrap into a plain grid instead of paging through them.
+  const filteredColumns = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return tiles;
-    return tiles.filter(
-      (tile) =>
-        tile.title.toLowerCase().includes(q) ||
-        tile.subcategories.some((s) => s.title.toLowerCase().includes(q)),
+    if (!q) return null;
+    return categoryColumns.filter(
+      (col) =>
+        col.title.toLowerCase().includes(q) ||
+        col.subcategories.some((s) => s.title.toLowerCase().includes(q)),
     );
-  }, [tiles, query]);
+  }, [categoryColumns, query]);
+
+  function step(direction: 1 | -1) {
+    const track = trackRef.current;
+    if (!track) return;
+    const nextIndex = Math.max(
+      0,
+      Math.min(categoryColumns.length - 1, visibleIndex + direction),
+    );
+    track.scrollTo({ left: nextIndex * STEP, behavior: "smooth" });
+    setVisibleIndex(nextIndex);
+  }
+
+  function handleTrackScroll() {
+    const track = trackRef.current;
+    if (!track) return;
+    setVisibleIndex(Math.round(track.scrollLeft / STEP));
+  }
 
   return (
-    <DndContext sensors={sensors} collisionDetection={pointerWithin} onDragEnd={handleDragEnd}>
-      {/* Wrapping grid rather than a horizontal scroller: with 10+ categories you
-          can't scroll sideways while holding a drag, so every target has to be
-          reachable on screen. */}
-      <div className="hidden gap-3 md:grid md:grid-cols-[19rem_minmax(0,1fr)] md:items-start">
-        <UncategorizedPane transactions={uncategorized} {...actions} />
+    <DndContext
+      sensors={sensors}
+      collisionDetection={pointerWithin}
+      onDragEnd={handleDragEnd}
+    >
+      {/* Uncategorized is the pile you drag *from*, so it stays pinned and fully
+          visible no matter which category column the carousel is showing —
+          both ends of a drag need to be on screen at once. */}
+      <div className="hidden gap-3 md:flex">
+        <div className="w-44 shrink-0 ">
+          <CategoryColumn
+            id={UNCATEGORIZED_ID}
+            title="Uncategorized"
+            transactions={uncategorizedTransactions}
+            subcategories={[]}
+            swatch={UNCATEGORIZED_SWATCH}
+            emptyLabel="Nothing left to sort. Drop a card here to un-categorize it."
+            bodyClassName="max-h-[calc(100svh-11rem)] "
+            {...actions}
+          />
+        </div>
 
-        <div className="flex flex-col gap-3">
-          {tiles.length > 6 && (
+        <div className="flex min-w-0 flex-1 flex-col gap-3">
+          {categoryColumns.length > 6 && (
             <div className="relative">
               <Search className="absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground" />
               <Input
@@ -206,25 +184,75 @@ export function CategoryBoard({
             </div>
           )}
 
-          {visibleTiles.length === 0 ? (
-            <p className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
-              No categories match &ldquo;{query}&rdquo;.
-            </p>
+          {filteredColumns ? (
+            filteredColumns.length === 0 ? (
+              <p className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
+                No categories match &ldquo;{query}&rdquo;.
+              </p>
+            ) : (
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(12rem,1fr))] items-start gap-3">
+                {filteredColumns.map((col) => (
+                  <CategoryColumn
+                    key={col.id}
+                    id={col.id}
+                    title={col.title}
+                    transactions={col.transactions}
+                    subcategories={col.subcategories}
+                    swatch={col.swatch}
+                    {...actions}
+                  />
+                ))}
+              </div>
+            )
           ) : (
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(13rem,1fr))] items-start gap-3">
-              {visibleTiles.map((tile) => (
-                <CategoryTile
-                  key={tile.id}
-                  id={tile.id}
-                  title={tile.title}
-                  transactions={tile.transactions}
-                  subcategories={tile.subcategories}
-                  expanded={expandedIds.has(tile.id)}
-                  onToggleExpanded={() => toggleExpanded(tile.id)}
-                  {...actions}
-                />
-              ))}
-            </div>
+            <>
+              {/* The carousel/stepper: arrows advance by exactly one column, but
+                  the track is a plain scroll container underneath, so a trackpad
+                  swipe or a drag near the edge works too — the arrows aren't the
+                  only way through. */}
+              <div className="flex items-center justify-between">
+                <Button
+                  variant="outline"
+                  size="icon-sm"
+                  onClick={() => step(-1)}
+                  disabled={visibleIndex === 0}
+                  aria-label="Previous category"
+                >
+                  <ChevronLeft className="size-4" />
+                </Button>
+                <p className="text-xs text-muted-foreground tabular-nums">
+                  {visibleIndex + 1} / {categoryColumns.length}
+                </p>
+                <Button
+                  variant="outline"
+                  size="icon-sm"
+                  onClick={() => step(1)}
+                  disabled={visibleIndex >= categoryColumns.length - 1}
+                  aria-label="Next category"
+                >
+                  <ChevronRight className="size-4" />
+                </Button>
+              </div>
+
+              <div
+                ref={trackRef}
+                onScroll={handleTrackScroll}
+                className="flex snap-x snap-mandatory gap-3 overflow-x-auto scroll-smooth pb-2"
+              >
+                {categoryColumns.map((col) => (
+                  <div key={col.id} className="w-44 shrink-0 snap-start">
+                    <CategoryColumn
+                      id={col.id}
+                      title={col.title}
+                      transactions={col.transactions}
+                      subcategories={col.subcategories}
+                      swatch={col.swatch}
+                      {...actions}
+                    />
+                  </div>
+                ))}
+              </div>
+            </>
           )}
         </div>
       </div>

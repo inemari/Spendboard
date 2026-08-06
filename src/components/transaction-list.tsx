@@ -10,7 +10,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { formatAmount, formatDayHeading, formatSpend, formatTxType } from "@/lib/format";
+import {
+  formatAmount,
+  formatDayHeading,
+  formatSpend,
+  formatTxType,
+} from "@/lib/format";
 import { flattenWithDepth } from "@/lib/category-tree";
 import { cn } from "@/lib/utils";
 import type { Category, Transaction } from "@/lib/types";
@@ -41,7 +46,10 @@ export function TransactionList({
   onToggleSelect: (id: string) => void;
   onCategoryChange: (id: string, categoryId: string | null) => void;
   onTypeToggle: (id: string, currentType: Transaction["type"]) => void;
-  onCardTypeToggle: (id: string, currentCardType: Transaction["card_type"]) => void;
+  onCardTypeToggle: (
+    id: string,
+    currentCardType: Transaction["card_type"],
+  ) => void;
   onNotesChange: (id: string, notes: string | null) => void;
   onDelete: (id: string) => void;
 }) {
@@ -52,7 +60,9 @@ export function TransactionList({
     const q = query.trim().toLowerCase();
     if (!q) return transactions;
     return transactions.filter(
-      (t) => t.description.toLowerCase().includes(q) || (t.location?.toLowerCase().includes(q) ?? false),
+      (t) =>
+        t.description.toLowerCase().includes(q) ||
+        (t.location?.toLowerCase().includes(q) ?? false),
     );
   }, [transactions, query]);
 
@@ -77,11 +87,18 @@ export function TransactionList({
         <h2 className="flex items-center gap-2 font-heading text-base font-bold">
           Transactions
           {filterChip && (
-            <span className={cn("rounded-full px-2.5 py-0.5 text-xs font-medium", filterChip.className)}>
+            <span
+              className={cn(
+                "rounded-full px-2.5 py-0.5 text-xs font-medium",
+                filterChip.className,
+              )}
+            >
               {filterChip.label}
             </span>
           )}
-          <span className="text-sm font-normal text-muted-foreground">{visible.length}</span>
+          <span className="text-sm font-normal text-muted-foreground">
+            {visible.length}
+          </span>
         </h2>
 
         <div className="relative">
@@ -123,9 +140,13 @@ export function TransactionList({
                     selected={selectedIds.has(t.id)}
                     highlighted={highlightedIds.has(t.id)}
                     expanded={expandedId === t.id}
-                    onToggleExpanded={() => setExpandedId((prev) => (prev === t.id ? null : t.id))}
+                    onToggleExpanded={() =>
+                      setExpandedId((prev) => (prev === t.id ? null : t.id))
+                    }
                     onToggleSelect={() => onToggleSelect(t.id)}
-                    onCategoryChange={(categoryId) => onCategoryChange(t.id, categoryId)}
+                    onCategoryChange={(categoryId) =>
+                      onCategoryChange(t.id, categoryId)
+                    }
                     onTypeToggle={() => onTypeToggle(t.id, t.type)}
                     onCardTypeToggle={() => onCardTypeToggle(t.id, t.card_type)}
                     onNotesChange={(notes) => onNotesChange(t.id, notes)}
@@ -180,7 +201,7 @@ function TransactionRow({
     <li
       id={`transaction-${t.id}`}
       className={cn(
-        "group scroll-mt-24 rounded-xl transition-colors",
+        "group scroll-mt-24 rounded-xl transition-colors ",
         selected && "bg-primary/5",
         highlighted && "ring-2 ring-amber-500",
       )}
@@ -193,7 +214,8 @@ function TransactionRow({
           aria-label={`Select ${t.description}`}
           className={cn(
             "size-3.5 shrink-0 cursor-pointer accent-primary transition-opacity",
-            !selected && "opacity-0 group-hover:opacity-100 focus-visible:opacity-100",
+            !selected &&
+              "opacity-0 group-hover:opacity-100 focus-visible:opacity-100",
           )}
         />
 
@@ -204,9 +226,13 @@ function TransactionRow({
           className="flex min-w-0 flex-1 items-center gap-3 text-left"
         >
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm font-medium">{t.description}</span>
+            <span className="block truncate text-sm font-medium">
+              {t.description}
+            </span>
             {t.location && (
-              <span className="block truncate text-xs text-muted-foreground">{t.location}</span>
+              <span className="block truncate text-xs text-muted-foreground">
+                {t.location}
+              </span>
             )}
           </span>
 
@@ -252,12 +278,16 @@ function TransactionRow({
                 <SelectValue>{categoryName ?? "Uncategorized"}</SelectValue>
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={UNCATEGORIZED_VALUE}>Uncategorized</SelectItem>
+                <SelectItem value={UNCATEGORIZED_VALUE}>
+                  Uncategorized
+                </SelectItem>
                 {flattenWithDepth(categories).map(({ category: c, depth }) => (
                   <SelectItem
                     key={c.id}
                     value={c.id}
-                    className={depth > 0 ? "pl-6 text-muted-foreground" : undefined}
+                    className={
+                      depth > 0 ? "pl-6 text-muted-foreground" : undefined
+                    }
                   >
                     {depth > 0 ? `↳ ${c.name}` : c.name}
                   </SelectItem>

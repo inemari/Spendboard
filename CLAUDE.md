@@ -40,15 +40,39 @@ visual design system.
 - Categorize transactions via dropdown, drag-and-drop board (desktop), or the
   one-by-one "Categorize" screen (drag a card onto its category).
 - The board (`category-board.tsx`) is built for **10+ categories with 0–5
-  subcategories each**: a sticky "Uncategorized" queue on the left you drag
-  _from_, and a wrapping auto-fill grid of category tiles
-  (`category-tile.tsx`) on the right — not a horizontal scroller, because you
-  can't scroll sideways while holding a drag. Each tile carries a "General"
-  drop slot plus one slot per subcategory; a filter box appears past 6
-  categories. Board cards use `TransactionCard`'s `compact` variant, which
-  drops the category/type/card-type/delete controls (that editor stays one
-  click away in the overview list) but keeps the note field — notes have no
-  other surface on the board, unlike those other controls.
+  subcategories each** as a real kanban board (`category-column.tsx`: cards
+  always visible, not hidden behind an expand click), scaled two ways instead
+  of showing every column simultaneously:
+  1. **Uncategorized is pinned**, full height, to the left — it's the pile you
+     drag *from*, so both ends of a drag (it, and whichever category column
+     you're currently viewing) must be on screen together.
+  2. **The category columns are a carousel/stepper**, not a wrapping grid or a
+     horizontal scroller you drag across: Prev/Next arrows step exactly one
+     column (with a "3 / 12" counter), while the track underneath is a plain
+     `overflow-x-auto` + `scroll-snap` region, so a trackpad swipe or a normal
+     scrollbar drag works too — the arrows aren't the only way through. A
+     "Filter categories…" box (past 6 categories) steps *outside* the
+     carousel entirely: matches wrap into a plain grid, since a filtered set
+     is usually a handful, not something worth paging through.
+  Each category's column color is stable and shared with the "Where it went"
+  sidebar via `buildCategoryColorMap` (`src/lib/category-colors.ts`) — keyed
+  by sort order among siblings, not spend rank, so a category's color never
+  shifts between the two views or from month to month. Every column caps its
+  own card-list height with an internal scrollbar (`bodyClassName` override on
+  `CategoryColumn` for Uncategorized's viewport-height version) so an uneven
+  card count between columns never distorts the row. Board cards use
+  `TransactionCard`'s `compact` variant, which drops the category/type/card-
+  type/delete controls (that editor stays one click away in the overview
+  list) but keeps the note field — notes have no other surface on the board,
+  unlike those other controls.
+  - **Design history**: this went through two earlier shapes before landing
+    here — first a wrapping grid of collapsed summary tiles (ADR: felt like
+    "too many tiles to scan" with 10+ categories), then a wrapping grid of
+    real always-expanded columns (ADR: solved the tile-scanning problem but
+    reintroduced a wall of columns, and pushed the page very tall). The
+    carousel is what actually resolved "too many to scan" — see git history
+    on `category-board.tsx`/`category-column.tsx` if reviving either earlier
+    shape ever seems tempting.
 - **Search/filter transactions** by description or location, plus All /
   Uncategorized / Need review filters, on the overview list.
 - Optional one-level subcategories (e.g. "Hud/hår-pleie" → "Hår").

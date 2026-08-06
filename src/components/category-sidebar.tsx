@@ -1,14 +1,14 @@
 "use client";
 
 import { formatSpend } from "@/lib/format";
-import { categorySwatch } from "@/lib/category-colors";
+import { NEUTRAL_SWATCH, type CategorySwatch } from "@/lib/category-colors";
 import { cn } from "@/lib/utils";
 import type { CategorySlice } from "@/lib/overview";
 
 export type CategoryFilter =
   | { kind: "all" }
   | { kind: "uncategorized" }
-  | { kind: "category"; sliceId: string; categoryIds: string[]; name: string; swatchIndex: number };
+  | { kind: "category"; sliceId: string; categoryIds: string[]; name: string };
 
 /**
  * "Where it went" as navigation, not just a readout: clicking a row scopes the
@@ -22,6 +22,7 @@ export function CategorySidebar({
   totalCount,
   uncategorizedCount,
   uncategorizedSpent,
+  colorMap,
   filter,
   onSelectFilter,
 }: {
@@ -29,6 +30,9 @@ export function CategorySidebar({
   totalCount: number;
   uncategorizedCount: number;
   uncategorizedSpent: number;
+  /** Same map the board's kanban columns use, so a category's color matches
+   *  between the two views instead of being re-derived from this list's rank. */
+  colorMap: Map<string, CategorySwatch>;
   filter: CategoryFilter;
   onSelectFilter: (filter: CategoryFilter) => void;
 }) {
@@ -52,8 +56,8 @@ export function CategorySidebar({
         <span className="text-muted-foreground tabular-nums">{totalCount}</span>
       </button>
 
-      {breakdown.map((slice, index) => {
-        const swatch = categorySwatch(index);
+      {breakdown.map((slice) => {
+        const swatch = colorMap.get(slice.id) ?? NEUTRAL_SWATCH;
         const active = filter.kind === "category" && filter.sliceId === slice.id;
 
         return (
@@ -64,13 +68,7 @@ export function CategorySidebar({
               onSelectFilter(
                 active
                   ? { kind: "all" }
-                  : {
-                      kind: "category",
-                      sliceId: slice.id,
-                      categoryIds: slice.categoryIds,
-                      name: slice.name,
-                      swatchIndex: index,
-                    },
+                  : { kind: "category", sliceId: slice.id, categoryIds: slice.categoryIds, name: slice.name },
               )
             }
             className={cn(
