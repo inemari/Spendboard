@@ -62,16 +62,23 @@ export const STATEMENT_FORMATS: StatementFormat[] = [
     label: "Nordea Debit (CSV)",
     accept: ".csv",
     // UTF-8 with BOM, semicolon-delimited, comma decimals, YYYY/MM/DD dates —
-    // Nordea's own CSV export of the same account as the PDF above, same
-    // columns. The BOM is stripped automatically by File#text()'s decoder;
-    // the delimiter is pinned since auto-detection has less to go on with
-    // only a couple of header rows, and the decimal comma / YYYY/MM/DD date
-    // are handled by parseAmount/parseDate's existing separator-agnostic
-    // parsing in parse-transactions.ts.
+    // Nordea's own CSV export of the account, a *different* column layout
+    // than the PDF report above despite being the same account: real header
+    // is "Bokføringsdato;Beløp;Avsender;Mottaker;Navn;Tittel;Valuta;
+    // Betalingstype" and — the actual bug this format shipped with — "Navn"
+    // is always blank in this export; the transaction's real counterpart
+    // name is in "Tittel". "tittel" has to come before "navn" in the
+    // description aliases so it wins the alias search even though "Navn"
+    // also matches (as an always-empty column). The BOM is stripped
+    // automatically by File#text()'s decoder; the delimiter is pinned since
+    // auto-detection has less to go on with only a couple of header rows;
+    // the decimal comma / YYYY/MM/DD date are handled by
+    // parseAmount/parseDate's existing separator-agnostic parsing in
+    // parse-transactions.ts.
     csvDelimiter: ";",
     aliases: {
-      date: ["dato"],
-      description: ["navn"],
+      date: ["bokføringsdato", "dato"],
+      description: ["tittel", "navn"],
       location: ["betalingstype"],
       amount: ["beløp", "belop"],
     },
