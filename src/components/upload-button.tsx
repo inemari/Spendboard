@@ -54,7 +54,7 @@ export function UploadButton({
       <input
         ref={inputRef}
         type="file"
-        accept=".csv,.xlsx,.xls"
+        accept=".csv,.xlsx,.xls,.pdf"
         className="hidden"
         onChange={(e) => {
           const file = e.target.files?.[0];

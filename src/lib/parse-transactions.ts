@@ -1,6 +1,8 @@
 import * as XLSX from "xlsx";
 import Papa from "papaparse";
+import * as pdfjs from "pdfjs-dist/legacy/build/pdf.mjs";
 import { createHash } from "node:crypto";
+import path from "node:path";
 
 export type ParsedTransaction = {
   date: string; // ISO yyyy-mm-dd
@@ -217,8 +219,70 @@ function rowsToTransactions(rows: unknown[][]): ParsedTransaction[] {
   return transactions;
 }
 
+// Reassembles a PDF page's text runs into table-shaped rows. PDF text content
+// has no notion of rows/columns, just positioned glyphs, so lines are
+// reconstructed by clustering runs with near-identical y, and cells within a
+// line by splitting on x-gaps wider than the run's own character spacing —
+// the same signal a human eye uses to tell "one column" from "the next."
+async function pdfToRows(buffer: ArrayBuffer): Promise<unknown[][]> {
+  const doc = await pdfjs.getDocument({
+    data: new Uint8Array(buffer),
+    standardFontDataUrl: `${path.join(process.cwd(), "node_modules/pdfjs-dist/standard_fonts")}/`,
+  }).promise;
+
+  const rows: unknown[][] = [];
+
+  for (let pageNum = 1; pageNum <= doc.numPages; pageNum++) {
+    const page = await doc.getPage(pageNum);
+    const content = await page.getTextContent();
+
+    const lines: { y: number; items: { x: number; text: string; width: number }[] }[] = [];
+    for (const item of content.items) {
+      if (!("str" in item)) continue;
+      const text = item.str;
+      if (!text.trim()) continue;
+      const x = item.transform[4];
+      const y = item.transform[5];
+      let line = lines.find((l) => Math.abs(l.y - y) < 3);
+      if (!line) {
+        line = { y, items: [] };
+        lines.push(line);
+      }
+      line.items.push({ x, text, width: item.width });
+    }
+
+    // PDF y grows upward, so descending y walks the page top-to-bottom.
+    lines.sort((a, b) => b.y - a.y);
+
+    for (const line of lines) {
+      line.items.sort((a, b) => a.x - b.x);
+      const cells: string[] = [];
+      let current = "";
+      let prevEnd: number | null = null;
+      for (const it of line.items) {
+        const gap = prevEnd === null ? 0 : it.x - prevEnd;
+        const avgCharWidth = it.width / Math.max(it.text.length, 1);
+        const gapThreshold = Math.max(avgCharWidth * 2.5, 8);
+        if (prevEnd !== null && gap > gapThreshold) {
+          cells.push(current.trim());
+          current = it.text;
+        } else {
+          current += (current && !current.endsWith(" ") ? " " : "") + it.text;
+        }
+        prevEnd = it.x + it.width;
+      }
+      if (current) cells.push(current.trim());
+      rows.push(cells);
+    }
+  }
+
+  return rows;
+}
+
 export async function parseTransactionFile(file: File): Promise<ParsedTransaction[]> {
-  const isCsv = file.name.toLowerCase().endsWith(".csv") || file.type === "text/csv";
+  const name = file.name.toLowerCase();
+  const isCsv = name.endsWith(".csv") || file.type === "text/csv";
+  const isPdf = name.endsWith(".pdf") || file.type === "application/pdf";
 
   if (isCsv) {
     const text = await file.text();
@@ -227,6 +291,12 @@ export async function parseTransactionFile(file: File): Promise<ParsedTransactio
       skipEmptyLines: true,
     });
     return rowsToTransactions(result.data);
+  }
+
+  if (isPdf) {
+    const buffer = await file.arrayBuffer();
+    const rows = await pdfToRows(buffer);
+    return rowsToTransactions(rows);
   }
 
   const buffer = await file.arrayBuffer();

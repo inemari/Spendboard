@@ -13,8 +13,16 @@ visual design system.
 
 ### Must have (implemented)
 
-- Upload an Excel/CSV bank statement for a given month; transactions are parsed,
-  de-duplicated (by date+description+amount hash), and shown as cards.
+- Upload an Excel/CSV/PDF bank statement for a given month; transactions are
+  parsed, de-duplicated (by date+description+amount hash), and shown as
+  cards. PDF support (`pdfToRows` in `src/lib/parse-transactions.ts`) only
+  covers text-layer PDFs (a real bank export, not a scanned/photographed
+  page) — it reconstructs table rows from PDF.js's positioned text runs by
+  clustering runs into lines by y-position and into cells by x-gaps wider
+  than the run's own character spacing, then feeds those rows through the
+  same header-detection/row-parsing path as the Excel/CSV sheets. A scanned
+  PDF with no text layer yields no rows and fails the same "no valid
+  transactions found" check as an empty spreadsheet.
 - Each transaction card's **title is the `Spesifikasjon` (description) column**,
   and its **subtitle is the `Sted` (location) column**, when present.
 - The month workspace (`/[year]/[month]`) is an **overview dashboard**
@@ -183,7 +191,10 @@ visual design system.
   isolated. Would need a real redesign (e.g. a `households` table) if ever
   wanted, not a small add-on.
 - Upload a PNG/JPG screenshot of transactions (e.g. a bank app screenshot) and
-  have them OCR'd/parsed into transactions, same as the Excel/CSV import path.
+  have them OCR'd/parsed into transactions, same as the Excel/CSV/PDF import
+  path. Deliberately still open: a scanned/photographed page has no PDF text
+  layer, so it can't reuse `pdfToRows` and needs actual OCR (e.g.
+  tesseract.js) instead of text-run positions.
 
 ## Data model notes
 
