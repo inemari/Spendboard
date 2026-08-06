@@ -15,7 +15,7 @@ import type { Category, CardType, TxType } from "@/lib/types";
 
 const UNCATEGORIZED_VALUE = "__uncategorized__";
 const TYPES: TxType[] = ["personal", "common", "need_review"];
-const CARD_TYPES: CardType[] = ["credit", "regular"];
+const CARD_TYPES: CardType[] = ["credit", "debit"];
 
 export function BulkActionBar({
   count,

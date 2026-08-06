@@ -1,5 +1,5 @@
 export type TxType = "common" | "personal" | "need_review";
-export type CardType = "regular" | "credit";
+export type CardType = "debit" | "credit";
 
 export type Category = {
   id: string;

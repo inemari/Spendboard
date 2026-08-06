@@ -3,7 +3,9 @@ import { createClient } from "@/lib/supabase/server";
 import { parseTransactionFile } from "@/lib/parse-transactions";
 import { categoryIdForTransaction } from "@/lib/apply-rules";
 import { STATEMENT_FORMATS, type StatementFormatId } from "@/lib/statement-formats";
-import type { Rule } from "@/lib/types";
+import type { CardType, Rule } from "@/lib/types";
+
+const CARD_TYPES: CardType[] = ["credit", "debit"];
 
 export async function POST(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -26,6 +28,7 @@ export async function POST(request: NextRequest) {
   const formData = await request.formData();
   const file = formData.get("file");
   const format = formData.get("format");
+  const cardType = formData.get("cardType");
 
   if (!(file instanceof File)) {
     return NextResponse.json({ error: "No file uploaded." }, { status: 400 });
@@ -36,6 +39,10 @@ export async function POST(request: NextRequest) {
     !STATEMENT_FORMATS.some((f) => f.id === format)
   ) {
     return NextResponse.json({ error: "Invalid or missing statement format." }, { status: 400 });
+  }
+
+  if (typeof cardType !== "string" || !CARD_TYPES.includes(cardType as CardType)) {
+    return NextResponse.json({ error: "Invalid or missing card type." }, { status: 400 });
   }
 
   let parsed;
@@ -79,6 +86,7 @@ export async function POST(request: NextRequest) {
     source_hash: t.sourceHash,
     raw_row: t.rawRow,
     category_id: categoryIdForTransaction(t.description, t.location, (rules ?? []) as Rule[]),
+    card_type: cardType as CardType,
   }));
 
   // ignoreDuplicates: re-uploading the same file must not clobber transactions

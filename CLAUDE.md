@@ -105,7 +105,12 @@ visual design system.
 - Toggle each transaction between **Common**, **Personal**, and **Need review**
   (a third state for "haven't decided yet" — distinct from being uncategorized).
 - Free-text **note** field per transaction.
-- Per-transaction **card type**: Credit card vs. regular (debit) card.
+- Per-transaction **card type**: Credit vs. Debit card. Chosen once per
+  upload (`upload-button.tsx`'s card-type dialog, between picking the
+  statement format and picking the file) and applied to every transaction
+  parsed from that file — not auto-detected, and not editable per-file
+  after the fact. Individual transactions can still be corrected afterward
+  via the per-card toggle or the bulk action bar.
 - Custom category create/rename/delete.
 - Per-category, per-month common/personal/overall totals; uncategorized count.
 - Undo action on the toast shown whenever a transaction's category changes.
@@ -220,8 +225,12 @@ visual design system.
   `tx_type`). `need_review` transactions should be excluded from both the
   common and personal totals, but still counted in the overall total — see
   `src/lib/totals.ts`.
-- `transactions.card_type`: `regular` | `credit`, defaults to `credit`. Not
-  auto-detected from the statement — the user sets it manually per transaction.
+- `transactions.card_type`: `debit` | `credit` (Postgres enum `card_type`,
+  renamed from `regular` to `debit` — `supabase/schema.sql` renames the
+  existing enum label in place, so old rows keep their value under the new
+  name with no backfill needed), defaults to `credit`. Set once per upload
+  via the upload button's card-type dialog (applied to every transaction in
+  that file) or corrected manually afterward per transaction/selection.
 - `transactions.location` / `transactions.notes`: nullable text.
 - Re-uploading a statement (`src/app/api/upload/route.ts`) never overwrites
   fields on transactions that already exist for that month (matched by

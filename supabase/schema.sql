@@ -50,9 +50,20 @@ end $$;
 alter type tx_type add value if not exists 'need_review';
 
 do $$ begin
-  create type card_type as enum ('regular', 'credit');
+  create type card_type as enum ('debit', 'credit');
 exception
   when duplicate_object then null;
+end $$;
+
+-- Renames the pre-existing 'regular' label to 'debit' for databases created
+-- before this rename. Existing rows keep their value (an enum rename-value
+-- only relabels, it doesn't touch stored data), so this needs no backfill.
+-- Swallows the error on re-run, whether because the label was already
+-- renamed or the type was just created fresh above.
+do $$ begin
+  alter type card_type rename value 'regular' to 'debit';
+exception
+  when others then null;
 end $$;
 
 create table if not exists transactions (
