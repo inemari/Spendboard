@@ -89,7 +89,7 @@ function SubcategorySection({
     <div
       ref={setNodeRef}
       className={cn(
-        "flex flex-col gap-1.5 rounded-md border-l-2 py-1 pl-2 transition-colors",
+        "flex flex-col gap-1.5  border-t-2  p-1 transition-colors group/subcategory",
         isOver ? "border-l-primary bg-muted/60" : "border-l-border",
       )}
     >
@@ -102,7 +102,7 @@ function SubcategorySection({
               actions.onToggleSelectAll(section.transactions.map((t) => t.id))
             }
             aria-label={`Select all in ${section.title}`}
-            className="size-3 shrink-0 cursor-pointer accent-primary"
+            className="size-3 shrink-0 cursor-pointer accent-primary group-hover/subcategory:opacity-100 focus-visible:opacity-100 opacity-0"
           />
         )}
         <h4 className="min-w-0 flex-1 truncate text-[11px] font-medium text-muted-foreground">
@@ -175,7 +175,7 @@ export function CategoryColumn({
   });
 
   return (
-    <div className="flex flex-col rounded-xl border border-border/60 bg-card group">
+    <div className="flex flex-col rounded-xl border border-border/60 bg-card group/category">
       <div
         className={cn(
           "flex flex-col gap-0.5 rounded-t-md px-3 py-2",
@@ -191,7 +191,7 @@ export function CategoryColumn({
                 actions.onToggleSelectAll(allTransactions.map((t) => t.id))
               }
               aria-label={`Select all in ${title}`}
-              className="size-3 shrink-0 cursor-pointer accent-current opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+              className="size-3 shrink-0 cursor-pointer accent-current opacity-0 group-hover/category:opacity-100 focus-visible:opacity-100"
             />
           )}
           <h3 className="min-w-0 flex-1 truncate text-xs font-semibold">
