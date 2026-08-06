@@ -175,14 +175,14 @@ export function CategoryColumn({
   });
 
   return (
-    <div className="flex flex-col rounded-xl border border-border/60 bg-card ">
+    <div className="flex flex-col rounded-xl border border-border/60 bg-card group">
       <div
         className={cn(
           "flex flex-col gap-0.5 rounded-t-md px-3 py-2",
           swatch.soft,
         )}
       >
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 ">
           {allTransactions.length > 0 && (
             <input
               type="checkbox"
@@ -191,7 +191,7 @@ export function CategoryColumn({
                 actions.onToggleSelectAll(allTransactions.map((t) => t.id))
               }
               aria-label={`Select all in ${title}`}
-              className="size-3 shrink-0 cursor-pointer accent-current"
+              className="size-3 shrink-0 cursor-pointer accent-current opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
             />
           )}
           <h3 className="min-w-0 flex-1 truncate text-xs font-semibold">

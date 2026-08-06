@@ -136,27 +136,6 @@ export function TransactionCard({
           <div className="flex flex-wrap items-center gap-1">
             <button
               type="button"
-              onClick={onTypeToggle}
-              className={cn(
-                "shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-medium transition-colors hover:bg-muted",
-                transaction.type === "need_review" &&
-                  "border-destructive/40 bg-destructive/10 text-destructive",
-              )}
-            >
-              {formatTxType(transaction.type)}
-            </button>
-
-            <button
-              type="button"
-              onClick={onCardTypeToggle}
-              className="flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium capitalize transition-colors hover:bg-muted"
-            >
-              <CreditCard className="size-2.5" />
-              {transaction.card_type}
-            </button>
-
-            <button
-              type="button"
               onClick={onDelete}
               aria-label="Delete transaction"
               className="ml-auto shrink-0 rounded-full p-1 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
@@ -166,6 +145,27 @@ export function TransactionCard({
           </div>
         </>
       )}
+      <div className="flex flex-row">
+        <button
+          type="button"
+          onClick={onTypeToggle}
+          className={cn(
+            "shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-medium transition-colors hover:bg-muted",
+            transaction.type === "need_review" &&
+              "border-destructive/40 bg-destructive/10 text-destructive",
+          )}
+        >
+          {formatTxType(transaction.type)}
+        </button>
+        <button
+          type="button"
+          onClick={onCardTypeToggle}
+          className="flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium capitalize transition-colors hover:bg-muted"
+        >
+          <CreditCard className="size-2.5" />
+          {transaction.card_type}
+        </button>
+      </div>
       {/* Notes stay available even in compact (board) cards — unlike category/type,
           which are one click away in the overview list, there's no other surface
           where a board card's note is visible or editable. */}
