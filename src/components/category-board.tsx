@@ -103,21 +103,27 @@ export function CategoryBoard({
     [transactions],
   );
 
-  const categoryColumns = useMemo(
-    () =>
-      buildCategoryTree(categories).map(({ parent, children }) => ({
-        id: parent.id,
-        title: parent.name,
-        transactions: transactions.filter((t) => t.category_id === parent.id),
-        subcategories: children.map((child) => ({
-          id: child.id,
-          title: child.name,
-          transactions: transactions.filter((t) => t.category_id === child.id),
-        })),
-        swatch: colorMap.get(parent.id) ?? UNCATEGORIZED_SWATCH,
+  const categoryColumns = useMemo(() => {
+    const columns = buildCategoryTree(categories).map(({ parent, children }) => ({
+      id: parent.id,
+      title: parent.name,
+      transactions: transactions.filter((t) => t.category_id === parent.id),
+      subcategories: children.map((child) => ({
+        id: child.id,
+        title: child.name,
+        transactions: transactions.filter((t) => t.category_id === child.id),
       })),
-    [transactions, categories, colorMap],
-  );
+      swatch: colorMap.get(parent.id) ?? UNCATEGORIZED_SWATCH,
+    }));
+
+    // Empty columns (nothing to sort or review) sink to the end of the
+    // carousel — they're not what you're paging through for, so the columns
+    // actually worth stepping to stay reachable in fewer steps.
+    const isEmpty = (col: (typeof columns)[number]) =>
+      col.transactions.length === 0 &&
+      col.subcategories.every((s) => s.transactions.length === 0);
+    return [...columns.filter((c) => !isEmpty(c)), ...columns.filter(isEmpty)];
+  }, [transactions, categories, colorMap]);
 
   // Filtering steps outside the carousel entirely: matches are usually a
   // handful, so they wrap into a plain grid instead of paging through them.
