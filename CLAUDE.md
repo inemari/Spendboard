@@ -13,18 +13,36 @@ visual design system.
 
 ### Must have (implemented)
 
-- Upload an Excel/CSV/PDF bank statement for a given month; transactions are
-  parsed, de-duplicated (by date+description+amount hash), and shown as
-  cards. PDF support (`pdfToRows` in `src/lib/parse-transactions.ts`) only
-  covers text-layer PDFs (a real bank export, not a scanned/photographed
-  page) — it reconstructs table rows from PDF.js's positioned text runs by
-  clustering runs into lines by y-position and into cells by x-gaps wider
-  than the run's own character spacing, then feeds those rows through the
-  same header-detection/row-parsing path as the Excel/CSV sheets. A scanned
-  PDF with no text layer yields no rows and fails the same "no valid
-  transactions found" check as an empty spreadsheet.
-- Each transaction card's **title is the `Spesifikasjon` (description) column**,
-  and its **subtitle is the `Sted` (location) column**, when present.
+- Upload a bank statement for a given month; transactions are parsed,
+  de-duplicated (by date+description+amount hash), and shown as cards. The
+  upload button (`upload-button.tsx`) is a format picker, not an auto-
+  detector — column names vary enough between exports that guessing the
+  right one from header text risks silently mismapping a field, so the user
+  explicitly picks **SAS Eurobonus Kredittkort (Excel/CSV)** or **Nordea
+  Debit (PDF)** before choosing a file. Each format's file-type expectation,
+  accepted extensions, and header aliases live together in
+  `src/lib/statement-formats.ts` — shared by the upload button (which
+  extensions to accept, which format id to send) and `parse-transactions.ts`
+  (which header aliases to match). Adding a new bank/card format means
+  adding one entry there, not touching the parsing logic itself.
+  - **PDF support only covers text-layer PDFs** (a real bank export, not a
+    scanned/photographed page) — `pdfToRows` in `parse-transactions.ts`
+    reconstructs table rows from PDF.js's positioned text runs by clustering
+    runs into lines by y-position, locating the header row by the same alias
+    matching `rowsToTransactions` uses elsewhere, then bucketing every later
+    row's runs by the header's own x-positions (not by re-splitting on
+    x-gaps) before feeding rows through the same header-detection/row-
+    parsing path as the Excel/CSV sheets. Bucketing by position, not order,
+    matters: a data row with a blank column (e.g. Nordea's empty
+    `Referansenummer`) has one fewer gap than the header row, so naive
+    left-to-right splitting silently shifts every later column out of
+    alignment — reproduced and fixed against a real Nordea Brukskonto PDF
+    export. A scanned PDF with no text layer yields no rows and fails the
+    same "no valid transactions found" check as an empty spreadsheet.
+- Each transaction card's **title is the description column** (`Spesifikasjon`
+  for the Excel format, `Navn` for Nordea Debit), and its **subtitle is the
+  location column** (`Sted` for Excel, `Betalingstype` for Nordea Debit),
+  when present.
 - The month workspace (`/[year]/[month]`) is an **overview dashboard**
   (`transaction-board.tsx`): a hero "spent this month" figure, a common /
   personal / need-review split meter, a **clickable "Where it went" category
