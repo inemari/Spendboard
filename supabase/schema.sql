@@ -147,3 +147,169 @@ create policy "own rows" on rules
 -- Without this, every query fails with "permission denied for table X".
 grant usage on schema public to authenticated;
 grant select, insert, update, delete on categories, months, transactions, rules to authenticated;
+
+-- Admin rule templates (src/app/admin/rules/, src/components/admin-rules-panel.tsx).
+-- Global, not scoped to any one user — templates are named, reusable rule
+-- bundles an admin curates, one of which can be marked `is_default` to mark
+-- what a brand-new user should receive. `category_name` on each item (not a
+-- category_id) is what makes a template portable across users, since every
+-- user has their own distinct set of categories; applying a template
+-- finds-or-creates a category by that name for whichever user it's applied
+-- to (see `apply_rule_template` below).
+--
+-- IMPORTANT: replace the email literal in `is_admin()` with your own before
+-- running this — every policy and RPC below gates on it.
+create or replace function is_admin()
+returns boolean
+language sql
+stable
+as $$
+  select auth.jwt() ->> 'email' = 'ib@iotsolutions.no';
+$$;
+
+create table if not exists rule_templates (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  description text,
+  is_default boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists rule_template_items (
+  id uuid primary key default gen_random_uuid(),
+  template_id uuid references rule_templates(id) on delete cascade not null,
+  category_name text not null,
+  conditions jsonb not null,
+  created_at timestamptz not null default now()
+);
+
+-- Only one template can be the default at a time — setting one clears any
+-- other, rather than leaving the app to guess which of several to use.
+create or replace function enforce_single_default_template()
+returns trigger
+language plpgsql
+as $$
+begin
+  if new.is_default then
+    update rule_templates set is_default = false where id <> new.id and is_default;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists only_one_default_template on rule_templates;
+create trigger only_one_default_template
+  before insert or update on rule_templates
+  for each row
+  when (new.is_default)
+  execute function enforce_single_default_template();
+
+alter table rule_templates enable row level security;
+alter table rule_template_items enable row level security;
+
+drop policy if exists "admin only" on rule_templates;
+drop policy if exists "admin only" on rule_template_items;
+
+create policy "admin only" on rule_templates
+  for all using (is_admin()) with check (is_admin());
+
+create policy "admin only" on rule_template_items
+  for all using (is_admin()) with check (is_admin());
+
+grant select, insert, update, delete on rule_templates, rule_template_items to authenticated;
+
+-- Lets the admin page list users to apply a template to. auth.users isn't
+-- exposed to the client directly, so this is the only way to read it —
+-- security definer runs with the function owner's privileges, which is why
+-- the is_admin() check inside matters (this would otherwise let any signed-
+-- in user enumerate every account's email).
+create or replace function list_app_users()
+returns table (id uuid, email text)
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not is_admin() then
+    raise exception 'not authorized';
+  end if;
+  return query select au.id, au.email::text from auth.users au order by au.created_at;
+end;
+$$;
+
+grant execute on function list_app_users() to authenticated;
+
+-- Copies one template's items into `target_user_id`'s own categories/rules —
+-- finding-or-creating a top-level category by name, then inserting a rule
+-- pointing at it. security definer + the is_admin() check is what lets this
+-- write rows owned by someone other than the caller; without it, RLS's
+-- `auth.uid() = user_id` policy on categories/rules would block it outright,
+-- as intended for every other write path in the app.
+create or replace function apply_rule_template(p_template_id uuid, target_user_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  item record;
+  cat_id uuid;
+begin
+  if not is_admin() then
+    raise exception 'not authorized';
+  end if;
+
+  for item in
+    select category_name, conditions from rule_template_items where template_id = p_template_id
+  loop
+    select id into cat_id
+      from categories
+      where user_id = target_user_id and parent_id is null and name = item.category_name
+      limit 1;
+
+    if cat_id is null then
+      insert into categories (user_id, name)
+        values (target_user_id, item.category_name)
+        returning id into cat_id;
+    end if;
+
+    insert into rules (user_id, category_id, conditions)
+      values (target_user_id, cat_id, item.conditions);
+  end loop;
+end;
+$$;
+
+grant execute on function apply_rule_template(uuid, uuid) to authenticated;
+
+-- Seed: the starter pack described in CLAUDE.md's default-rules requirement
+-- (Rema/Joker/Coop/Meny/Kiwi -> "Matbutikk"), marked as the default so it's
+-- what `apply_rule_template` should be pointed at for a brand-new user until
+-- an admin curates something else. Guarded so re-running this file doesn't
+-- duplicate it.
+do $$
+declare
+  new_template_id uuid;
+begin
+  if not exists (select 1 from rule_templates where name = 'Norwegian groceries starter pack') then
+    insert into rule_templates (name, description, is_default)
+      values (
+        'Norwegian groceries starter pack',
+        'Common Norwegian grocery chains, auto-categorized by name prefix.',
+        true
+      )
+      returning id into new_template_id;
+
+    insert into rule_template_items (template_id, category_name, conditions)
+      values (
+        new_template_id,
+        'Matbutikk',
+        jsonb_build_array(
+          jsonb_build_object(
+            'field', 'name',
+            'operator', 'starts_with',
+            'values', jsonb_build_array('Rema', 'Joker', 'Coop', 'Meny', 'Kiwi')
+          )
+        )
+      );
+  end if;
+end $$;

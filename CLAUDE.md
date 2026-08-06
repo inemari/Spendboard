@@ -156,8 +156,13 @@ visual design system.
   (`src/components/create-rule-dialog.tsx`). Rules are listed/deletable on the
   `/[year]/[month]/rules` page and auto-applied to matching descriptions at
   upload time (`src/app/api/upload/route.ts`).
-- Delete a transaction, single or bulk-selected, with a confirmation prompt
-  (same `window.confirm` pattern as category deletion).
+- Delete a transaction, single or bulk-selected, with an `AlertDialog`
+  confirmation (`delete-confirm-dialog.tsx`, driven by
+  `use-transaction-actions.ts`'s `pendingDelete`/`confirmDelete`/
+  `dismissDelete` — the same pending-state pattern as
+  `pendingSimilarMove`/`pendingRulePrompt` elsewhere in that hook). Category
+  deletion (`category-manager-panel.tsx`) has its own local `AlertDialog`,
+  since that component doesn't use the shared hook.
 - The Rules page (`rules-manager-panel.tsx`) groups rules by their target
   category (parent categories before their subcategories, via
   `flattenWithDepth`), with rules targeting a deleted category collected into
@@ -173,29 +178,58 @@ visual design system.
   `resolve-rule-conflicts-dialog.tsx` asks per transaction. The success toast's
   "Show" action deep-links to `/[year]/[month]?highlight=<ids>`, which scrolls
   to and briefly ring-highlights those cards.
+- **Rule matching conditions: equals, contains, starts with (name);
+  contains, doesn't contain (subtitle).** `RuleCondition`
+  (`src/lib/types.ts`), `apply-rules.ts`'s matcher, and the operator dropdown
+  (now factored into the shared `rule-conditions-editor.tsx`, used by both
+  `rule-editor.tsx` and the admin template editor below) all agree on the
+  same operator set. "Starts with" matches the beginning of the normalized
+  name (`normalizeDescription` already lowercases/strips punctuation, so
+  this is a prefix check on that normalized string, not the raw text).
+- **Admin rule templates (`/admin/rules`).** Named, reusable rule bundles an
+  admin curates — distinct from a single user's own `rules` rows, since a
+  template targets a category *by name* (`rule_template_items.category_name`)
+  rather than a `category_id`, making it portable across different users'
+  distinct category sets. `admin-rules-panel.tsx` lists templates (each
+  showing its items' plain-English description via
+  `describeRuleConditions`), lets an admin create/edit/delete them, mark one
+  `is_default` (a DB trigger enforces only one at a time), and apply any
+  template to a chosen existing user on demand (there's no self-serve
+  signup to hook a "new user" flow into yet, so applying is a manual,
+  admin-triggered action for now — see README on how users are provisioned).
+  Applying a template finds-or-creates each item's named category for the
+  target user and inserts the corresponding rule; it never touches anything
+  that user already has.
+  - **Access control is a hardcoded admin email**, not a roles table — matches
+    how this app is already single-owner/friends-and-family provisioned (see
+    "Multi-user / household sharing" below). `is_admin()` in
+    `supabase/schema.sql` is the actual enforcement (RLS on
+    `rule_templates`/`rule_template_items`, plus a check inside both
+    `SECURITY DEFINER` RPCs below); `src/lib/is-admin.ts`'s `isAdminEmail` is
+    only a page-level redirect for a non-admin, not a security boundary by
+    itself. **The email literal must match in both places** — there's no
+    single source of truth between the SQL and the TS constant, since the
+    TS side can't read a Postgres function at build time.
+  - **Two `SECURITY DEFINER` RPCs** exist because the browser's anon-key
+    client is *correctly* blocked by every table's `auth.uid() = user_id`
+    RLS policy from ever reading another user's email or writing rows with
+    a different `user_id` — that's the whole point of that policy elsewhere
+    in the app. `list_app_users()` (reads `auth.users`, not exposed to the
+    client otherwise) and `apply_rule_template(p_template_id, target_user_id)`
+    (writes categories/rules owned by `target_user_id`) both run with
+    elevated privileges specifically to make this one admin page the
+    exception, gated by the same `is_admin()` check inside the function body
+    rather than by RLS (RLS can't apply to a function's own internal
+    queries the way it applies to a client's direct table access).
 
 ### Must have (not yet implemented)
 
-- **Rule matching conditions: equals, contains, and starts with.** "Starts
-  with" must match the beginning of the transaction name. Today
-  `RuleCondition` (`src/lib/types.ts`) only supports `equals` | `contains` for
-  the `name` field and `contains` | `not_contains` for `subtitle` — there is no
-  `starts_with` operator anywhere in the type, `apply-rules.ts`'s matcher, or
-  the `rule-editor.tsx` operator dropdown. All three need it added together,
-  since a `starts_with` value saved by the editor is meaningless if
-  `ruleMatchesTransaction`/`categoryIdForTransaction` don't check for it.
-- **Default editable rules for new users.** A new user must receive a set of
-  predefined rules on signup, editable/deletable like any other rule via the
-  normal Rules-page flow (`rules-manager-panel.tsx`) — not a separate
-  read-only "starter pack." Example: transactions whose name starts with
-  Rema, Joker, Coop, Meny, or Kiwi → category "Matbutikk." No such seeding
-  exists today — new users start with zero rules and zero categories beyond
-  whatever `categories` seed the signup path already creates (see
-  README for how users are provisioned, since there's no self-serve signup
-  UI). This depends on the `starts_with` operator above, since the Rema/Joker/
-  Coop/Meny/Kiwi example is a starts-with match, not a contains match (a
-  `contains` rule for "Rema" would also catch an unrelated merchant with
-  "Rema" mid-name).
+- **Automatic default-template seeding on signup.** The admin rule-templates
+  page above covers curating templates and applying one to an *existing*
+  user manually, but nothing yet runs `apply_rule_template` automatically
+  when a brand-new user is created — there's no self-serve signup flow to
+  hook into (see README on manual user provisioning), so this is still a
+  manual step after creating a user in the Supabase dashboard.
 
 ### Should have (not yet implemented)
 

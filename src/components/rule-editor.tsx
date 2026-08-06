@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Plus, Trash2, Wand2 } from "lucide-react";
+import { Wand2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
   Dialog,
@@ -14,7 +14,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -25,11 +24,10 @@ import {
 import { flattenWithDepth } from "@/lib/category-tree";
 import { describeRule } from "@/lib/rule-description";
 import { findMergeTarget, mergeValuesIntoRule } from "@/lib/rule-merge";
+import { EMPTY_CONDITION, RuleConditionsEditor } from "@/components/rule-conditions-editor";
 import type { Category, Rule, RuleCondition } from "@/lib/types";
 
 export type RuleEditorTarget = { mode: "create" } | { mode: "edit"; rule: Rule };
-
-const EMPTY_CONDITION: RuleCondition = { field: "name", operator: "equals", values: [""] };
 
 export function RuleEditor({
   target,
@@ -77,49 +75,6 @@ function RuleEditorContent({
     existing ? existing.conditions.map((c) => ({ ...c, values: [...c.values] })) : [{ ...EMPTY_CONDITION, values: [""] }],
   );
   const [saving, setSaving] = useState(false);
-
-  function setConditionField(index: number, field: RuleCondition["field"]) {
-    setConditions((prev) =>
-      prev.map((c, i) => {
-        if (i !== index) return c;
-        return field === "name"
-          ? { field: "name", operator: "equals", values: c.values }
-          : { field: "subtitle", operator: "contains", values: c.values };
-      }),
-    );
-  }
-
-  function setConditionOperator(index: number, operator: string) {
-    setConditions((prev) => prev.map((c, i) => (i !== index ? c : ({ ...c, operator } as RuleCondition))));
-  }
-
-  function setConditionValue(index: number, valueIndex: number, value: string) {
-    setConditions((prev) =>
-      prev.map((c, i) =>
-        i !== index ? c : { ...c, values: c.values.map((v, vi) => (vi !== valueIndex ? v : value)) },
-      ),
-    );
-  }
-
-  function addValue(index: number) {
-    setConditions((prev) => prev.map((c, i) => (i !== index ? c : { ...c, values: [...c.values, ""] })));
-  }
-
-  function removeValue(index: number, valueIndex: number) {
-    setConditions((prev) =>
-      prev
-        .map((c, i) => (i !== index ? c : { ...c, values: c.values.filter((_, vi) => vi !== valueIndex) }))
-        .filter((c) => c.values.length > 0),
-    );
-  }
-
-  function addCondition() {
-    setConditions((prev) => [...prev, { ...EMPTY_CONDITION, values: [""] }]);
-  }
-
-  function removeConditionEntry(index: number) {
-    setConditions((prev) => prev.filter((_, i) => i !== index));
-  }
 
   async function handleSave() {
     if (!categoryId) {
@@ -218,89 +173,7 @@ function RuleEditorContent({
           </SelectContent>
         </Select>
 
-        {conditions.map((condition, index) => (
-          <div key={index} className="flex flex-col gap-2">
-            {index > 0 && <p className="text-center text-xs font-semibold text-muted-foreground">AND</p>}
-            <div className="flex flex-col gap-2 rounded-lg border p-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <Select
-                  value={condition.field}
-                  onValueChange={(value) => setConditionField(index, value as RuleCondition["field"])}
-                >
-                  <SelectTrigger className="h-8 w-28 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="name">Name</SelectItem>
-                    <SelectItem value="subtitle">Subtitle</SelectItem>
-                  </SelectContent>
-                </Select>
-
-                <Select value={condition.operator} onValueChange={(value) => value && setConditionOperator(index, value)}>
-                  <SelectTrigger className="h-8 w-40 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {condition.field === "name" ? (
-                      <>
-                        <SelectItem value="equals">Equals exactly</SelectItem>
-                        <SelectItem value="contains">Contains</SelectItem>
-                      </>
-                    ) : (
-                      <>
-                        <SelectItem value="contains">Contains</SelectItem>
-                        <SelectItem value="not_contains">Doesn&rsquo;t contain</SelectItem>
-                      </>
-                    )}
-                  </SelectContent>
-                </Select>
-
-                {conditions.length > 1 && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-sm"
-                    onClick={() => removeConditionEntry(index)}
-                    aria-label="Remove condition"
-                    className="ml-auto"
-                  >
-                    <Trash2 className="size-3.5" />
-                  </Button>
-                )}
-              </div>
-
-              {condition.values.map((value, valueIndex) => (
-                <div key={valueIndex} className="flex items-center gap-2">
-                  <Input
-                    value={value}
-                    onChange={(e) => setConditionValue(index, valueIndex, e.target.value)}
-                    placeholder="Value"
-                    className="h-8 min-w-32 flex-1 text-xs"
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-sm"
-                    onClick={() => removeValue(index, valueIndex)}
-                    aria-label="Remove value"
-                  >
-                    <Trash2 className="size-3.5" />
-                  </Button>
-                </div>
-              ))}
-
-              <Button type="button" variant="outline" size="sm" className="self-start" onClick={() => addValue(index)}>
-                <Plus className="size-3.5" />
-                Or value
-              </Button>
-            </div>
-          </div>
-        ))}
-
-        <Button type="button" variant="outline" size="sm" className="self-start" onClick={addCondition}>
-          <Plus className="size-3.5" />
-          And condition
-        </Button>
+        <RuleConditionsEditor conditions={conditions} onChange={setConditions} />
       </div>
 
       <DialogFooter>

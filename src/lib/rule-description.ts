@@ -6,7 +6,9 @@ function describeCondition(condition: RuleCondition): string {
   const values = condition.values.map((v) => `"${v}"`).join(" or ");
 
   if (condition.field === "name") {
-    return condition.operator === "equals" ? `named exactly ${values}` : `named containing ${values}`;
+    if (condition.operator === "equals") return `named exactly ${values}`;
+    if (condition.operator === "starts_with") return `named starting with ${values}`;
+    return `named containing ${values}`;
   }
   return condition.operator === "contains" ? `with a subtitle containing ${values}` : `with a subtitle not containing ${values}`;
 }

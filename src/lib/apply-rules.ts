@@ -9,7 +9,9 @@ function matchesCondition(condition: RuleCondition, name: string, subtitle: stri
     if (!value) return false;
 
     if (condition.field === "name") {
-      return condition.operator === "equals" ? haystack === value : haystack.includes(value);
+      if (condition.operator === "equals") return haystack === value;
+      if (condition.operator === "starts_with") return haystack.startsWith(value);
+      return haystack.includes(value);
     }
 
     const contains = haystack.includes(value);
