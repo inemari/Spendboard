@@ -137,6 +137,13 @@ visual design system.
 - Custom category create/rename/delete.
 - Per-category, per-month common/personal/overall totals; uncategorized count.
 - Undo action on the toast shown whenever a transaction's category changes.
+- The user avatar in `app-header.tsx` (top-right, desktop-only) opens
+  `user-menu.tsx`'s dropdown: the signed-in email, and a destructive
+  "Delete all transactions" item behind an `AlertDialog` confirmation. The
+  delete is account-wide (every month, not just the current one) — the
+  Supabase client call has no explicit filter beyond "id is set", since the
+  `transactions` table's `auth.uid() = user_id` RLS policy already scopes
+  it to the signed-in user's own rows. Categories and rules are untouched.
 - Multi-select transaction cards (checkbox); dragging a selected card in the
   desktop board moves the whole selection, not just that card. A bulk action
   bar (bottom of screen) lets you set category / common-personal-need_review /
