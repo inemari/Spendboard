@@ -3,7 +3,15 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { GripVertical, Pencil, Plus, Search, SearchX, Trash2, Wand2 } from "lucide-react";
+import {
+  GripVertical,
+  Pencil,
+  Plus,
+  Search,
+  SearchX,
+  Trash2,
+  Wand2,
+} from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -41,6 +49,7 @@ const OPERATOR_LABELS: Record<string, string> = {
   contains: "Contains",
   equals: "Equals",
   not_contains: "Doesn't contain",
+  starts_with: "Starts with",
 };
 const FIELD_LABELS: Record<string, string> = {
   name: "Name",
@@ -64,9 +73,12 @@ export function RulesManagerPanel({
 }) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
-  const [editorTarget, setEditorTarget] = useState<RuleEditorTarget | null>(null);
+  const [editorTarget, setEditorTarget] = useState<RuleEditorTarget | null>(
+    null,
+  );
   const [query, setQuery] = useState("");
-  const [pendingConflicts, setPendingConflicts] = useState<PendingRuleConflicts | null>(null);
+  const [pendingConflicts, setPendingConflicts] =
+    useState<PendingRuleConflicts | null>(null);
 
   async function deleteRule(id: string) {
     const { error } = await supabase.from("rules").delete().eq("id", id);
@@ -94,10 +106,14 @@ export function RulesManagerPanel({
     const conflicts: RuleConflictItem[] = [];
 
     for (const t of uncategorized ?? []) {
-      const matchingRules = rules.filter((r) => ruleMatchesTransaction(r, t.description, t.location));
+      const matchingRules = rules.filter((r) =>
+        ruleMatchesTransaction(r, t.description, t.location),
+      );
       if (!matchingRules.some((r) => r.id === rule.id)) continue;
 
-      const distinctCategoryIds = Array.from(new Set(matchingRules.map((r) => r.category_id)));
+      const distinctCategoryIds = Array.from(
+        new Set(matchingRules.map((r) => r.category_id)),
+      );
       if (distinctCategoryIds.length <= 1) {
         cleanTx.push({ id: t.id, date: t.date });
         continue;
@@ -108,7 +124,9 @@ export function RulesManagerPanel({
         defaultCategoryId: rule.category_id,
         options: distinctCategoryIds.map((categoryId) => ({
           categoryId,
-          categoryName: categories.find((c) => c.id === categoryId)?.name ?? "Unknown category",
+          categoryName:
+            categories.find((c) => c.id === categoryId)?.name ??
+            "Unknown category",
         })),
       });
     }
@@ -124,12 +142,16 @@ export function RulesManagerPanel({
         toast.error("Failed to apply rule.");
         return;
       }
-      toast.success(`Categorized ${cleanIds.length} existing transaction${cleanIds.length === 1 ? "" : "s"}.`, {
-        action: {
-          label: "Show",
-          onClick: () => router.push(highlightHref(cleanTx[0].date, cleanIds)),
+      toast.success(
+        `Categorized ${cleanIds.length} existing transaction${cleanIds.length === 1 ? "" : "s"}.`,
+        {
+          action: {
+            label: "Show",
+            onClick: () =>
+              router.push(highlightHref(cleanTx[0].date, cleanIds)),
+          },
         },
-      });
+      );
       router.refresh();
     }
 
@@ -140,7 +162,10 @@ export function RulesManagerPanel({
     }
   }
 
-  async function resolveRuleConflicts(selections: Map<string, string>, items: RuleConflictItem[]) {
+  async function resolveRuleConflicts(
+    selections: Map<string, string>,
+    items: RuleConflictItem[],
+  ) {
     const idsByCategory = new Map<string, string[]>();
     for (const [txId, categoryId] of selections) {
       const ids = idsByCategory.get(categoryId) ?? [];
@@ -149,7 +174,10 @@ export function RulesManagerPanel({
     }
 
     for (const [categoryId, ids] of idsByCategory) {
-      const { error } = await supabase.from("transactions").update({ category_id: categoryId }).in("id", ids);
+      const { error } = await supabase
+        .from("transactions")
+        .update({ category_id: categoryId })
+        .in("id", ids);
       if (error) {
         toast.error("Failed to apply some categorizations.");
         setPendingConflicts(null);
@@ -159,24 +187,38 @@ export function RulesManagerPanel({
     }
 
     const selectedIds = Array.from(selections.keys());
-    const firstDate = items.find((item) => item.transaction.id === selectedIds[0])?.transaction.date;
+    const firstDate = items.find(
+      (item) => item.transaction.id === selectedIds[0],
+    )?.transaction.date;
 
-    toast.success(`Categorized ${selections.size} transaction${selections.size === 1 ? "" : "s"}.`, {
-      action: firstDate
-        ? { label: "Show", onClick: () => router.push(highlightHref(firstDate, selectedIds)) }
-        : undefined,
-    });
+    toast.success(
+      `Categorized ${selections.size} transaction${selections.size === 1 ? "" : "s"}.`,
+      {
+        action: firstDate
+          ? {
+              label: "Show",
+              onClick: () => router.push(highlightHref(firstDate, selectedIds)),
+            }
+          : undefined,
+      },
+    );
     setPendingConflicts(null);
     router.refresh();
   }
 
-  async function updateRuleConditions(rule: Rule, newConditions: RuleCondition[]) {
+  async function updateRuleConditions(
+    rule: Rule,
+    newConditions: RuleCondition[],
+  ) {
     if (newConditions.length === 0) {
       await deleteRule(rule.id);
       return;
     }
 
-    const { error } = await supabase.from("rules").update({ conditions: newConditions }).eq("id", rule.id);
+    const { error } = await supabase
+      .from("rules")
+      .update({ conditions: newConditions })
+      .eq("id", rule.id);
 
     if (error) {
       toast.error("Failed to update rule.");
@@ -188,14 +230,26 @@ export function RulesManagerPanel({
   function removeWord(rule: Rule, conditionIndex: number, valueIndex: number) {
     const newConditions = rule.conditions
       .map((condition, ci) =>
-        ci !== conditionIndex ? condition : { ...condition, values: condition.values.filter((_, vi) => vi !== valueIndex) },
+        ci !== conditionIndex
+          ? condition
+          : {
+              ...condition,
+              values: condition.values.filter((_, vi) => vi !== valueIndex),
+            },
       )
       .filter((condition) => condition.values.length > 0);
     void updateRuleConditions(rule, newConditions);
   }
 
-  function updateWordValue(rule: Rule, conditionIndex: number, valueIndex: number, value: string): boolean {
-    const isDuplicate = rule.conditions[conditionIndex].values.some((v, vi) => vi !== valueIndex && v === value);
+  function updateWordValue(
+    rule: Rule,
+    conditionIndex: number,
+    valueIndex: number,
+    value: string,
+  ): boolean {
+    const isDuplicate = rule.conditions[conditionIndex].values.some(
+      (v, vi) => vi !== valueIndex && v === value,
+    );
     if (isDuplicate) {
       toast.error("That value is already in this condition.");
       return false;
@@ -203,20 +257,29 @@ export function RulesManagerPanel({
     const newConditions = rule.conditions.map((condition, ci) =>
       ci !== conditionIndex
         ? condition
-        : { ...condition, values: condition.values.map((v, vi) => (vi !== valueIndex ? v : value)) },
+        : {
+            ...condition,
+            values: condition.values.map((v, vi) =>
+              vi !== valueIndex ? v : value,
+            ),
+          },
     );
     void updateRuleConditions(rule, newConditions);
     return true;
   }
 
   function addWord(rule: Rule, conditionIndex: number, value: string): boolean {
-    const isDuplicate = rule.conditions[conditionIndex].values.some((v) => v === value);
+    const isDuplicate = rule.conditions[conditionIndex].values.some(
+      (v) => v === value,
+    );
     if (isDuplicate) {
       toast.error("That value is already in this condition.");
       return false;
     }
     const newConditions = rule.conditions.map((condition, ci) =>
-      ci !== conditionIndex ? condition : { ...condition, values: [...condition.values, value] },
+      ci !== conditionIndex
+        ? condition
+        : { ...condition, values: [...condition.values, value] },
     );
     void updateRuleConditions(rule, newConditions);
     return true;
@@ -236,7 +299,11 @@ export function RulesManagerPanel({
 
   const normalizedQuery = query.trim().toLowerCase();
   const filteredRules =
-    normalizedQuery === "" ? rules : rules.filter((rule) => searchText.get(rule.id)!.includes(normalizedQuery));
+    normalizedQuery === ""
+      ? rules
+      : rules.filter((rule) =>
+          searchText.get(rule.id)!.includes(normalizedQuery),
+        );
 
   const sections = useMemo(() => {
     const rulesByCategory = new Map<string, Rule[]>();
@@ -250,7 +317,13 @@ export function RulesManagerPanel({
     for (const { category, depth } of flattenWithDepth(categories)) {
       const categoryRules = rulesByCategory.get(category.id);
       if (categoryRules?.length) {
-        result.push({ key: category.id, categoryName: category.name, depth, unknown: false, rules: categoryRules });
+        result.push({
+          key: category.id,
+          categoryName: category.name,
+          depth,
+          unknown: false,
+          rules: categoryRules,
+        });
         rulesByCategory.delete(category.id);
       }
     }
@@ -276,7 +349,8 @@ export function RulesManagerPanel({
             Rules
           </h2>
           <p className="text-sm text-muted-foreground">
-            Rules auto-categorize matching transactions as soon as they&rsquo;re uploaded.
+            Rules auto-categorize matching transactions as soon as they&rsquo;re
+            uploaded.
           </p>
         </div>
         <Button onClick={() => setEditorTarget({ mode: "create" })}>
@@ -294,7 +368,9 @@ export function RulesManagerPanel({
 
       <ResolveRuleConflictsDialog
         pending={pendingConflicts}
-        onConfirm={(selections) => void resolveRuleConflicts(selections, pendingConflicts?.items ?? [])}
+        onConfirm={(selections) =>
+          void resolveRuleConflicts(selections, pendingConflicts?.items ?? [])
+        }
         onDismiss={() => setPendingConflicts(null)}
       />
 
@@ -323,10 +399,13 @@ export function RulesManagerPanel({
       ) : (
         <div className="flex gap-4 overflow-x-auto pb-2">
           {sections.map((section, index) => (
-            <div key={section.key} className="flex w-72 shrink-0 flex-col gap-3">
+            <div
+              key={section.key}
+              className="flex w-44 shrink-0 flex-col gap-3"
+            >
               <div
                 className={cn(
-                  "rounded-xl bg-linear-to-r px-4 py-2.5",
+                  "rounded-md bg-linear-to-r px-3 py-2.5",
                   CATEGORY_GRADIENTS[index % CATEGORY_GRADIENTS.length],
                   section.unknown && "from-destructive/20 to-destructive/30",
                 )}
@@ -348,8 +427,12 @@ export function RulesManagerPanel({
                     onValueChange={(conditionIndex, valueIndex, value) =>
                       updateWordValue(rule, conditionIndex, valueIndex, value)
                     }
-                    onRemoveWord={(conditionIndex, valueIndex) => removeWord(rule, conditionIndex, valueIndex)}
-                    onAddWord={(conditionIndex, value) => addWord(rule, conditionIndex, value)}
+                    onRemoveWord={(conditionIndex, valueIndex) =>
+                      removeWord(rule, conditionIndex, valueIndex)
+                    }
+                    onAddWord={(conditionIndex, value) =>
+                      addWord(rule, conditionIndex, value)
+                    }
                   />
                 ))}
               </div>
@@ -374,7 +457,11 @@ function RuleCard({
   onEdit: () => void;
   onDelete: () => void;
   onApplyToExisting: () => void;
-  onValueChange: (conditionIndex: number, valueIndex: number, value: string) => boolean;
+  onValueChange: (
+    conditionIndex: number,
+    valueIndex: number,
+    value: string,
+  ) => boolean;
   onRemoveWord: (conditionIndex: number, valueIndex: number) => void;
   onAddWord: (conditionIndex: number, value: string) => boolean;
 }) {
@@ -415,10 +502,14 @@ function RuleCard({
       {rule.conditions.map((condition, conditionIndex) => (
         <div key={conditionIndex} className="flex flex-col gap-1.5 pr-8">
           {conditionIndex > 0 && (
-            <p className="text-center text-[11px] font-semibold tracking-wide text-muted-foreground">AND</p>
+            <p className="text-center text-[11px] font-semibold tracking-wide text-muted-foreground">
+              AND
+            </p>
           )}
           <div className="flex items-center gap-1.5">
-            <span className="font-semibold">{FIELD_LABELS[condition.field] ?? condition.field}</span>
+            <span className="font-semibold">
+              {FIELD_LABELS[condition.field] ?? condition.field}
+            </span>
             <Badge variant="secondary" className="font-normal">
               {OPERATOR_LABELS[condition.operator] ?? condition.operator}
             </Badge>
@@ -428,7 +519,9 @@ function RuleCard({
               <WordRow
                 key={`${rule.id}-${conditionIndex}-${valueIndex}-${value}`}
                 value={value}
-                onValueCommit={(newValue) => onValueChange(conditionIndex, valueIndex, newValue)}
+                onValueCommit={(newValue) =>
+                  onValueChange(conditionIndex, valueIndex, newValue)
+                }
                 onRemove={() => onRemoveWord(conditionIndex, valueIndex)}
               />
             ))}
@@ -467,7 +560,12 @@ function WordRow({
         className="h-8 flex-1 text-xs"
       />
 
-      <Button variant="ghost" size="icon-sm" onClick={onRemove} aria-label="Remove word">
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        onClick={onRemove}
+        aria-label="Remove word"
+      >
         <Trash2 className="size-3.5" />
       </Button>
     </div>
