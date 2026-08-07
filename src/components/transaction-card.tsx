@@ -82,10 +82,9 @@ export function TransactionCard({
     >
       <div
         className={cn(
-          "flex items-start gap-1.5",
-          compact ? "cursor-pointer" : "border-b border-border/60 pb-1.5",
+          "flex items-start gap-2",
+          !compact && "border-b border-border/60 pb-1.5",
         )}
-        onClick={compact ? onToggleExpanded : undefined}
       >
         <div className="min-w-0 flex-1">
           <p className="truncate text-xs font-semibold">
@@ -103,18 +102,24 @@ export function TransactionCard({
           <Checkbox
             checked={selected}
             onCheckedChange={onToggleSelect}
-            onClick={(e) => e.stopPropagation()}
             aria-label="Select transaction"
             className="mt-0.5 size-3 shrink-0 cursor-pointer opacity-0 group-hover:opacity-100"
           />
         )}
+        {/* The only click target for expanding — its own padded hit area, kept
+            apart from the checkbox above so the two aren't easy to fat-finger. */}
         {compact && (
-          <ChevronDown
-            className={cn(
-              "mt-0.5 size-3 shrink-0 text-muted-foreground transition-transform",
-              expanded && "rotate-180",
-            )}
-          />
+          <button
+            type="button"
+            onClick={onToggleExpanded}
+            aria-label={expanded ? "Collapse" : "Expand"}
+            aria-expanded={expanded}
+            className="-m-1 shrink-0 rounded-full p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <ChevronDown
+              className={cn("size-3 transition-transform", expanded && "rotate-180")}
+            />
+          </button>
         )}
       </div>
       {!compact && (
