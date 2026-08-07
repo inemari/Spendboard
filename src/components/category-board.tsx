@@ -1,6 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import {
   DndContext,
   DragOverlay,
@@ -25,6 +31,19 @@ import {
 import type { Category, Transaction } from "@/lib/types";
 
 const UNCATEGORIZED_ID = "uncategorized";
+
+// Base (scale === 1) grid sizing in rem — shrunk together by `scale` so the
+// whole board always fits the visible viewport with no page scroll, instead
+// of a fixed size that can outgrow the screen once there are enough
+// categories.
+const BASE_ROW_REM = 4;
+const BASE_COL_MIN_REM = 6;
+const MIN_SCALE = 0.4;
+// No hard ceiling — a sparse range (few populated categories, mostly empty
+// ones) should keep growing until it actually fills the available space,
+// not stop at some arbitrary size. The attempt cap below still bounds how
+// far a single measurement pass can push it.
+const MAX_SCALE = Infinity;
 
 /**
  * The "cockpit": every category (plus Uncategorized) as a fixed-height cell
@@ -157,6 +176,76 @@ export function CategoryBoard({
     );
   }, [cells, query]);
 
+  // Every empty cell gets its own full-height "Drop here" cell if rendered
+  // like the populated ones — mostly whitespace once there are more than a
+  // couple. Rendered as CategoryColumn's shrunk `compact` variant instead
+  // (a 1x1 grid cell vs. a populated cell's 2-column/4-row span), in the
+  // same grid as the populated cells with `grid-flow-row-dense` — dense
+  // packing is what lets a compact cell backfill an open slot next to a
+  // still-tall populated column, instead of every empty cell being pushed
+  // into its own section below.
+  const isPopulated = (cell: (typeof filteredCells)[number]) =>
+    cell.transactions.length > 0 ||
+    cell.subcategories.some((s) => s.transactions.length > 0);
+
+  // Populated cells first (stable sort keeps each group's original order)
+  // so the categories with something in them read as the front of the
+  // board, with the compact empty ones trailing/backfilling around them.
+  const orderedCells = useMemo(
+    () =>
+      [...filteredCells].sort(
+        (a, b) => Number(isPopulated(b)) - Number(isPopulated(a)),
+      ),
+    [filteredCells],
+  );
+
+  // Grows or shrinks the grid's row height/column width together until its
+  // rendered content fills (without exceeding) the space below it in the
+  // viewport — so a sparse range (e.g. a single-day view with mostly empty
+  // categories) uses the room it actually has instead of leaving most of the
+  // screen blank, while a busy one still never needs its own page scroll.
+  // Resets to 1 and re-measures from there whenever the cell list or window
+  // size changes, since shrinking/growing the column width can let a
+  // different number of columns fit and reflow the dense-packed layout into
+  // a different number of rows — not something computable up front without
+  // actually laying it out. `attemptsRef` caps how many adjustment steps run
+  // per reset, so a case that can't settle within the dead zone (see below)
+  // can't loop forever.
+  const gridRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(1);
+  const cellCount = orderedCells.length;
+  const attemptsRef = useRef(0);
+
+  useEffect(() => {
+    attemptsRef.current = 0;
+    setScale(1);
+  }, [cellCount]);
+
+  useEffect(() => {
+    function reset() {
+      attemptsRef.current = 0;
+      setScale(1);
+    }
+    window.addEventListener("resize", reset);
+    return () => window.removeEventListener("resize", reset);
+  }, []);
+
+  useEffect(() => {
+    const grid = gridRef.current;
+    if (!grid || attemptsRef.current > 40) return;
+    const available = window.innerHeight - grid.getBoundingClientRect().top - 16;
+    const natural = grid.scrollHeight;
+    // A gap between the shrink and grow thresholds (rather than both firing
+    // right at 100%) keeps the two steps from fighting each other forever.
+    if (natural > available && scale > MIN_SCALE) {
+      attemptsRef.current += 1;
+      setScale((s) => Math.max(MIN_SCALE, s * 0.92));
+    } else if (natural < available * 0.92 && scale < MAX_SCALE) {
+      attemptsRef.current += 1;
+      setScale((s) => Math.min(MAX_SCALE, s * 1.06));
+    }
+  });
+
   return (
     <DndContext
       sensors={sensors}
@@ -171,8 +260,17 @@ export function CategoryBoard({
             No categories match &ldquo;{query}&rdquo;.
           </div>
         ) : (
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(12rem,1fr))] gap-3">
-            {filteredCells.map((cell) => (
+          <div
+            ref={gridRef}
+            className="grid grid-flow-row-dense grid-cols-[repeat(auto-fill,minmax(var(--col-min),1fr))] auto-rows-(--row-h) gap-3"
+            style={
+              {
+                "--col-min": `${BASE_COL_MIN_REM * scale}rem`,
+                "--row-h": `${BASE_ROW_REM * scale}rem`,
+              } as CSSProperties
+            }
+          >
+            {orderedCells.map((cell) => (
               <CategoryColumn
                 key={cell.id}
                 id={cell.id}
@@ -180,6 +278,7 @@ export function CategoryBoard({
                 transactions={cell.transactions}
                 subcategories={cell.subcategories}
                 swatch={cell.swatch}
+                compact={!isPopulated(cell)}
                 {...actions}
               />
             ))}

@@ -122,15 +122,45 @@ decisions. For work that's planned but not yet implemented, see
   transaction removes it from the underlying list, which slides the next
   one into the same index for free, no separate "advance" step needed.
 - The board (`category-board.tsx`) is a **compact multi-row cockpit**: every
-  category — plus Uncategorized — gets its own fixed-height cell
-  (`category-column.tsx`, still exporting `CategoryColumn`) in one wrapping
-  grid (`grid-cols-[repeat(auto-fill,minmax(12rem,1fr))]`), so all of them are
-  visible together instead of paged through. Each cell caps its own height and
-  scrolls its card list internally, so a busy category never grows the grid or
-  throws a row out of alignment with its neighbors. Uncategorized is just
-  another cell in the same grid, not pinned separately — with everything on
-  screen at once there's no longer a "the pile you drag from must share the
-  viewport with whichever column you're viewing" constraint to design around.
+  category — plus Uncategorized — gets its own cell (`category-column.tsx`,
+  still exporting `CategoryColumn`) in one wrapping grid
+  (`grid-cols-[repeat(auto-fill,minmax(var(--col-min),1fr))]`,
+  `auto-rows-(--row-h)`, `grid-flow-row-dense`), so all of them are visible
+  together instead of paged through. A populated cell spans 2 columns/4 rows
+  (`col-[span_2] row-[span_4]`) and scrolls its card list internally, so a
+  busy category never grows the grid or throws a row out of alignment with
+  its neighbors. `--col-min`/`--row-h` are driven by a `scale` state
+  (base 6rem/4rem at `scale === 1`): an effect measures the grid's rendered
+  height against the space left in the viewport below it and shrinks `scale`
+  (down to `MIN_SCALE`) when it overflows, or grows it (up to `MAX_SCALE`)
+  when there's slack — e.g. a sparse Day view shouldn't leave most of the
+  screen blank just because most of its categories are empty. Resets to 1
+  (and re-measures from there) whenever the cell count or window size
+  changes, since changing the column width can let a different number of
+  columns fit and reflow the dense-packed layout into a different number of
+  rows, which can't be computed up front without actually laying it out.
+  Note: `grid-flow-row-dense` can still leave a trailing gap when a row's
+  cells don't add up to the full column count (a grid item can only occupy
+  the tracks it's assigned, unlike a flex item it can't grow to absorb a
+  neighboring empty one) — an attempt to close that gap by reading back and
+  overriding each cell's auto-placed span via `getComputedStyle` made the
+  layout misbehave badly enough to revert; if this is worth solving later it
+  needs a different approach.
+  A category with nothing in it (and nothing in any of its subcategories)
+  instead renders `CategoryColumn`'s `compact` variant — the same colored
+  header and dashed "Drop here" box, just a single 1x1 grid cell, with the
+  amount/count/filter-menu chrome stripped out since there's nothing to
+  show. Populated and compact cells share the one grid, sorted populated-
+  first (stable, so each group keeps its original relative order) — `grid-
+  flow-row-dense` is what lets a compact cell backfill an open cell next to
+  a still-tall populated column instead of every empty category being
+  pushed into its own section below (which is what plain row-major auto-
+  placement, or two separate grids, would do). A category graduates back to
+  its full cell the moment it receives a transaction. Uncategorized is just
+  another cell
+  in the same grid, not pinned separately — with everything on screen at
+  once there's no longer a "the pile you drag from must share the viewport
+  with whichever column you're viewing" constraint to design around.
   A category with subcategories doesn't get sibling cells for each of
   them — that would blow the all-visible-at-once budget fast. Instead its one
   cell stacks "General" (transactions with no subcategory) and every
