@@ -120,6 +120,36 @@ export function TransactionBoard({
     return null;
   }, [categoryFilter, colorMap]);
 
+  // Rendered next to whichever content it controls (the list's header, or
+  // above the board) instead of floating in its own row — desktop-only
+  // since the board needs drag-and-drop and horizontal room.
+  const viewToggle = (
+    <div className="hidden gap-1 rounded-full bg-muted p-0.5 md:flex">
+      {(
+        [
+          { value: "overview", label: "Overview", Icon: List },
+          { value: "board", label: "Board", Icon: LayoutGrid },
+        ] as const
+      ).map(({ value, label, Icon }) => (
+        <button
+          key={value}
+          type="button"
+          onClick={() => setView(value)}
+          aria-pressed={view === value}
+          className={cn(
+            "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
+            view === value
+              ? "bg-card text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          <Icon className="size-3.5" />
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+
   return (
     <div className={cn("flex flex-col gap-4", selectedIds.size > 0 && "pb-20")}>
       <SimilarTransactionsDialog
@@ -153,62 +183,40 @@ export function TransactionBoard({
         onDelete={handleDeleteTransaction}
       />
 
-      <OverviewSummary
-        overview={overview}
-        categorizeHref={categorizeHref}
-        onSelectType={setOverviewType}
-      />
-
       {transactions.length > 0 && (
         <>
           {/* The board is still the fastest way to sort a pile of transactions, so
-              it stays — just behind a toggle, rather than dominating the page. */}
-          {/* Toggle is desktop-only: the board needs drag-and-drop and horizontal
-              room, so small screens always get the list. */}
-          <div className="hidden justify-end md:flex">
-            <div className="flex gap-1 rounded-full bg-muted p-0.5">
-              {(
-                [
-                  { value: "overview", label: "Overview", Icon: List },
-                  { value: "board", label: "Board", Icon: LayoutGrid },
-                ] as const
-              ).map(({ value, label, Icon }) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setView(value)}
-                  aria-pressed={view === value}
-                  className={cn(
-                    "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
-                    view === value
-                      ? "bg-card text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  <Icon className="size-3.5" />
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-
+              it stays — just behind the toggle above, rather than dominating the
+              page. Each view carries its own copy of the toggle (in the list's
+              header, or above the board) since only one is ever mounted at once. */}
           <div className={cn(view === "board" && "md:hidden")}>
-            <div className="grid gap-4 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)] lg:items-start">
-              <CategorySidebar
-                breakdown={overview.breakdown}
-                totalCount={transactions.length}
-                uncategorizedCount={overview.uncategorizedCount}
-                uncategorizedSpent={overview.uncategorizedSpent}
-                colorMap={colorMap}
-                filter={categoryFilter}
-                onSelectFilter={setCategoryFilter}
-              />
+            <div className="grid gap-5 lg:grid-cols-[19rem_minmax(0,1fr)] lg:items-start">
+              <aside className="flex flex-col gap-4 rounded-2xl border border-border/60 bg-card p-4 sm:p-5">
+                <OverviewSummary
+                  overview={overview}
+                  categorizeHref={categorizeHref}
+                  onSelectType={setOverviewType}
+                />
+                <div className="flex flex-col gap-1.5 border-t border-border/60 pt-4">
+                  <CategorySidebar
+                    breakdown={overview.breakdown}
+                    totalCount={transactions.length}
+                    uncategorizedCount={overview.uncategorizedCount}
+                    uncategorizedSpent={overview.uncategorizedSpent}
+                    colorMap={colorMap}
+                    filter={categoryFilter}
+                    onSelectFilter={setCategoryFilter}
+                  />
+                </div>
+              </aside>
+
               <TransactionList
                 transactions={categoryFilteredTransactions}
                 categories={categories}
                 selectedIds={selectedIds}
                 highlightedIds={highlightedIds}
                 filterChip={filterChip}
+                viewToggle={viewToggle}
                 onToggleSelect={toggleSelect}
                 onCategoryChange={handleCategoryChange}
                 onTypeToggle={handleTypeToggle}
@@ -220,21 +228,25 @@ export function TransactionBoard({
           </div>
 
           {view === "board" && (
-            <CategoryBoard
-              transactions={sorted}
-              categories={categories}
-              colorMap={colorMap}
-              onCategoryChange={handleCategoryChange}
-              onCategoryChangeMulti={handleCategoryChangeMulti}
-              onTypeToggle={handleTypeToggle}
-              onCardTypeToggle={handleCardTypeToggle}
-              onNotesChange={handleNotesChange}
-              onDelete={handleDeleteTransaction}
-              selectedIds={selectedIds}
-              onToggleSelect={toggleSelect}
-              onToggleSelectAll={toggleSelectAll}
-              highlightedIds={highlightedIds}
-            />
+            <>
+              <div className="hidden justify-end md:flex">{viewToggle}</div>
+
+              <CategoryBoard
+                transactions={sorted}
+                categories={categories}
+                colorMap={colorMap}
+                onCategoryChange={handleCategoryChange}
+                onCategoryChangeMulti={handleCategoryChangeMulti}
+                onTypeToggle={handleTypeToggle}
+                onCardTypeToggle={handleCardTypeToggle}
+                onNotesChange={handleNotesChange}
+                onDelete={handleDeleteTransaction}
+                selectedIds={selectedIds}
+                onToggleSelect={toggleSelect}
+                onToggleSelectAll={toggleSelectAll}
+                highlightedIds={highlightedIds}
+              />
+            </>
           )}
         </>
       )}

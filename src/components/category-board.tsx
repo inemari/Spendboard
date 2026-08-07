@@ -27,7 +27,9 @@ const UNCATEGORIZED_ID = "uncategorized";
 
 // Fixed column width (+ the row's gap-3) so a step and a scroll-snap point are
 // the same distance — the arrows and a manual swipe always land in sync.
-const COLUMN_WIDTH = 240;
+// Must match the columns' actual rendered width (w-52 below) or the arrows
+// overshoot past a full column, landing mid-column instead of on its edge.
+const COLUMN_WIDTH = 208;
 const COLUMN_GAP = 12;
 const STEP = COLUMN_WIDTH + COLUMN_GAP;
 
@@ -163,8 +165,8 @@ export function CategoryBoard({
       {/* Uncategorized is the pile you drag *from*, so it stays pinned and fully
           visible no matter which category column the carousel is showing —
           both ends of a drag need to be on screen at once. */}
-      <div className="hidden gap-3 md:flex">
-        <div className="w-44 shrink-0 ">
+      <div className="hidden items-start gap-3 md:flex">
+        <div className="w-52 shrink-0 ">
           <CategoryColumn
             id={UNCATEGORIZED_ID}
             title="Uncategorized"
@@ -197,7 +199,7 @@ export function CategoryBoard({
                 No categories match &ldquo;{query}&rdquo;.
               </div>
             ) : (
-              <div className="grid grid-cols-[repeat(auto-fill,minmax(12rem,1fr))] items-start gap-3">
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(13rem,1fr))] items-start gap-3">
                 {filteredColumns.map((col) => (
                   <CategoryColumn
                     key={col.id}
@@ -244,10 +246,10 @@ export function CategoryBoard({
               <div
                 ref={trackRef}
                 onScroll={handleTrackScroll}
-                className="flex snap-x snap-mandatory gap-3 overflow-x-auto scroll-smooth pb-2"
+                className="flex items-start snap-x snap-mandatory gap-3 overflow-x-auto scroll-smooth pb-2"
               >
                 {categoryColumns.map((col) => (
-                  <div key={col.id} className="w-44 shrink-0 snap-start">
+                  <div key={col.id} className="w-52 shrink-0 snap-start">
                     <CategoryColumn
                       id={col.id}
                       title={col.title}
