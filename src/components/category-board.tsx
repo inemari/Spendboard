@@ -72,6 +72,9 @@ export function CategoryBoard({
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
   );
   const [query, setQuery] = useState("");
+  // Shared across every cell, so opening a card anywhere on the board
+  // collapses whichever other card was open — only one at a time.
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
@@ -99,6 +102,9 @@ export function CategoryBoard({
     onToggleSelect,
     onToggleSelectAll,
     highlightedIds,
+    expandedId,
+    onToggleExpanded: (id) =>
+      setExpandedId((prev) => (prev === id ? null : id)),
   };
 
   const cells = useMemo(() => {

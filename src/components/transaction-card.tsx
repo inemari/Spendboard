@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CreditCard, Trash2 } from "lucide-react";
+import { ChevronDown, CreditCard, Trash2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
@@ -31,6 +31,8 @@ export function TransactionCard({
   onToggleSelect,
   highlighted = false,
   compact = false,
+  expanded = false,
+  onToggleExpanded,
 }: {
   transaction: Transaction;
   categories: Category[];
@@ -48,6 +50,10 @@ export function TransactionCard({
    *  Notes are kept because, unlike those controls, there's no other surface
    *  where a board card's note is visible. */
   compact?: boolean;
+  /** Compact-only: collapsed shows just name/date/amount; expanded reveals
+   *  location, type/card-type, and notes. Ignored outside `compact`. */
+  expanded?: boolean;
+  onToggleExpanded?: () => void;
 }) {
   const [editingNote, setEditingNote] = useState(false);
   const [noteDraft, setNoteDraft] = useState(transaction.notes ?? "");
@@ -77,32 +83,20 @@ export function TransactionCard({
       <div
         className={cn(
           "flex items-start gap-1.5",
-          !compact && "border-b border-border/60 pb-1.5",
+          compact ? "cursor-pointer" : "border-b border-border/60 pb-1.5",
         )}
+        onClick={compact ? onToggleExpanded : undefined}
       >
         <div className="min-w-0 flex-1">
-          {compact ? (
-            // Location folds inline instead of onto its own line — same
-            // info, one fewer row per card.
-            <p className="truncate text-xs font-semibold">
-              {transaction.description}
-              {transaction.location && (
-                <span className="ml-1 font-normal text-muted-foreground">
-                  · {transaction.location}
-                </span>
-              )}
+          <p className="truncate text-xs font-semibold">
+            {transaction.description}
+          </p>
+          {/* Collapsed compact cards show only name/date/amount — location
+              only appears once expanded, alongside the other detail fields. */}
+          {(!compact || expanded) && transaction.location && (
+            <p className="truncate text-[11px] text-muted-foreground">
+              {transaction.location}
             </p>
-          ) : (
-            <>
-              <p className="truncate text-xs font-semibold">
-                {transaction.description}
-              </p>
-              {transaction.location && (
-                <p className="truncate text-[11px] text-muted-foreground">
-                  {transaction.location}
-                </p>
-              )}
-            </>
           )}
         </div>{" "}
         {onToggleSelect && (
@@ -112,6 +106,14 @@ export function TransactionCard({
             onClick={(e) => e.stopPropagation()}
             aria-label="Select transaction"
             className="mt-0.5 size-3 shrink-0 cursor-pointer opacity-0 group-hover:opacity-100"
+          />
+        )}
+        {compact && (
+          <ChevronDown
+            className={cn(
+              "mt-0.5 size-3 shrink-0 text-muted-foreground transition-transform",
+              expanded && "rotate-180",
+            )}
           />
         )}
       </div>
@@ -162,64 +164,70 @@ export function TransactionCard({
           </div>
         </>
       )}
-      <div className={cn("flex flex-row", compact && "gap-1")}>
-        <button
-          type="button"
-          onClick={onTypeToggle}
-          className={cn(
-            "shrink-0 rounded-full border font-medium transition-colors hover:bg-muted",
-            compact ? "px-1.5 py-px text-[10px]" : "px-2 py-0.5 text-[11px]",
-            transaction.type === "need_review" &&
-              "border-destructive/40 bg-destructive/10 text-destructive",
+      {/* The rest of a compact card's fields — type/card-type and notes —
+          only render once expanded, so a collapsed card is just name/date/amount. */}
+      {(!compact || expanded) && (
+        <>
+          <div className={cn("flex flex-row", compact && "gap-1")}>
+            <button
+              type="button"
+              onClick={onTypeToggle}
+              className={cn(
+                "shrink-0 rounded-full border font-medium transition-colors hover:bg-muted",
+                compact ? "px-1.5 py-px text-[10px]" : "px-2 py-0.5 text-[11px]",
+                transaction.type === "need_review" &&
+                  "border-destructive/40 bg-destructive/10 text-destructive",
+              )}
+            >
+              {formatTxType(transaction.type)}
+            </button>
+            <button
+              type="button"
+              onClick={onCardTypeToggle}
+              className={cn(
+                "flex shrink-0 items-center gap-1 rounded-full border font-medium capitalize transition-colors hover:bg-muted",
+                compact ? "px-1.5 py-px text-[10px]" : "px-2 py-0.5 text-[11px]",
+              )}
+            >
+              <CreditCard className="size-2.5" />
+              {transaction.card_type}
+            </button>
+          </div>
+          {/* Notes stay available even in compact (board) cards — unlike category/type,
+              which are one click away in the overview list, there's no other surface
+              where a board card's note is visible or editable. */}
+          {editingNote ? (
+            <Textarea
+              autoFocus
+              rows={2}
+              value={noteDraft}
+              onChange={(e) => setNoteDraft(e.target.value)}
+              onBlur={saveNote}
+              placeholder="Add a note…"
+              className="min-h-0 p-1.5 text-[11px]"
+            />
+          ) : transaction.notes ? (
+            <button
+              type="button"
+              onClick={() => setEditingNote(true)}
+              className="rounded-lg bg-muted/60 p-1.5 text-left text-[11px] text-muted-foreground italic hover:text-foreground"
+            >
+              {transaction.notes}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setEditingNote(true)}
+              className={cn(
+                "group-hover:opacity-100 opacity-0 self-start text-muted-foreground underline underline-offset-2 hover:text-foreground",
+                compact ? "text-[10px]" : "text-[11px]",
+              )}
+            >
+              + Add note
+            </button>
           )}
-        >
-          {formatTxType(transaction.type)}
-        </button>
-        <button
-          type="button"
-          onClick={onCardTypeToggle}
-          className={cn(
-            "flex shrink-0 items-center gap-1 rounded-full border font-medium capitalize transition-colors hover:bg-muted",
-            compact ? "px-1.5 py-px text-[10px]" : "px-2 py-0.5 text-[11px]",
-          )}
-        >
-          <CreditCard className="size-2.5" />
-          {transaction.card_type}
-        </button>
-      </div>
-      {/* Notes stay available even in compact (board) cards — unlike category/type,
-          which are one click away in the overview list, there's no other surface
-          where a board card's note is visible or editable. */}
-      {editingNote ? (
-        <Textarea
-          autoFocus
-          rows={2}
-          value={noteDraft}
-          onChange={(e) => setNoteDraft(e.target.value)}
-          onBlur={saveNote}
-          placeholder="Add a note…"
-          className="min-h-0 p-1.5 text-[11px]"
-        />
-      ) : transaction.notes ? (
-        <button
-          type="button"
-          onClick={() => setEditingNote(true)}
-          className="rounded-lg bg-muted/60 p-1.5 text-left text-[11px] text-muted-foreground italic hover:text-foreground"
-        >
-          {transaction.notes}
-        </button>
-      ) : (
-        <button
-          type="button"
-          onClick={() => setEditingNote(true)}
-          className={cn(
-            "group-hover:opacity-100 opacity-0 self-start text-muted-foreground underline underline-offset-2 hover:text-foreground",
-            compact ? "text-[10px]" : "text-[11px]",
-          )}
-        >
-          + Add note
-        </button>
-      )}{" "}
+        </>
+      )}
       <div
         className={cn(
           "flex items-center justify-between gap-2 text-muted-foreground",

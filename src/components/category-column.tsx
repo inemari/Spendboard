@@ -39,6 +39,10 @@ export type ColumnActions = {
   onToggleSelect: (id: string) => void;
   onToggleSelectAll: (ids: string[]) => void;
   highlightedIds: Set<string>;
+  /** Which card (if any) is expanded — shared across the whole board, so
+   *  opening one card collapses whichever other card was open. */
+  expandedId: string | null;
+  onToggleExpanded: (id: string) => void;
 };
 
 function CardList({
@@ -53,6 +57,8 @@ function CardList({
   selectedIds,
   onToggleSelect,
   highlightedIds,
+  expandedId,
+  onToggleExpanded,
 }: ColumnActions & { transactions: Transaction[]; emptyLabel: string }) {
   if (transactions.length === 0) {
     return (
@@ -79,6 +85,8 @@ function CardList({
           onToggleSelect={() => onToggleSelect(t.id)}
           highlighted={highlightedIds.has(t.id)}
           compact
+          expanded={expandedId === t.id}
+          onToggleExpanded={() => onToggleExpanded(t.id)}
         />
       ))}
     </>
