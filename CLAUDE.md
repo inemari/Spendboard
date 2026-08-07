@@ -133,10 +133,14 @@ decisions. For work that's planned but not yet implemented, see
   viewport with whichever column you're viewing" constraint to design around.
   A category with subcategories doesn't get sibling cells for each of
   them — that would blow the all-visible-at-once budget fast. Instead its one
-  cell pages between "General" and each subcategory via a small dot nav at
-  the cell's bottom edge, the same visible-page-count idea the old carousel
-  used a level up. A "Filter categories…" box above the grid trims it down to
-  matching cells. Each category's cell color is stable and shared with the
+  cell stacks "General" (transactions with no subcategory) and every
+  subcategory's own zone together, each its own drop target same as before
+  subcategories shared a cell. A per-cell filter dropdown (funnel icon next to
+  the title, checkbox per zone) lets the user hide zones they don't want to
+  see or drop into right now — e.g. only two subcategories, or only
+  "General" — and hiding a zone unmounts its drop target along with it. A
+  "Filter categories…" box above the grid narrows which *cells* show, same
+  idea one level up. Each category's cell color is stable and shared with the
   "Where it went" sidebar via `buildCategoryColorMap`
   (`src/lib/category-colors.ts`) — keyed by sort order among siblings, not
   spend rank, so a category's color never shifts between the two views or
