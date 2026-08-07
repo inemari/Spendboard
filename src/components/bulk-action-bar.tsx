@@ -2,6 +2,7 @@
 
 import { Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
 import {
   Select,
   SelectContent,
@@ -35,80 +36,106 @@ export function BulkActionBar({
   onClear: () => void;
 }) {
   return (
-    <div className="mx-20 my-2 rounded-full fixed inset-x-0 bottom-0 z-40 flex flex-wrap items-center gap-2 border bg-card p-3  drop-shadow-lg border-primary">
-      <span className="text-sm font-semibold">{count} selected</span>
+    <div className="fixed inset-x-0 bottom-4 z-40 flex justify-center px-4">
+      <div className="flex max-w-full flex-wrap items-center gap-x-1 gap-y-2 rounded-full border border-primary bg-card p-2 pl-4 shadow-lg">
+        <span className="flex items-center gap-2 pr-2 text-sm font-semibold whitespace-nowrap">
+          <span className="flex size-5 items-center justify-center rounded-full bg-primary text-xs text-primary-foreground">
+            {count}
+          </span>
+          selected
+        </span>
 
-      <Select
-        onValueChange={(value: string | null) =>
-          onCategoryChange(value === UNCATEGORIZED_VALUE ? null : value)
-        }
-      >
-        <SelectTrigger className="h-8 w-40 text-xs">
-          <SelectValue placeholder="Set category">
-            {(value: string | null) => {
-              if (!value || value === UNCATEGORIZED_VALUE)
-                return "Set category";
-              return (
-                categories.find((c) => c.id === value)?.name ?? "Set category"
-              );
-            }}
-          </SelectValue>
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value={UNCATEGORIZED_VALUE}>Uncategorized</SelectItem>
-          {flattenWithDepth(categories).map(({ category: c, depth }) => (
-            <SelectItem
-              key={c.id}
-              value={c.id}
-              className={depth > 0 ? "pl-6 text-muted-foreground" : undefined}
-            >
-              {depth > 0 ? `↳ ${c.name}` : c.name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+        <Separator orientation="vertical" className="h-6" />
 
-      <div className="flex gap-1">
-        {TYPES.map((type) => (
-          <Button
-            key={type}
-            size="sm"
-            variant="outline"
-            onClick={() => onTypeChange(type)}
-          >
-            {formatTxType(type)}
-          </Button>
-        ))}
+        <Select
+          onValueChange={(value: string | null) =>
+            onCategoryChange(value === UNCATEGORIZED_VALUE ? null : value)
+          }
+        >
+          <SelectTrigger className="h-8 w-40 rounded-full text-xs">
+            <SelectValue placeholder="Set category">
+              {(value: string | null) => {
+                if (!value || value === UNCATEGORIZED_VALUE)
+                  return "Set category";
+                return (
+                  categories.find((c) => c.id === value)?.name ??
+                  "Set category"
+                );
+              }}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={UNCATEGORIZED_VALUE}>Uncategorized</SelectItem>
+            {flattenWithDepth(categories).map(({ category: c, depth }) => (
+              <SelectItem
+                key={c.id}
+                value={c.id}
+                className={
+                  depth > 0 ? "pl-6 text-muted-foreground" : undefined
+                }
+              >
+                {depth > 0 ? `↳ ${c.name}` : c.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Separator orientation="vertical" className="h-6" />
+
+        <Select
+          onValueChange={(value: TxType | null) => value && onTypeChange(value)}
+        >
+          <SelectTrigger className="h-8 w-32 rounded-full text-xs">
+            <SelectValue placeholder="Set type" />
+          </SelectTrigger>
+          <SelectContent>
+            {TYPES.map((type) => (
+              <SelectItem key={type} value={type}>
+                {formatTxType(type)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Select
+          onValueChange={(value: CardType | null) =>
+            value && onCardTypeChange(value)
+          }
+        >
+          <SelectTrigger className="h-8 w-28 rounded-full text-xs">
+            <SelectValue placeholder="Set card" />
+          </SelectTrigger>
+          <SelectContent>
+            {CARD_TYPES.map((cardType) => (
+              <SelectItem key={cardType} value={cardType} className="capitalize">
+                {cardType}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Separator orientation="vertical" className="h-6" />
+
+        <Button
+          size="sm"
+          variant="outline"
+          className="rounded-full text-destructive hover:text-destructive"
+          onClick={onDelete}
+        >
+          <Trash2 className="size-4" />
+          Delete
+        </Button>
+
+        <Button
+          size="icon"
+          variant="ghost"
+          className="size-8 rounded-full"
+          onClick={onClear}
+          aria-label="Clear selection"
+        >
+          <X className="size-4" />
+        </Button>
       </div>
-
-      <div className="flex gap-1">
-        {CARD_TYPES.map((cardType) => (
-          <Button
-            key={cardType}
-            size="sm"
-            variant="outline"
-            className="capitalize"
-            onClick={() => onCardTypeChange(cardType)}
-          >
-            {cardType}
-          </Button>
-        ))}
-      </div>
-
-      <Button
-        size="sm"
-        variant="outline"
-        className="ml-auto text-destructive hover:text-destructive"
-        onClick={onDelete}
-      >
-        <Trash2 className="size-4" />
-        Delete
-      </Button>
-
-      <Button size="sm" variant="ghost" onClick={onClear}>
-        <X className="size-4" />
-        Clear
-      </Button>
     </div>
   );
 }
