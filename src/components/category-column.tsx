@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { Inbox } from "lucide-react";
 import { DraggableTransactionCard } from "@/components/draggable-transaction-card";
@@ -33,7 +34,6 @@ export type ColumnActions = {
 
 function CardList({
   transactions,
-  emptyLabel,
   categories,
   onCategoryChange,
   onTypeToggle,
@@ -43,12 +43,12 @@ function CardList({
   selectedIds,
   onToggleSelect,
   highlightedIds,
-}: ColumnActions & { transactions: Transaction[]; emptyLabel: string }) {
+}: ColumnActions & { transactions: Transaction[] }) {
   if (transactions.length === 0) {
     return (
-      <div className="flex flex-col items-center gap-1 rounded-md border border-dashed p-3 text-center text-[11px] text-muted-foreground">
+      <div className="flex flex-1 flex-col items-center justify-center gap-1 rounded-md border border-dashed p-3 text-center text-[11px] text-muted-foreground">
         <Inbox className="size-4" />
-        {emptyLabel}
+        Drop here
       </div>
     );
   }
@@ -75,64 +75,41 @@ function CardList({
   );
 }
 
-function SubcategorySection({
+/** The single visible page of a cell — either the whole leaf category, or
+ *  (when the category has subcategories) whichever section the dot nav below
+ *  has selected. Its own droppable id, so a card dropped here always lands in
+ *  exactly the section that's on screen. */
+function SectionBody({
   section,
   ...actions
 }: ColumnActions & { section: ColumnSection }) {
   const { setNodeRef, isOver } = useDroppable({ id: section.id });
-  const spent = section.transactions.reduce(
-    (sum, t) => sum + (t.amount < 0 ? -t.amount : 0),
-    0,
-  );
-  const allSelected =
-    section.transactions.length > 0 &&
-    section.transactions.every((t) => actions.selectedIds.has(t.id));
 
   return (
     <div
       ref={setNodeRef}
       className={cn(
-        "flex flex-col gap-1.5  border-t-2  p-1 transition-colors group/subcategory",
-        isOver ? "border-l-primary bg-muted/60" : "border-l-border",
+        "flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto p-2 transition-colors",
+        isOver && "bg-primary/5",
       )}
     >
-      <div className="flex items-center gap-1.5">
-        {section.transactions.length > 0 && (
-          <Checkbox
-            checked={allSelected}
-            onCheckedChange={() =>
-              actions.onToggleSelectAll(section.transactions.map((t) => t.id))
-            }
-            aria-label={`Select all in ${section.title}`}
-            className="size-3 shrink-0 cursor-pointer opacity-0 group-hover/subcategory:opacity-100 focus-visible:opacity-100"
-          />
-        )}
-        <h4 className="min-w-0 flex-1 truncate text-[11px] font-medium text-muted-foreground">
-          {section.title}
-        </h4>
-        <span className="shrink-0 text-[11px] font-medium tabular-nums text-muted-foreground">
-          {formatSpend(spent)}
-        </span>
-      </div>
-      <div className="flex flex-col gap-1">
-        <CardList
-          transactions={section.transactions}
-          emptyLabel="Drop here"
-          {...actions}
-        />
-      </div>
+      <CardList transactions={section.transactions} {...actions} />
     </div>
   );
 }
 
 /**
- * A real kanban column: cards are always visible, not hidden behind an expand
- * click. Used both as the board's pinned Uncategorized pane and as one page
- * of the category carousel (`category-board.tsx`) — scaling to 10+ categories
- * comes from stepping through them one (or a swipe of a few) at a time rather
- * than summarizing every column down to a tile or showing them all at once.
- * This column's own capped height with an internal scrollbar keeps a busy
- * category from growing without bound either way.
+ * A fixed-height "cockpit" cell: one per category (plus the Uncategorized
+ * pile), all rendered together in a wrapping grid so every category is on
+ * screen at once instead of paged through one at a time. Each cell caps its
+ * own height and scrolls its card list internally, so a busy category never
+ * grows the grid or throws its row out of alignment with its neighbors.
+ *
+ * A category with subcategories doesn't get sibling cells for each of
+ * them — that would blow the "all visible at once" budget fast. Instead its
+ * one cell pages between "General" and each subcategory via a dot nav at the
+ * bottom, the same page-count-visible-at-a-glance idea the old carousel used
+ * for categories, just one level down.
  */
 export function CategoryColumn({
   id,
@@ -140,22 +117,23 @@ export function CategoryColumn({
   transactions,
   subcategories,
   swatch,
-  emptyLabel = "Drop transactions here",
-  bodyClassName,
   ...actions
 }: {
   id: string;
   title: string;
   transactions: Transaction[];
-  /** Subcategories render as nested drop zones inside this column, not as sibling columns. */
+  /** Subcategories page within this cell via the dot nav, not as sibling cells. */
   subcategories: ColumnSection[];
   swatch: CategorySwatch;
-  emptyLabel?: string;
-  /** Overrides the card area's height cap — the pinned Uncategorized column
-   *  uses viewport height instead of the fixed cap every other column gets. */
-  bodyClassName?: string;
 } & ColumnActions) {
   const hasSubcategories = subcategories.length > 0;
+  const sections: ColumnSection[] = hasSubcategories
+    ? [{ id, title: "General", transactions }, ...subcategories]
+    : [{ id, title, transactions }];
+
+  const [pageIndex, setPageIndex] = useState(0);
+  const activePage = Math.min(pageIndex, sections.length - 1);
+  const activeSection = sections[activePage];
 
   const allTransactions = hasSubcategories
     ? [...transactions, ...subcategories.flatMap((s) => s.transactions)]
@@ -167,24 +145,15 @@ export function CategoryColumn({
   const allSelected =
     allTransactions.length > 0 &&
     allTransactions.every((t) => actions.selectedIds.has(t.id));
-
-  // Leaf columns keep the whole column as one drop target; columns with
-  // subcategories split into a "General" zone plus one zone per subcategory,
-  // since nested drop targets would otherwise compete for the same drop event.
-  const { setNodeRef, isOver } = useDroppable({
-    id,
-    disabled: hasSubcategories,
-  });
+  const activeSpent = activeSection.transactions.reduce(
+    (sum, t) => sum + (t.amount < 0 ? -t.amount : 0),
+    0,
+  );
 
   return (
-    <div className="flex flex-col rounded-xl border border-border/60 bg-card group/category">
-      <div
-        className={cn(
-          "flex flex-col gap-0.5 rounded-t-md px-3 py-2",
-          swatch.soft,
-        )}
-      >
-        <div className="flex items-center gap-1.5 ">
+    <div className="group/category flex h-64 flex-col overflow-hidden rounded-2xl border border-border/60 bg-card">
+      <div className={cn("flex flex-col gap-0.5 px-3 py-2", swatch.soft)}>
+        <div className="flex items-center gap-1.5">
           {allTransactions.length > 0 && (
             <Checkbox
               checked={allSelected}
@@ -209,31 +178,38 @@ export function CategoryColumn({
         </p>
       </div>
 
-      <div
-        ref={hasSubcategories ? undefined : setNodeRef}
-        className={cn(
-          "flex min-h-20 flex-col gap-2 overflow-y-auto p-2 transition-colors",
-          bodyClassName ?? "max-h-96",
-          !hasSubcategories && isOver && "bg-primary/5",
-        )}
-      >
-        <div
-          ref={hasSubcategories ? setNodeRef : undefined}
-          className={cn(
-            "flex flex-col gap-1.5 rounded-md transition-colors",
-            hasSubcategories && isOver && "bg-muted/60",
-          )}
-        >
-          <CardList
-            transactions={transactions}
-            emptyLabel={hasSubcategories ? "Drop here" : emptyLabel}
-            {...actions}
-          />
+      {hasSubcategories && (
+        <div className="flex items-center justify-between gap-2 border-b border-border/60 px-3 py-1">
+          <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-muted-foreground">
+            {activeSection.title}
+          </span>
+          <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+            {formatSpend(activeSpent)}
+          </span>
         </div>
-        {subcategories.map((section) => (
-          <SubcategorySection key={section.id} section={section} {...actions} />
-        ))}
-      </div>
+      )}
+
+      <SectionBody section={activeSection} {...actions} />
+
+      {sections.length > 1 && (
+        <div className="flex items-center justify-center gap-1.5 border-t border-border/60 py-1.5">
+          {sections.map((section, index) => (
+            <button
+              key={section.id}
+              type="button"
+              onClick={() => setPageIndex(index)}
+              aria-label={`Show ${section.title}`}
+              aria-current={index === activePage}
+              className={cn(
+                "size-1.5 rounded-full transition-colors",
+                index === activePage
+                  ? swatch.bar
+                  : "bg-muted-foreground/30 hover:bg-muted-foreground/50",
+              )}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

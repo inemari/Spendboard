@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   DndContext,
   PointerSensor,
@@ -9,8 +9,7 @@ import {
   useSensors,
   type DragEndEvent,
 } from "@dnd-kit/core";
-import { ChevronLeft, ChevronRight, Search, SearchX } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Search, SearchX } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
   CategoryColumn,
@@ -25,14 +24,14 @@ import type { Category, Transaction } from "@/lib/types";
 
 const UNCATEGORIZED_ID = "uncategorized";
 
-// Fixed column width (+ the row's gap-3) so a step and a scroll-snap point are
-// the same distance — the arrows and a manual swipe always land in sync.
-// Must match the columns' actual rendered width (w-52 below) or the arrows
-// overshoot past a full column, landing mid-column instead of on its edge.
-const COLUMN_WIDTH = 208;
-const COLUMN_GAP = 12;
-const STEP = COLUMN_WIDTH + COLUMN_GAP;
-
+/**
+ * The "cockpit": every category (plus Uncategorized) as a fixed-height cell
+ * in one wrapping grid, so the whole board is scannable without paging
+ * through columns one at a time. Replaced the earlier pinned-column +
+ * carousel shape — that one scaled to 10+ categories by showing a handful at
+ * a time, this one scales by capping each cell's own height instead, trading
+ * "everything is always fully expanded" for "everything is always visible."
+ */
 export function CategoryBoard({
   transactions,
   categories,
@@ -69,8 +68,6 @@ export function CategoryBoard({
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
   );
   const [query, setQuery] = useState("");
-  const trackRef = useRef<HTMLDivElement>(null);
-  const [visibleIndex, setVisibleIndex] = useState(0);
 
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
@@ -100,13 +97,16 @@ export function CategoryBoard({
     highlightedIds,
   };
 
-  const uncategorizedTransactions = useMemo(
-    () => transactions.filter((t) => !t.category_id),
-    [transactions],
-  );
+  const cells = useMemo(() => {
+    const uncategorizedCell = {
+      id: UNCATEGORIZED_ID,
+      title: "Uncategorized",
+      transactions: transactions.filter((t) => !t.category_id),
+      subcategories: [],
+      swatch: UNCATEGORIZED_SWATCH,
+    };
 
-  const categoryColumns = useMemo(() => {
-    const columns = buildCategoryTree(categories).map(({ parent, children }) => ({
+    const categoryCells = buildCategoryTree(categories).map(({ parent, children }) => ({
       id: parent.id,
       title: parent.name,
       transactions: transactions.filter((t) => t.category_id === parent.id),
@@ -118,43 +118,21 @@ export function CategoryBoard({
       swatch: colorMap.get(parent.id) ?? UNCATEGORIZED_SWATCH,
     }));
 
-    // Empty columns (nothing to sort or review) sink to the end of the
-    // carousel — they're not what you're paging through for, so the columns
-    // actually worth stepping to stay reachable in fewer steps.
-    const isEmpty = (col: (typeof columns)[number]) =>
-      col.transactions.length === 0 &&
-      col.subcategories.every((s) => s.transactions.length === 0);
-    return [...columns.filter((c) => !isEmpty(c)), ...columns.filter(isEmpty)];
+    return [uncategorizedCell, ...categoryCells];
   }, [transactions, categories, colorMap]);
 
-  // Filtering steps outside the carousel entirely: matches are usually a
-  // handful, so they wrap into a plain grid instead of paging through them.
-  const filteredColumns = useMemo(() => {
+  // Filtering trims the grid down to matching cells — with everything already
+  // visible at once there's no separate "paged" vs "filtered" layout to switch
+  // between, unlike the old carousel.
+  const filteredCells = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return null;
-    return categoryColumns.filter(
-      (col) =>
-        col.title.toLowerCase().includes(q) ||
-        col.subcategories.some((s) => s.title.toLowerCase().includes(q)),
+    if (!q) return cells;
+    return cells.filter(
+      (cell) =>
+        cell.title.toLowerCase().includes(q) ||
+        cell.subcategories.some((s) => s.title.toLowerCase().includes(q)),
     );
-  }, [categoryColumns, query]);
-
-  function step(direction: 1 | -1) {
-    const track = trackRef.current;
-    if (!track) return;
-    const nextIndex = Math.max(
-      0,
-      Math.min(categoryColumns.length - 1, visibleIndex + direction),
-    );
-    track.scrollTo({ left: nextIndex * STEP, behavior: "smooth" });
-    setVisibleIndex(nextIndex);
-  }
-
-  function handleTrackScroll() {
-    const track = trackRef.current;
-    if (!track) return;
-    setVisibleIndex(Math.round(track.scrollLeft / STEP));
-  }
+  }, [cells, query]);
 
   return (
     <DndContext
@@ -162,108 +140,37 @@ export function CategoryBoard({
       collisionDetection={pointerWithin}
       onDragEnd={handleDragEnd}
     >
-      {/* Uncategorized is the pile you drag *from*, so it stays pinned and fully
-          visible no matter which category column the carousel is showing —
-          both ends of a drag need to be on screen at once. */}
-      <div className="hidden items-start gap-3 md:flex">
-        <div className="w-52 shrink-0 ">
-          <CategoryColumn
-            id={UNCATEGORIZED_ID}
-            title="Uncategorized"
-            transactions={uncategorizedTransactions}
-            subcategories={[]}
-            swatch={UNCATEGORIZED_SWATCH}
-            emptyLabel="Nothing left to sort. Drop a card here to un-categorize it."
-            bodyClassName="max-h-[calc(100svh-11rem)] "
-            {...actions}
+      <div className="hidden flex-col gap-3 md:flex">
+        <div className="relative">
+          <Search className="absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Filter categories…"
+            className="h-8 pl-8 text-xs"
           />
         </div>
 
-        <div className="flex min-w-0 flex-1 flex-col gap-3">
-          {categoryColumns.length > 6 && (
-            <div className="relative">
-              <Search className="absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Filter categories…"
-                className="h-8 pl-8 text-xs"
+        {filteredCells.length === 0 ? (
+          <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
+            <SearchX className="size-5" />
+            No categories match &ldquo;{query}&rdquo;.
+          </div>
+        ) : (
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(12rem,1fr))] gap-3">
+            {filteredCells.map((cell) => (
+              <CategoryColumn
+                key={cell.id}
+                id={cell.id}
+                title={cell.title}
+                transactions={cell.transactions}
+                subcategories={cell.subcategories}
+                swatch={cell.swatch}
+                {...actions}
               />
-            </div>
-          )}
-
-          {filteredColumns ? (
-            filteredColumns.length === 0 ? (
-              <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
-                <SearchX className="size-5" />
-                No categories match &ldquo;{query}&rdquo;.
-              </div>
-            ) : (
-              <div className="grid grid-cols-[repeat(auto-fill,minmax(13rem,1fr))] items-start gap-3">
-                {filteredColumns.map((col) => (
-                  <CategoryColumn
-                    key={col.id}
-                    id={col.id}
-                    title={col.title}
-                    transactions={col.transactions}
-                    subcategories={col.subcategories}
-                    swatch={col.swatch}
-                    {...actions}
-                  />
-                ))}
-              </div>
-            )
-          ) : (
-            <>
-              {/* The carousel/stepper: arrows advance by exactly one column, but
-                  the track is a plain scroll container underneath, so a trackpad
-                  swipe or a drag near the edge works too — the arrows aren't the
-                  only way through. */}
-              <div className="flex items-center justify-between">
-                <Button
-                  variant="outline"
-                  size="icon-sm"
-                  onClick={() => step(-1)}
-                  disabled={visibleIndex === 0}
-                  aria-label="Previous category"
-                >
-                  <ChevronLeft className="size-4" />
-                </Button>
-                <p className="text-xs text-muted-foreground tabular-nums">
-                  {visibleIndex + 1} / {categoryColumns.length}
-                </p>
-                <Button
-                  variant="outline"
-                  size="icon-sm"
-                  onClick={() => step(1)}
-                  disabled={visibleIndex >= categoryColumns.length - 1}
-                  aria-label="Next category"
-                >
-                  <ChevronRight className="size-4" />
-                </Button>
-              </div>
-
-              <div
-                ref={trackRef}
-                onScroll={handleTrackScroll}
-                className="flex items-start snap-x snap-mandatory gap-3 overflow-x-auto scroll-smooth pb-2"
-              >
-                {categoryColumns.map((col) => (
-                  <div key={col.id} className="w-52 shrink-0 snap-start">
-                    <CategoryColumn
-                      id={col.id}
-                      title={col.title}
-                      transactions={col.transactions}
-                      subcategories={col.subcategories}
-                      swatch={col.swatch}
-                      {...actions}
-                    />
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
     </DndContext>
   );
