@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import {
   DndContext,
   PointerSensor,
@@ -46,6 +46,7 @@ export function CategoryBoard({
   onToggleSelect,
   onToggleSelectAll,
   highlightedIds,
+  viewToggle,
 }: {
   transactions: Transaction[];
   categories: Category[];
@@ -63,6 +64,9 @@ export function CategoryBoard({
   onToggleSelect: (id: string) => void;
   onToggleSelectAll: (ids: string[]) => void;
   highlightedIds: Set<string>;
+  /** The Overview/Board switcher, rendered in the same row as the filter box —
+   *  same pattern as the overview list's header. */
+  viewToggle?: ReactNode;
 }) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -141,14 +145,17 @@ export function CategoryBoard({
       onDragEnd={handleDragEnd}
     >
       <div className="hidden flex-col gap-3 md:flex">
-        <div className="relative">
-          <Search className="absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Filter categories…"
-            className="h-8 pl-8 text-xs"
-          />
+        <div className="flex items-center justify-between gap-2">
+          <div className="relative">
+            <Search className="absolute top-1/2 left-2.5 size-3 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Filter categories…"
+              className="h-7 w-40 pl-7 text-xs"
+            />
+          </div>
+          {viewToggle}
         </div>
 
         {filteredCells.length === 0 ? (

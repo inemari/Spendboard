@@ -228,25 +228,22 @@ export function TransactionBoard({
           </div>
 
           {view === "board" && (
-            <>
-              <div className="hidden justify-end md:flex">{viewToggle}</div>
-
-              <CategoryBoard
-                transactions={sorted}
-                categories={categories}
-                colorMap={colorMap}
-                onCategoryChange={handleCategoryChange}
-                onCategoryChangeMulti={handleCategoryChangeMulti}
-                onTypeToggle={handleTypeToggle}
-                onCardTypeToggle={handleCardTypeToggle}
-                onNotesChange={handleNotesChange}
-                onDelete={handleDeleteTransaction}
-                selectedIds={selectedIds}
-                onToggleSelect={toggleSelect}
-                onToggleSelectAll={toggleSelectAll}
-                highlightedIds={highlightedIds}
-              />
-            </>
+            <CategoryBoard
+              transactions={sorted}
+              categories={categories}
+              colorMap={colorMap}
+              onCategoryChange={handleCategoryChange}
+              onCategoryChangeMulti={handleCategoryChangeMulti}
+              onTypeToggle={handleTypeToggle}
+              onCardTypeToggle={handleCardTypeToggle}
+              onNotesChange={handleNotesChange}
+              onDelete={handleDeleteTransaction}
+              selectedIds={selectedIds}
+              onToggleSelect={toggleSelect}
+              onToggleSelectAll={toggleSelectAll}
+              highlightedIds={highlightedIds}
+              viewToggle={viewToggle}
+            />
           )}
         </>
       )}
