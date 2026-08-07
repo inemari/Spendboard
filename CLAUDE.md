@@ -9,7 +9,40 @@ Personal, or Need review to track shared vs. personal spending side by side.
 See [README.md](README.md) for setup and [DESIGN.md](DESIGN.md) for the
 visual design system.
 
+## Architecture map
+
+- `src/app/[year]/[month]/` — the month workspace: overview (`page.tsx`),
+  `categorize/`, `categories/`, `rules/`. `src/app/admin/rules/` — admin
+  rule-template management. `src/app/api/upload/` — the upload endpoint.
+  `src/app/login/` — sign-in.
+- `src/components/` — UI. `ui/` holds shadcn primitives; everything else is
+  app-specific (board, list, dialogs, headers).
+- `src/lib/` — framework-free logic: parsing (`parse-transactions.ts`,
+  `statement-formats.ts`), data loading (`workspace-data.ts`), aggregation
+  (`overview.ts`, `totals.ts`), rules (`apply-rules.ts`, `rule-merge.ts`),
+  and `supabase/` client setup.
+- `src/hooks/use-transaction-actions.ts` — the shared mutation/undo logic
+  used by both the board and categorize screen.
+- `supabase/schema.sql` — the entire DB schema; no migration runner (see
+  "Database changes").
+
+## Component conventions
+
+- **Inline JSX first.** Default to keeping JSX inline; extract into a
+  component only when at least one applies: duplication (same pattern 2+
+  times), a stable named domain/UI concept, variant pressure (conditionals
+  dominating the markup), or a readability threshold (3+ major UI sections,
+  or ~120–150+ lines of JSX hurting comprehension).
+- **Server components by default.** Never add `"use client"` to
+  `app/**/page.tsx`, `app/**/layout.tsx`, or `app/**/template.tsx`. Only
+  create client components when the code genuinely requires client-side
+  behavior.
+
 ## Product requirements
+
+Below is what's actually built today, with the reasoning behind non-obvious
+decisions. For work that's planned but not yet implemented, see
+[ROADMAP.md](ROADMAP.md).
 
 ### Must have (implemented)
 
@@ -93,27 +126,27 @@ visual design system.
   always visible, not hidden behind an expand click), scaled two ways instead
   of showing every column simultaneously:
   1. **Uncategorized is pinned**, full height, to the left — it's the pile you
-     drag *from*, so both ends of a drag (it, and whichever category column
+     drag _from_, so both ends of a drag (it, and whichever category column
      you're currently viewing) must be on screen together.
   2. **The category columns are a carousel/stepper**, not a wrapping grid or a
      horizontal scroller you drag across: Prev/Next arrows step exactly one
      column (with a "3 / 12" counter), while the track underneath is a plain
      `overflow-x-auto` + `scroll-snap` region, so a trackpad swipe or a normal
      scrollbar drag works too — the arrows aren't the only way through. A
-     "Filter categories…" box (past 6 categories) steps *outside* the
+     "Filter categories…" box (past 6 categories) steps _outside_ the
      carousel entirely: matches wrap into a plain grid, since a filtered set
      is usually a handful, not something worth paging through.
-  Each category's column color is stable and shared with the "Where it went"
-  sidebar via `buildCategoryColorMap` (`src/lib/category-colors.ts`) — keyed
-  by sort order among siblings, not spend rank, so a category's color never
-  shifts between the two views or from month to month. Every column caps its
-  own card-list height with an internal scrollbar (`bodyClassName` override on
-  `CategoryColumn` for Uncategorized's viewport-height version) so an uneven
-  card count between columns never distorts the row. Board cards use
-  `TransactionCard`'s `compact` variant, which drops the category/type/card-
-  type/delete controls (that editor stays one click away in the overview
-  list) but keeps the note field — notes have no other surface on the board,
-  unlike those other controls.
+     Each category's column color is stable and shared with the "Where it went"
+     sidebar via `buildCategoryColorMap` (`src/lib/category-colors.ts`) — keyed
+     by sort order among siblings, not spend rank, so a category's color never
+     shifts between the two views or from month to month. Every column caps its
+     own card-list height with an internal scrollbar (`bodyClassName` override on
+     `CategoryColumn` for Uncategorized's viewport-height version) so an uneven
+     card count between columns never distorts the row. Board cards use
+     `TransactionCard`'s `compact` variant, which drops the category/type/card-
+     type/delete controls (that editor stays one click away in the overview
+     list) but keeps the note field — notes have no other surface on the board,
+     unlike those other controls.
   - **Design history**: this went through two earlier shapes before landing
     here — first a wrapping grid of collapsed summary tiles (ADR: felt like
     "too many tiles to scan" with 10+ categories), then a wrapping grid of
@@ -171,10 +204,10 @@ visual design system.
   category name), so searching a category name works without a separate
   filter control.
 - **Re-apply rules retroactively.** Each rule card on the Rules page has an
-  "apply to existing" action that re-scans *uncategorized* transactions across
+  "apply to existing" action that re-scans _uncategorized_ transactions across
   all months (`ruleMatchesTransaction` in `src/lib/apply-rules.ts`). Already
   categorized transactions are never touched. When two or more rules match the
-  same transaction with *different* categories, nothing is written silently —
+  same transaction with _different_ categories, nothing is written silently —
   `resolve-rule-conflicts-dialog.tsx` asks per transaction. The success toast's
   "Show" action deep-links to `/[year]/[month]?highlight=<ids>`, which scrolls
   to and briefly ring-highlights those cards.
@@ -188,7 +221,7 @@ visual design system.
   this is a prefix check on that normalized string, not the raw text).
 - **Admin rule templates (`/admin/rules`).** Named, reusable rule bundles an
   admin curates — distinct from a single user's own `rules` rows, since a
-  template targets a category *by name* (`rule_template_items.category_name`)
+  template targets a category _by name_ (`rule_template_items.category_name`)
   rather than a `category_id`, making it portable across different users'
   distinct category sets. `admin-rules-panel.tsx` lists templates (each
   showing its items' plain-English description via
@@ -211,7 +244,7 @@ visual design system.
     single source of truth between the SQL and the TS constant, since the
     TS side can't read a Postgres function at build time.
   - **Two `SECURITY DEFINER` RPCs** exist because the browser's anon-key
-    client is *correctly* blocked by every table's `auth.uid() = user_id`
+    client is _correctly_ blocked by every table's `auth.uid() = user_id`
     RLS policy from ever reading another user's email or writing rows with
     a different `user_id` — that's the whole point of that policy elsewhere
     in the app. `list_app_users()` (reads `auth.users`, not exposed to the
@@ -222,66 +255,28 @@ visual design system.
     rather than by RLS (RLS can't apply to a function's own internal
     queries the way it applies to a client's direct table access).
 
-### Must have (not yet implemented)
-
-- **Automatic default-template seeding on signup.** The admin rule-templates
-  page above covers curating templates and applying one to an *existing*
-  user manually, but nothing yet runs `apply_rule_template` automatically
-  when a brand-new user is created — there's no self-serve signup flow to
-  hook into (see README on manual user provisioning), so this is still a
-  manual step after creating a user in the Supabase dashboard.
-
-### Should have (not yet implemented)
-
-- **Flexible timeframe switcher (day / week / month / custom range).**
-  Introduce a range-aware transaction view that lets the user switch between
-  daily, weekly, monthly, and custom date ranges (e.g. last 7 days, last 3
-  months, full year, or an arbitrary range) instead of being limited to one
-  calendar month. Needs a range-aware query — `loadWorkspaceData` in
-  `src/lib/workspace-data.ts` is hard-scoped to one `year`/`month` today — and
-  the overview's aggregates (`src/lib/overview.ts`) would need to operate over
-  an arbitrary transaction set rather than assuming "this month's rows."
-  Month-to-month stepping (`month-nav.tsx`) already exists as the day/week/
-  month granularity's base case; this generalizes it rather than replacing it.
-
-### Could have (not yet implemented)
-
-- **Personalization quiz (rule suggestions).** On first use, ask the user
-  where they usually shop for groceries, beauty products, and similar
-  categories, then generate suggested categorization rules from the answers
-  into a dedicated suggestions section (distinct from the default-rules set
-  above — these are personalized, not the same for every user, and presumably
-  need an accept/dismiss step per suggestion rather than being created
-  outright). Example: user answers "Blivakker" for beauty products → suggest
-  a rule "name contains Blivakker → Hud og hårpleie." Depends on the default
-  rules above landing first, since a suggestion is essentially the same
-  create-rule mechanism seeded from quiz answers instead of a fixed list.
-- **Month switcher only steps blindly.** `month-nav.tsx` always links to the
-  adjacent month; it doesn't know which months have data, so there's no picker
-  and no indication that a neighbouring month is empty. The `months` table
-  already records which exist (`supabase/schema.sql`).
-- **Edit raw transaction fields.** Only category/type/card_type/notes are
-  editable; `description`/`date`/`amount` are rendered as plain text with no
-  edit affordance, so a bank-export typo can't be corrected in the app.
-- **Date-range filtering** on the overview list — it filters by text and by
-  uncategorized / need-review, but not by date. Largely subsumed by the
-  timeframe switcher above once that exists.
-- **Trend charts.** The overview has a category breakdown and a split meter,
-  but nothing over time (no month-over-month line or sparkline) — most useful
-  once the timeframe switcher above gives it more than one month to plot.
-- **Password reset.** `login-form.tsx` only supports sign-in
-  (`signInWithPassword`) — no "forgot password" flow, no sign-up UI (per
-  README, new users are created manually via the Supabase dashboard).
-- **Multi-user / household sharing.** Every table's RLS policy is strictly
-  `auth.uid() = user_id` (`supabase/schema.sql`) — there's no way for two
-  people to share one household's data; each Supabase Auth user is fully
-  isolated. Would need a real redesign (e.g. a `households` table) if ever
-  wanted, not a small add-on.
-- Upload a PNG/JPG screenshot of transactions (e.g. a bank app screenshot) and
-  have them OCR'd/parsed into transactions, same as the Excel/CSV/PDF import
-  path. Deliberately still open: a scanned/photographed page has no PDF text
-  layer, so it can't reuse `pdfToRows` and needs actual OCR (e.g.
-  tesseract.js) instead of text-run positions.
+- **Flexible timeframe switcher (day / week / month / custom range), overview
+  only.** `timeframe-switcher.tsx` adds Day/Week/Month/Custom tabs above the
+  board on `/[year]/[month]`. Upload, categorize, categories, and rules stay
+  strictly month-scoped (`loadWorkspaceData` in `src/lib/workspace-data.ts` is
+  untouched) — only the overview gained a sibling loader,
+  `loadWorkspaceDataForRange`, which queries `transactions` directly by
+  `date` (`.gte`/`.lte`, backed by the additive `transactions_user_id_date_idx`
+  index) instead of resolving a `months` row, since a range can span or fall
+  short of a whole calendar month. `computeOverview`/`computeTotals` needed no
+  changes — they already operated on a flat `Transaction[]` with no month
+  assumption. Date-range math (`resolveRange`, `shiftByView`,
+  `formatRangeLabel`) lives in `src/lib/date-range.ts`, including a hoisted
+  `shiftMonth` that `month-nav.tsx` now imports instead of keeping its own copy.
+  - **Day/week/custom-range navigation never changes the URL's `[year]/[month]`
+    path**, even when the shifted date falls in a different month — only
+    query params (`view`/`date`/`from`/`to`) change. Routing to a different
+    value of a dynamic path segment is a genuinely different page in Next.js
+    App Router and remounts the whole subtree, which was silently resetting
+    `transaction-board.tsx`'s Overview/Board toggle on every week-arrow click
+    that crossed a month boundary. Only the Month tab's step arrows are
+    meant to actually change which month's page you're on (matching the
+    original `month-nav.tsx` behavior).
 
 ## Data model notes
 
@@ -316,3 +311,90 @@ visual design system.
   works correctly for the common case (re-uploading a file with transactions
   you already have plus new ones only inserts the new ones, and never touches
   existing categorization) — see `src/app/api/upload/route.ts`.
+
+## Database changes
+
+There is no migration runner.
+
+If changing the schema:
+- update `supabase/schema.sql`
+- preserve/review RLS policies
+- call out any manual SQL the user must apply
+- do not assume the schema change has been deployed
+
+## Documenting historical decisions
+
+When documenting a rejected or superseded design (e.g. an earlier UI shape,
+architecture, or approach), mark it explicitly so it isn't mistaken for a
+current requirement:
+
+> Historical decision — do not treat as current implementation requirements.
+>
+> We previously tried...
+> Reconsider only if the task explicitly calls for redesigning this interaction.
+
+(The "Design history" bullet under the board section above follows this
+pattern informally — new call-outs should use the explicit framing.)
+
+## Important invariants
+
+Do not change these unless the task explicitly requires it:
+
+- Statement format is auto-detected from file content. Do not reintroduce a bank/format picker.
+- Re-importing a transaction must not overwrite user categorization/type/card type/notes.
+- `need_review` is neither common nor personal.
+- Uncategorized and Need review are independent concepts.
+- Admin authorization is enforced server-side/database-side; UI redirects are not security boundaries.
+- Rules never silently overwrite an already categorized transaction.
+- Retroactive rule application only considers uncategorized transactions.
+- Category colors must remain stable across views and months.
+- Do not install a new package when the repository already has a reasonable way to solve the problem. If a new dependency is genuinely warranted, explain why before adding it.
+- Before introducing a new UI pattern, search existing components, shared constants, and nearby implementation for an established equivalent — reuse it rather than inventing a new one.
+
+## Keep these instructions current
+
+When the user gives feedback about *how* work should be done rather than
+only *what* to build, determine whether it's a reusable project convention
+or persistent workflow preference. If so, update this file (or the most
+relevant instruction file), make the rule concrete enough to guide future
+work, and phrase it so the same correction isn't needed again. Applies to
+feedback about git workflow, testing expectations, responsiveness, component
+architecture, documentation practices, database workflow, tooling, and
+implementation conventions.
+
+## Updating instructions
+
+When the user says "add this to instructions:" or anything similar followed
+by text: convert the request into a clear, concise instruction in this
+file's style, identify the most appropriate existing section (or propose a
+new one), and ask for confirmation in this format before applying:
+
+> Add this instruction: <rewritten instruction>
+> Under section: <section name>
+> Confirm? (Yes / No / Edit text)
+
+On "Yes," apply exactly as proposed. On "Edit text," revise per feedback and
+re-confirm. On "No," stop without modifying the file. Never add a
+duplicate — if the behavior is already covered, point that out and suggest
+updating the existing instruction instead.
+
+## Documentation consistency
+
+When a change affects documented behavior, architecture, design, setup,
+requirements, or scope, update the relevant documentation in the same
+change. Before finishing: check whether README.md, DESIGN.md, CLAUDE.md,
+ROADMAP.md, or other docs need updating; update every doc whose content
+would become incorrect or misleading; keep updates scoped to the actual
+change, not a rewrite of unrelated material; if unclear, inspect the doc and
+judge whether it's affected. A change isn't complete while affected docs
+still describe the old behavior. In the final summary, state which docs were
+updated — or that relevant docs were checked and needed no change.
+
+## Git Workflow
+
+1. **One change, one branch.** Start non-trivial work on a new branch off `main` (`feature/...`, `fix/...`, `docs/...`).
+2. **Verify before asking.** `npx tsc --noEmit` and `npm run build` must be clean. For UI/visual changes, verify in a headless browser against a throwaway fixture/dev-test route: screenshot it, check the console for errors, then delete the throwaway route before finishing.
+3. **Ask before shipping.** Summarize what changed and ask for confirmation before committing, unless the user already said to just proceed.
+4. **On confirmation:** commit, push, open a PR, merge into `main`.
+5. **After merging: delete the branch**, both locally (`git branch -d`) and on the remote (`git push origin --delete`).
+6. **No stray dev servers.** Before starting one: check whether the required port already has a listener, reuse an appropriate existing project server when safe, otherwise stop stale project listeners before starting a new one. After testing: stop any dev server started for the task and verify no stray server from the task remains running.
