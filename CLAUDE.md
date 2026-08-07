@@ -399,7 +399,7 @@ updated — or that relevant docs were checked and needed no change.
 
 ## Git Workflow
 
-1. **One change, one branch.** Start non-trivial work on a new branch off `main` (`feature/...`, `fix/...`, `docs/...`).
+1. **One change, one branch.** Before starting any work, check the current branch. If on `main`, create and check out a new branch off `main` named for the task's subject area (`feature/...`, `fix/...`, `docs/...`) before making changes — never work directly on `main`.
 2. **Verify before asking.** `npx tsc --noEmit` and `npm run build` must be clean. For UI/visual changes, verify in a headless browser against a throwaway fixture/dev-test route: screenshot it, check the console for errors, then delete the throwaway route before finishing.
 3. **Ask before shipping.** Summarize what changed and ask for confirmation before committing, unless the user already said to just proceed.
 4. **On confirmation:** commit, push, open a PR, merge into `main`.
