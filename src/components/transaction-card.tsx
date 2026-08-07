@@ -86,6 +86,16 @@ export function TransactionCard({
           !compact && "border-b border-border/60 pb-1.5",
         )}
       >
+        {/* Checkbox sits at the opposite end of the row from the expand
+            chevron below, so the two never compete for the same click. */}
+        {onToggleSelect && (
+          <Checkbox
+            checked={selected}
+            onCheckedChange={onToggleSelect}
+            aria-label="Select transaction"
+            className="mt-0.5 size-3 shrink-0 cursor-pointer opacity-0 group-hover:opacity-100"
+          />
+        )}
         <div className="min-w-0 flex-1">
           <p className="truncate text-xs font-semibold">
             {transaction.description}
@@ -98,16 +108,7 @@ export function TransactionCard({
             </p>
           )}
         </div>{" "}
-        {onToggleSelect && (
-          <Checkbox
-            checked={selected}
-            onCheckedChange={onToggleSelect}
-            aria-label="Select transaction"
-            className="mt-0.5 size-3 shrink-0 cursor-pointer opacity-0 group-hover:opacity-100"
-          />
-        )}
-        {/* The only click target for expanding — its own padded hit area, kept
-            apart from the checkbox above so the two aren't easy to fat-finger. */}
+        {/* The only click target for expanding — its own padded hit area. */}
         {compact && (
           <button
             type="button"
