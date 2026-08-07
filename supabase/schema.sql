@@ -89,6 +89,10 @@ alter table transactions add column if not exists location text;
 alter table transactions add column if not exists notes text;
 alter table transactions add column if not exists card_type card_type not null default 'credit';
 
+-- Supports the overview's day/week/custom-range views, which query
+-- transactions by date directly instead of by month_id.
+create index if not exists transactions_user_id_date_idx on transactions (user_id, date);
+
 -- `add column if not exists` above is a no-op once the column already exists,
 -- so this is what actually updates the default for databases that ran an
 -- earlier version of this migration (default was 'regular').

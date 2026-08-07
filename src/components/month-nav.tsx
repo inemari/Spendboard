@@ -1,13 +1,8 @@
 import Link from "next/link";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { formatMonthLabel } from "@/lib/format";
+import { shiftMonth as shift } from "@/lib/date-range";
 import { cn } from "@/lib/utils";
-
-function shift(year: number, month: number, delta: number): { year: number; month: number } {
-  // Date normalises the December→January rollover in both directions for us.
-  const d = new Date(year, month - 1 + delta, 1);
-  return { year: d.getFullYear(), month: d.getMonth() + 1 };
-}
 
 /**
  * Prev/next month stepping. Until now the only way to reach another month was to
