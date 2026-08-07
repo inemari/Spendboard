@@ -1,9 +1,19 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import { useDroppable } from "@dnd-kit/core";
-import { Inbox } from "lucide-react";
+import { Filter, Inbox } from "lucide-react";
 import { DraggableTransactionCard } from "@/components/draggable-transaction-card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { formatSpend } from "@/lib/format";
 import type { CategorySwatch } from "@/lib/category-colors";
 import { cn } from "@/lib/utils";
@@ -29,6 +39,10 @@ export type ColumnActions = {
   onToggleSelect: (id: string) => void;
   onToggleSelectAll: (ids: string[]) => void;
   highlightedIds: Set<string>;
+  /** Which card (if any) is expanded — shared across the whole board, so
+   *  opening one card collapses whichever other card was open. */
+  expandedId: string | null;
+  onToggleExpanded: (id: string) => void;
 };
 
 function CardList({
@@ -43,6 +57,8 @@ function CardList({
   selectedIds,
   onToggleSelect,
   highlightedIds,
+  expandedId,
+  onToggleExpanded,
 }: ColumnActions & { transactions: Transaction[]; emptyLabel: string }) {
   if (transactions.length === 0) {
     return (
@@ -69,12 +85,16 @@ function CardList({
           onToggleSelect={() => onToggleSelect(t.id)}
           highlighted={highlightedIds.has(t.id)}
           compact
+          expanded={expandedId === t.id}
+          onToggleExpanded={() => onToggleExpanded(t.id)}
         />
       ))}
     </>
   );
 }
 
+/** One subcategory's zone within a cell — its own droppable id, shown only
+ *  while its checkbox is on in the cell's filter. */
 function SubcategorySection({
   section,
   ...actions
@@ -92,7 +112,7 @@ function SubcategorySection({
     <div
       ref={setNodeRef}
       className={cn(
-        "flex flex-col gap-1.5  border-t-2  p-1 transition-colors group/subcategory",
+        "flex flex-col gap-1.5 border-l-2 p-1 transition-colors group/subcategory",
         isOver ? "border-l-primary bg-muted/60" : "border-l-border",
       )}
     >
@@ -126,13 +146,20 @@ function SubcategorySection({
 }
 
 /**
- * A real kanban column: cards are always visible, not hidden behind an expand
- * click. Used both as the board's pinned Uncategorized pane and as one page
- * of the category carousel (`category-board.tsx`) — scaling to 10+ categories
- * comes from stepping through them one (or a swipe of a few) at a time rather
- * than summarizing every column down to a tile or showing them all at once.
- * This column's own capped height with an internal scrollbar keeps a busy
- * category from growing without bound either way.
+ * A fixed-height "cockpit" cell: one per category (plus the Uncategorized
+ * pile), all rendered together in a wrapping grid so every category is on
+ * screen at once. Each cell caps its own height and scrolls its card list
+ * internally, so a busy category never grows the grid or throws its row out
+ * of alignment with its neighbors.
+ *
+ * A category with subcategories shows "General" (transactions with no
+ * subcategory) plus every subcategory's own zone stacked in the same cell —
+ * no sibling cells, no paging. Each visible zone is its own drop target, same
+ * as before subcategories moved into a shared cell. A filter dropdown lets
+ * the user hide zones they don't want to see or drop into right now (e.g.
+ * only two subcategories, or only "General") — hiding a zone unmounts its
+ * drop target along with it, so a hidden subcategory can't accidentally
+ * receive a drop while it's filtered out.
  */
 export function CategoryColumn({
   id,
@@ -140,22 +167,41 @@ export function CategoryColumn({
   transactions,
   subcategories,
   swatch,
-  emptyLabel = "Drop transactions here",
-  bodyClassName,
   ...actions
 }: {
   id: string;
   title: string;
   transactions: Transaction[];
-  /** Subcategories render as nested drop zones inside this column, not as sibling columns. */
+  /** Subcategories render as zones inside this cell, filterable by visibility. */
   subcategories: ColumnSection[];
   swatch: CategorySwatch;
-  emptyLabel?: string;
-  /** Overrides the card area's height cap — the pinned Uncategorized column
-   *  uses viewport height instead of the fixed cap every other column gets. */
-  bodyClassName?: string;
 } & ColumnActions) {
   const hasSubcategories = subcategories.length > 0;
+  const GENERAL_ID = `${id}__general`;
+  const sections: ColumnSection[] = hasSubcategories
+    ? [{ id: GENERAL_ID, title: "General", transactions }, ...subcategories]
+    : [];
+
+  const [visibleSectionIds, setVisibleSectionIds] = useState<Set<string> | null>(null);
+  const visible = visibleSectionIds ?? new Set(sections.map((s) => s.id));
+
+  function toggleSection(sectionId: string) {
+    setVisibleSectionIds((prev) => {
+      const next = new Set(prev ?? sections.map((s) => s.id));
+      if (next.has(sectionId)) next.delete(sectionId);
+      else next.add(sectionId);
+      return next;
+    });
+  }
+
+  const visibleSections = sections.filter((s) => visible.has(s.id));
+  const isFiltered = visibleSections.length !== sections.length;
+
+  // Dropping on the cell's shared "General" zone always lands there; the
+  // per-subcategory zones (rendered below) each carry their own droppable id.
+  const { setNodeRef, isOver } = useDroppable({
+    id: hasSubcategories ? GENERAL_ID : id,
+  });
 
   const allTransactions = hasSubcategories
     ? [...transactions, ...subcategories.flatMap((s) => s.transactions)]
@@ -168,23 +214,10 @@ export function CategoryColumn({
     allTransactions.length > 0 &&
     allTransactions.every((t) => actions.selectedIds.has(t.id));
 
-  // Leaf columns keep the whole column as one drop target; columns with
-  // subcategories split into a "General" zone plus one zone per subcategory,
-  // since nested drop targets would otherwise compete for the same drop event.
-  const { setNodeRef, isOver } = useDroppable({
-    id,
-    disabled: hasSubcategories,
-  });
-
   return (
-    <div className="flex flex-col rounded-xl border border-border/60 bg-card group/category">
-      <div
-        className={cn(
-          "flex flex-col gap-0.5 rounded-t-md px-3 py-2",
-          swatch.soft,
-        )}
-      >
-        <div className="flex items-center gap-1.5 ">
+    <div className="group/category flex h-64 flex-col overflow-hidden rounded-2xl border border-border/60 bg-card">
+      <div className={cn("flex flex-col gap-0.5 px-3 py-2", swatch.soft)}>
+        <div className="flex items-center gap-1.5">
           {allTransactions.length > 0 && (
             <Checkbox
               checked={allSelected}
@@ -203,36 +236,91 @@ export function CategoryColumn({
               {allTransactions.length}
             </span>
           )}
+          {hasSubcategories && (
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    className={cn(
+                      "shrink-0 opacity-0 group-hover/category:opacity-100 focus-visible:opacity-100",
+                      isFiltered && "opacity-100 text-primary",
+                    )}
+                    aria-label={`Filter ${title} subcategories`}
+                  />
+                }
+              >
+                <Filter className="size-3" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {sections.map((section) => (
+                  <DropdownMenuCheckboxItem
+                    key={section.id}
+                    checked={visible.has(section.id)}
+                    onCheckedChange={() => toggleSection(section.id)}
+                  >
+                    {section.title}
+                  </DropdownMenuCheckboxItem>
+                ))}
+                {isFiltered && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => setVisibleSectionIds(null)}>
+                      Show all
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
         <p className="text-[11px] font-medium tabular-nums opacity-80">
           {formatSpend(spent)}
         </p>
       </div>
 
-      <div
-        ref={hasSubcategories ? undefined : setNodeRef}
-        className={cn(
-          "flex min-h-20 flex-col gap-2 overflow-y-auto p-2 transition-colors",
-          bodyClassName ?? "max-h-96",
-          !hasSubcategories && isOver && "bg-primary/5",
+      <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-2">
+        {!hasSubcategories && (
+          <div
+            ref={setNodeRef}
+            className={cn(
+              "flex flex-1 flex-col gap-2 rounded-md transition-colors",
+              isOver && "bg-primary/5",
+            )}
+          >
+            <CardList
+              transactions={transactions}
+              emptyLabel="Drop transactions here"
+              {...actions}
+            />
+          </div>
         )}
-      >
-        <div
-          ref={hasSubcategories ? setNodeRef : undefined}
-          className={cn(
-            "flex flex-col gap-1.5 rounded-md transition-colors",
-            hasSubcategories && isOver && "bg-muted/60",
+
+        {hasSubcategories && visibleSections.length === 0 && (
+          <div className="flex flex-col items-center gap-1 rounded-md border border-dashed p-3 text-center text-[11px] text-muted-foreground">
+            <Filter className="size-4" />
+            Every subcategory is filtered out.
+          </div>
+        )}
+
+        {hasSubcategories &&
+          visibleSections.map((section) =>
+            section.id === GENERAL_ID ? (
+              <div
+                key={section.id}
+                ref={setNodeRef}
+                className={cn(
+                  "flex flex-col gap-1.5 rounded-md transition-colors",
+                  isOver && "bg-primary/5",
+                )}
+              >
+                <CardList transactions={section.transactions} emptyLabel="Drop here" {...actions} />
+              </div>
+            ) : (
+              <SubcategorySection key={section.id} section={section} {...actions} />
+            ),
           )}
-        >
-          <CardList
-            transactions={transactions}
-            emptyLabel={hasSubcategories ? "Drop here" : emptyLabel}
-            {...actions}
-          />
-        </div>
-        {subcategories.map((section) => (
-          <SubcategorySection key={section.id} section={section} {...actions} />
-        ))}
       </div>
     </div>
   );
