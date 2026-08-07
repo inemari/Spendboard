@@ -93,17 +93,23 @@ export function TransactionCard({
             checked={selected}
             onCheckedChange={onToggleSelect}
             aria-label="Select transaction"
-            className="mt-0.5 size-3 shrink-0 cursor-pointer opacity-0 group-hover:opacity-100"
+            className={`mt-0.5 size-3 shrink-0 cursor-pointer ${selected ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
           />
         )}
         <div className="min-w-0 flex-1">
-          <p className="truncate text-xs font-semibold">
+          <p
+            className="truncate text-xs font-semibold"
+            title={transaction.description}
+          >
             {transaction.description}
           </p>
           {/* Collapsed compact cards show only name/date/amount — location
               only appears once expanded, alongside the other detail fields. */}
           {(!compact || expanded) && transaction.location && (
-            <p className="truncate text-[11px] text-muted-foreground">
+            <p
+              className="truncate text-[11px] text-muted-foreground"
+              title={transaction.location}
+            >
               {transaction.location}
             </p>
           )}
@@ -118,7 +124,10 @@ export function TransactionCard({
             className="-m-1 shrink-0 rounded-full p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
             <ChevronDown
-              className={cn("size-3 transition-transform", expanded && "rotate-180")}
+              className={cn(
+                "size-3 transition-transform",
+                expanded && "rotate-180",
+              )}
             />
           </button>
         )}
@@ -180,7 +189,9 @@ export function TransactionCard({
               onClick={onTypeToggle}
               className={cn(
                 "shrink-0 rounded-full border font-medium transition-colors hover:bg-muted",
-                compact ? "px-1.5 py-px text-[10px]" : "px-2 py-0.5 text-[11px]",
+                compact
+                  ? "px-1.5 py-px text-[10px]"
+                  : "px-2 py-0.5 text-[11px]",
                 transaction.type === "need_review" &&
                   "border-destructive/40 bg-destructive/10 text-destructive",
               )}
@@ -192,7 +203,9 @@ export function TransactionCard({
               onClick={onCardTypeToggle}
               className={cn(
                 "flex shrink-0 items-center gap-1 rounded-full border font-medium capitalize transition-colors hover:bg-muted",
-                compact ? "px-1.5 py-px text-[10px]" : "px-2 py-0.5 text-[11px]",
+                compact
+                  ? "px-1.5 py-px text-[10px]"
+                  : "px-2 py-0.5 text-[11px]",
               )}
             >
               <CreditCard className="size-2.5" />

@@ -66,7 +66,7 @@ export function TimeframeSwitcher({ year, month }: { year: number; month: number
     "flex size-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-30 disabled:hover:bg-transparent";
 
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border/60 bg-card px-3 py-2">
+    <>
       <div className="flex items-center gap-1 rounded-md bg-muted p-1">
         {TABS.map((tab) => (
           <button
@@ -123,6 +123,6 @@ export function TimeframeSwitcher({ year, month }: { year: number; month: number
           </button>
         </div>
       )}
-    </div>
+    </>
   );
 }

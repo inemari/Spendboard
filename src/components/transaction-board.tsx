@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { LayoutGrid, List } from "lucide-react";
+import { LayoutGrid, List, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTransactionActions } from "@/hooks/use-transaction-actions";
 import { computeOverview } from "@/lib/overview";
@@ -16,15 +16,21 @@ import { TypeOverviewSheet } from "@/components/type-overview-sheet";
 import { SimilarTransactionsDialog } from "@/components/similar-transactions-dialog";
 import { CreateRuleDialog } from "@/components/create-rule-dialog";
 import { DeleteConfirmDialog } from "@/components/delete-confirm-dialog";
+import { TimeframeSwitcher } from "@/components/timeframe-switcher";
+import { Input } from "@/components/ui/input";
 import type { Category, Transaction, TxType } from "@/lib/types";
 
 type View = "overview" | "board";
 
 export function TransactionBoard({
+  year,
+  month,
   initialTransactions,
   categories,
   categorizeHref,
 }: {
+  year: number;
+  month: number;
   initialTransactions: Transaction[];
   categories: Category[];
   categorizeHref: string;
@@ -58,6 +64,10 @@ export function TransactionBoard({
   const [overviewType, setOverviewType] = useState<TxType | null>(null);
   const [view, setView] = useState<View>("overview");
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>({ kind: "all" });
+  // Each view keeps its own search text, so switching Overview <-> Board
+  // doesn't clobber whichever query the other view had typed.
+  const [listQuery, setListQuery] = useState("");
+  const [boardQuery, setBoardQuery] = useState("");
 
   const router = useRouter();
   const pathname = usePathname();
@@ -120,9 +130,7 @@ export function TransactionBoard({
     return null;
   }, [categoryFilter, colorMap]);
 
-  // Rendered next to whichever content it controls (the list's header, or
-  // above the board) instead of floating in its own row — desktop-only
-  // since the board needs drag-and-drop and horizontal room.
+  // Desktop-only since the board needs drag-and-drop and horizontal room.
   const viewToggle = (
     <div className="hidden gap-1 rounded-full bg-muted p-0.5 md:flex">
       {(
@@ -183,12 +191,40 @@ export function TransactionBoard({
         onDelete={handleDeleteTransaction}
       />
 
+      {/* One shared bar for date-range navigation, the active view's search/
+          filter field, and the Overview/Board toggle — keeping all of it off
+          the board's own canvas is what gives the board its extra vertical
+          room. */}
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/60 bg-card px-3 py-2">
+        <TimeframeSwitcher year={year} month={month} />
+
+        {transactions.length > 0 && (
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <Search className="absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground" />
+              {view === "overview" ? (
+                <Input
+                  value={listQuery}
+                  onChange={(e) => setListQuery(e.target.value)}
+                  placeholder="Search…"
+                  className="h-8 w-full pl-8 text-xs sm:w-48"
+                />
+              ) : (
+                <Input
+                  value={boardQuery}
+                  onChange={(e) => setBoardQuery(e.target.value)}
+                  placeholder="Filter categories…"
+                  className="h-8 w-full pl-8 text-xs sm:w-48"
+                />
+              )}
+            </div>
+            {viewToggle}
+          </div>
+        )}
+      </div>
+
       {transactions.length > 0 && (
         <>
-          {/* The board is still the fastest way to sort a pile of transactions, so
-              it stays — just behind the toggle above, rather than dominating the
-              page. Each view carries its own copy of the toggle (in the list's
-              header, or above the board) since only one is ever mounted at once. */}
           <div className={cn(view === "board" && "md:hidden")}>
             <div className="grid gap-5 lg:grid-cols-[19rem_minmax(0,1fr)] lg:items-start">
               <aside className="flex flex-col gap-4 rounded-2xl border border-border/60 bg-card p-4 sm:p-5">
@@ -216,7 +252,7 @@ export function TransactionBoard({
                 selectedIds={selectedIds}
                 highlightedIds={highlightedIds}
                 filterChip={filterChip}
-                viewToggle={viewToggle}
+                query={listQuery}
                 onToggleSelect={toggleSelect}
                 onCategoryChange={handleCategoryChange}
                 onTypeToggle={handleTypeToggle}
@@ -232,6 +268,7 @@ export function TransactionBoard({
               transactions={sorted}
               categories={categories}
               colorMap={colorMap}
+              query={boardQuery}
               onCategoryChange={handleCategoryChange}
               onCategoryChangeMulti={handleCategoryChangeMulti}
               onTypeToggle={handleTypeToggle}
@@ -242,7 +279,6 @@ export function TransactionBoard({
               onToggleSelect={toggleSelect}
               onToggleSelectAll={toggleSelectAll}
               highlightedIds={highlightedIds}
-              viewToggle={viewToggle}
             />
           )}
         </>

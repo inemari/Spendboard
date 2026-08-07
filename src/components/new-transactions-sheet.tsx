@@ -45,9 +45,9 @@ export function NewTransactionsSheet({
               return (
                 <div key={t.id} className="flex items-start gap-3 rounded-lg border p-3 text-sm">
                   <div className="min-w-0 flex-1">
-                    <p className="truncate font-medium">{t.description}</p>
+                    <p className="truncate font-medium" title={t.description}>{t.description}</p>
                     {t.location && (
-                      <p className="truncate text-xs text-muted-foreground">{t.location}</p>
+                      <p className="truncate text-xs text-muted-foreground" title={t.location}>{t.location}</p>
                     )}
                     <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
                       <span>{formatDate(t.date)}</span>

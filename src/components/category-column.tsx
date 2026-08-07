@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useDroppable } from "@dnd-kit/core";
-import { Filter, Inbox } from "lucide-react";
+import { Filter, Inbox, MoreVertical } from "lucide-react";
 import { DraggableTransactionCard } from "@/components/draggable-transaction-card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
@@ -127,7 +127,10 @@ function SubcategorySection({
             className="size-3 shrink-0 cursor-pointer opacity-0 group-hover/subcategory:opacity-100 focus-visible:opacity-100"
           />
         )}
-        <h4 className="min-w-0 flex-1 truncate text-[11px] font-medium text-muted-foreground">
+        <h4
+          className="min-w-0 flex-1 truncate text-[11px] font-medium text-muted-foreground"
+          title={section.title}
+        >
           {section.title}
         </h4>
         <span className="shrink-0 text-[11px] font-medium tabular-nums text-muted-foreground">
@@ -182,7 +185,8 @@ export function CategoryColumn({
     ? [{ id: GENERAL_ID, title: "General", transactions }, ...subcategories]
     : [];
 
-  const [visibleSectionIds, setVisibleSectionIds] = useState<Set<string> | null>(null);
+  const [visibleSectionIds, setVisibleSectionIds] =
+    useState<Set<string> | null>(null);
   const visible = visibleSectionIds ?? new Set(sections.map((s) => s.id));
 
   function toggleSection(sectionId: string) {
@@ -215,69 +219,83 @@ export function CategoryColumn({
     allTransactions.every((t) => actions.selectedIds.has(t.id));
 
   return (
-    <div className="group/category flex h-64 flex-col overflow-hidden rounded-2xl border border-border/60 bg-card">
-      <div className={cn("flex flex-col gap-0.5 px-3 py-2", swatch.soft)}>
-        <div className="flex items-center gap-1.5">
-          {allTransactions.length > 0 && (
-            <Checkbox
-              checked={allSelected}
-              onCheckedChange={() =>
-                actions.onToggleSelectAll(allTransactions.map((t) => t.id))
-              }
-              aria-label={`Select all in ${title}`}
-              className="size-3 shrink-0 cursor-pointer opacity-0 group-hover/category:opacity-100 focus-visible:opacity-100"
-            />
-          )}
-          <h3 className="min-w-0 flex-1 truncate text-xs font-semibold">
+    <div className="group/category flex h-64 flex-col overflow-hidden rounded-lg border-2 border-dashed  bg-card/20">
+      <div
+        className={cn(
+          "flex items-start justify-between gap-0.5 px-2 py-2",
+          swatch.soft,
+        )}
+      >
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <h3 className="min-w-0 truncate text-xs font-semibold" title={title}>
             {title}
           </h3>
-          {allTransactions.length > 0 && (
-            <span className="shrink-0 text-[11px] font-medium tabular-nums">
-              {allTransactions.length}
-            </span>
-          )}
-          {hasSubcategories && (
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                render={
-                  <Button
-                    variant="ghost"
-                    size="icon-xs"
-                    className={cn(
-                      "shrink-0 opacity-0 group-hover/category:opacity-100 focus-visible:opacity-100",
-                      isFiltered && "opacity-100 text-primary",
-                    )}
-                    aria-label={`Filter ${title} subcategories`}
-                  />
-                }
-              >
-                <Filter className="size-3" />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                {sections.map((section) => (
-                  <DropdownMenuCheckboxItem
-                    key={section.id}
-                    checked={visible.has(section.id)}
-                    onCheckedChange={() => toggleSection(section.id)}
-                  >
-                    {section.title}
-                  </DropdownMenuCheckboxItem>
-                ))}
-                {isFiltered && (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={() => setVisibleSectionIds(null)}>
-                      Show all
-                    </DropdownMenuItem>
-                  </>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
+          <div className="flex items-center gap-2">
+            <p className="text-[11px] font-medium tabular-nums opacity-80">
+              {formatSpend(spent)}
+            </p>
+            {allTransactions.length > 0 && (
+              <span className="shrink-0 text-[10px] font-medium tabular-nums rounded-full bg-white/50 aspect-square text-center">
+                {allTransactions.length}
+              </span>
+            )}
+          </div>
         </div>
-        <p className="text-[11px] font-medium tabular-nums opacity-80">
-          {formatSpend(spent)}
-        </p>
+        {(allTransactions.length > 0 || hasSubcategories) && (
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  className={cn(
+                    "shrink-0 opacity-0 group-hover/category:opacity-100 focus-visible:opacity-100",
+                    isFiltered && "opacity-100 text-primary",
+                  )}
+                  aria-label={`${title} options`}
+                />
+              }
+            >
+              <MoreVertical className="size-3" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {allTransactions.length > 0 && (
+                <DropdownMenuCheckboxItem
+                  checked={allSelected}
+                  onCheckedChange={() =>
+                    actions.onToggleSelectAll(allTransactions.map((t) => t.id))
+                  }
+                >
+                  Select all
+                </DropdownMenuCheckboxItem>
+              )}
+              {hasSubcategories && (
+                <>
+                  {allTransactions.length > 0 && <DropdownMenuSeparator />}
+                  {sections.map((section) => (
+                    <DropdownMenuCheckboxItem
+                      key={section.id}
+                      checked={visible.has(section.id)}
+                      onCheckedChange={() => toggleSection(section.id)}
+                    >
+                      {section.title}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                  {isFiltered && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onClick={() => setVisibleSectionIds(null)}
+                      >
+                        Show all
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-2">
@@ -315,10 +333,18 @@ export function CategoryColumn({
                   isOver && "bg-primary/5",
                 )}
               >
-                <CardList transactions={section.transactions} emptyLabel="Drop here" {...actions} />
+                <CardList
+                  transactions={section.transactions}
+                  emptyLabel="Drop here"
+                  {...actions}
+                />
               </div>
             ) : (
-              <SubcategorySection key={section.id} section={section} {...actions} />
+              <SubcategorySection
+                key={section.id}
+                section={section}
+                {...actions}
+              />
             ),
           )}
       </div>

@@ -80,7 +80,7 @@ export function CategorySidebar({
           >
             <div className="flex items-baseline gap-2">
               <span className={cn("size-1.5 shrink-0 rounded-full", swatch.bar)} />
-              <span className="min-w-0 flex-1 truncate text-sm font-medium">{slice.name}</span>
+              <span className="min-w-0 flex-1 truncate text-sm font-medium" title={slice.name}>{slice.name}</span>
               <span className="shrink-0 text-sm font-semibold tabular-nums">
                 {formatSpend(slice.spent)}
               </span>

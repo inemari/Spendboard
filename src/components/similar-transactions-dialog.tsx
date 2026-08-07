@@ -93,9 +93,9 @@ function SimilarTransactionsDialogContent({
               <div className="min-w-0 flex-1">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="truncate font-medium">{t.description}</p>
+                    <p className="truncate font-medium" title={t.description}>{t.description}</p>
                     {t.location && (
-                      <p className="truncate text-xs text-muted-foreground">{t.location}</p>
+                      <p className="truncate text-xs text-muted-foreground" title={t.location}>{t.location}</p>
                     )}
                   </div>
                   <span className="shrink-0 font-semibold tabular-nums">{formatAmount(t.amount)}</span>
@@ -103,7 +103,7 @@ function SimilarTransactionsDialogContent({
                 <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
                   <span>{formatDate(t.date)}</span>
                   <span>&middot;</span>
-                  <span className="truncate">{currentCategoryName}</span>
+                  <span className="truncate" title={currentCategoryName}>{currentCategoryName}</span>
                 </div>
               </div>
             </label>

@@ -100,9 +100,9 @@ function ResolveRuleConflictsDialogContent({
             <div key={t.id} className="rounded-lg border p-2.5 text-sm">
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="truncate font-medium">{t.description}</p>
+                  <p className="truncate font-medium" title={t.description}>{t.description}</p>
                   {t.location && (
-                    <p className="truncate text-xs text-muted-foreground">{t.location}</p>
+                    <p className="truncate text-xs text-muted-foreground" title={t.location}>{t.location}</p>
                   )}
                 </div>
                 <span className="shrink-0 font-semibold tabular-nums">{formatAmount(t.amount)}</span>
@@ -122,7 +122,7 @@ function ResolveRuleConflictsDialogContent({
                       onChange={() => setChoice(t.id, option.categoryId)}
                       className="size-3.5 accent-primary"
                     />
-                    <span className="truncate">{option.categoryName}</span>
+                    <span className="truncate" title={option.categoryName}>{option.categoryName}</span>
                   </label>
                 ))}
                 <label className="flex items-center gap-2 rounded-md border px-2 py-1.5 text-muted-foreground has-checked:border-primary/50 has-checked:bg-primary/5">

@@ -410,7 +410,10 @@ export function RulesManagerPanel({
                   section.unknown && "from-destructive/20 to-destructive/30",
                 )}
               >
-                <h3 className="truncate font-semibold text-foreground/90">
+                <h3
+                  className="truncate font-semibold text-foreground/90"
+                  title={section.categoryName}
+                >
                   {section.depth > 0 && "↳ "}
                   {section.categoryName}
                 </h3>

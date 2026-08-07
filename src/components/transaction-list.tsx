@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
-import { ChevronDown, CreditCard, Receipt, Search, SearchX, Trash2 } from "lucide-react";
+import { useMemo, useState } from "react";
+import { ChevronDown, CreditCard, Receipt, SearchX, Trash2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -31,7 +31,7 @@ export function TransactionList({
   selectedIds,
   highlightedIds,
   filterChip,
-  viewToggle,
+  query = "",
   onToggleSelect,
   onCategoryChange,
   onTypeToggle,
@@ -45,9 +45,9 @@ export function TransactionList({
   highlightedIds: Set<string>;
   /** Set by the category sidebar's active selection; null when scoped to "all". */
   filterChip: ActiveFilterChip | null;
-  /** The Overview/Board switcher, rendered in this header — optional so this
-   *  list can still be reused (e.g. inside a sheet) without it. */
-  viewToggle?: ReactNode;
+  /** Search text — owned by the shared toolbar above this list, so it stays
+   *  in the same bar as the date-range switcher and view toggle. */
+  query?: string;
   onToggleSelect: (id: string) => void;
   onCategoryChange: (id: string, categoryId: string | null) => void;
   onTypeToggle: (id: string, currentType: Transaction["type"]) => void;
@@ -58,7 +58,6 @@ export function TransactionList({
   onNotesChange: (id: string, notes: string | null) => void;
   onDelete: (id: string) => void;
 }) {
-  const [query, setQuery] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const visible = useMemo(() => {
@@ -88,37 +87,22 @@ export function TransactionList({
 
   return (
     <section className="flex flex-col gap-4 rounded-2xl border border-border/60 bg-card p-5 sm:p-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h2 className="flex items-center gap-2 font-heading text-base font-bold">
-          Transactions
-          {filterChip && (
-            <span
-              className={cn(
-                "rounded-full px-2.5 py-0.5 text-xs font-medium",
-                filterChip.className,
-              )}
-            >
-              {filterChip.label}
-            </span>
-          )}
-          <span className="text-sm font-normal text-muted-foreground">
-            {visible.length}
+      <h2 className="flex items-center gap-2 font-heading text-base font-bold">
+        Transactions
+        {filterChip && (
+          <span
+            className={cn(
+              "rounded-full px-2.5 py-0.5 text-xs font-medium",
+              filterChip.className,
+            )}
+          >
+            {filterChip.label}
           </span>
-        </h2>
-
-        <div className="flex items-center gap-2">
-          <div className="relative">
-            <Search className="absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search…"
-              className="h-8 w-full pl-8 text-xs sm:w-48"
-            />
-          </div>
-          {viewToggle}
-        </div>
-      </div>
+        )}
+        <span className="text-sm font-normal text-muted-foreground">
+          {visible.length}
+        </span>
+      </h2>
 
       {days.length === 0 ? (
         <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
@@ -241,11 +225,11 @@ function TransactionRow({
           className="flex min-w-0 flex-1 items-center gap-3 text-left"
         >
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm font-medium">
+            <span className="block truncate text-sm font-medium" title={t.description}>
               {t.description}
             </span>
             {t.location && (
-              <span className="block truncate text-xs text-muted-foreground">
+              <span className="block truncate text-xs text-muted-foreground" title={t.location}>
                 {t.location}
               </span>
             )}

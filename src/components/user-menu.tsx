@@ -66,7 +66,10 @@ export function UserMenu({ userEmail }: { userEmail: string }) {
         />
         <DropdownMenuContent align="end">
           <DropdownMenuGroup>
-            <DropdownMenuLabel className="truncate font-normal text-muted-foreground">
+            <DropdownMenuLabel
+              className="truncate font-normal text-muted-foreground"
+              title={userEmail}
+            >
               {userEmail}
             </DropdownMenuLabel>
             <DropdownMenuSeparator />

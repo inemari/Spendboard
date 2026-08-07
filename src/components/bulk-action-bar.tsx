@@ -35,7 +35,7 @@ export function BulkActionBar({
   onClear: () => void;
 }) {
   return (
-    <div className="fixed inset-x-0 bottom-0 z-40 flex flex-wrap items-center gap-2 border-t bg-card p-3 shadow-[0_-4px_16px_rgba(224,64,160,0.12)]">
+    <div className="mx-20 my-2 rounded-full fixed inset-x-0 bottom-0 z-40 flex flex-wrap items-center gap-2 border bg-card p-3  drop-shadow-lg border-primary">
       <span className="text-sm font-semibold">{count} selected</span>
 
       <Select
@@ -46,8 +46,11 @@ export function BulkActionBar({
         <SelectTrigger className="h-8 w-40 text-xs">
           <SelectValue placeholder="Set category">
             {(value: string | null) => {
-              if (!value || value === UNCATEGORIZED_VALUE) return "Set category";
-              return categories.find((c) => c.id === value)?.name ?? "Set category";
+              if (!value || value === UNCATEGORIZED_VALUE)
+                return "Set category";
+              return (
+                categories.find((c) => c.id === value)?.name ?? "Set category"
+              );
             }}
           </SelectValue>
         </SelectTrigger>
@@ -67,7 +70,12 @@ export function BulkActionBar({
 
       <div className="flex gap-1">
         {TYPES.map((type) => (
-          <Button key={type} size="sm" variant="outline" onClick={() => onTypeChange(type)}>
+          <Button
+            key={type}
+            size="sm"
+            variant="outline"
+            onClick={() => onTypeChange(type)}
+          >
             {formatTxType(type)}
           </Button>
         ))}
@@ -87,7 +95,12 @@ export function BulkActionBar({
         ))}
       </div>
 
-      <Button size="sm" variant="outline" className="ml-auto text-destructive hover:text-destructive" onClick={onDelete}>
+      <Button
+        size="sm"
+        variant="outline"
+        className="ml-auto text-destructive hover:text-destructive"
+        onClick={onDelete}
+      >
         <Trash2 className="size-4" />
         Delete
       </Button>

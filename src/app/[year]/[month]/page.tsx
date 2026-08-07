@@ -4,7 +4,6 @@ import { resolveRange, type ViewMode } from "@/lib/date-range";
 import { AppHeader } from "@/components/app-header";
 import { UploadButton } from "@/components/upload-button";
 import { TransactionBoard } from "@/components/transaction-board";
-import { TimeframeSwitcher } from "@/components/timeframe-switcher";
 
 export default async function MonthWorkspacePage({
   params,
@@ -39,8 +38,6 @@ export default async function MonthWorkspacePage({
       />
 
       <div className="flex flex-col gap-4 px-4 py-5 sm:px-6">
-        <TimeframeSwitcher year={yearNum} month={monthNum} />
-
         {categoriesError && (
           <p className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
             Failed to load categories: {categoriesError}
@@ -54,6 +51,8 @@ export default async function MonthWorkspacePage({
         )}
 
         <TransactionBoard
+          year={yearNum}
+          month={monthNum}
           initialTransactions={transactions}
           categories={categories}
           categorizeHref={`/${yearNum}/${monthNum}/categorize`}

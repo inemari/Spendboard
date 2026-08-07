@@ -1,20 +1,22 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState } from "react";
 import {
   DndContext,
+  DragOverlay,
   PointerSensor,
   pointerWithin,
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragStartEvent,
 } from "@dnd-kit/core";
-import { Search, SearchX } from "lucide-react";
-import { Input } from "@/components/ui/input";
+import { SearchX } from "lucide-react";
 import {
   CategoryColumn,
   type ColumnActions,
 } from "@/components/category-column";
+import { TransactionCard } from "@/components/transaction-card";
 import { buildCategoryTree } from "@/lib/category-tree";
 import {
   UNCATEGORIZED_SWATCH,
@@ -46,7 +48,7 @@ export function CategoryBoard({
   onToggleSelect,
   onToggleSelectAll,
   highlightedIds,
-  viewToggle,
+  query = "",
 }: {
   transactions: Transaction[];
   categories: Category[];
@@ -64,19 +66,30 @@ export function CategoryBoard({
   onToggleSelect: (id: string) => void;
   onToggleSelectAll: (ids: string[]) => void;
   highlightedIds: Set<string>;
-  /** The Overview/Board switcher, rendered in the same row as the filter box —
-   *  same pattern as the overview list's header. */
-  viewToggle?: ReactNode;
+  /** Cell-name filter — owned by the shared toolbar above the board, so it
+   *  sits in the same bar as the date-range switcher and view toggle. */
+  query?: string;
 }) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
   );
-  const [query, setQuery] = useState("");
   // Shared across every cell, so opening a card anywhere on the board
   // collapses whichever other card was open — only one at a time.
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  // The card currently being dragged, rendered in a DragOverlay so it stays
+  // visible in hand as it crosses column boundaries — a column's own
+  // overflow-hidden/overflow-y-auto clips anything transformed past its
+  // edge, which is why the card used to vanish mid-drag.
+  const [activeTransaction, setActiveTransaction] = useState<Transaction | null>(null);
+
+  function handleDragStart(event: DragStartEvent) {
+    const activeId = String(event.active.id);
+    const found = transactions.find((t) => t.id === activeId);
+    if (found) setActiveTransaction(found);
+  }
 
   function handleDragEnd(event: DragEndEvent) {
+    setActiveTransaction(null);
     const { active, over } = event;
     if (!over) return;
 
@@ -148,22 +161,10 @@ export function CategoryBoard({
     <DndContext
       sensors={sensors}
       collisionDetection={pointerWithin}
+      onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
       <div className="hidden flex-col gap-3 md:flex">
-        <div className="flex items-center justify-between gap-2">
-          <div className="relative">
-            <Search className="absolute top-1/2 left-2.5 size-3 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Filter categories…"
-              className="h-7 w-40 pl-7 text-xs"
-            />
-          </div>
-          {viewToggle}
-        </div>
-
         {filteredCells.length === 0 ? (
           <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
             <SearchX className="size-5" />
@@ -185,6 +186,23 @@ export function CategoryBoard({
           </div>
         )}
       </div>
+
+      <DragOverlay dropAnimation={null}>
+        {activeTransaction && (
+          <div className="rotate-1 opacity-90 shadow-lg">
+            <TransactionCard
+              transaction={activeTransaction}
+              categories={categories}
+              onCategoryChange={() => {}}
+              onTypeToggle={() => {}}
+              onCardTypeToggle={() => {}}
+              onNotesChange={() => {}}
+              onDelete={() => {}}
+              compact
+            />
+          </div>
+        )}
+      </DragOverlay>
     </DndContext>
   );
 }
