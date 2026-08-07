@@ -15,6 +15,19 @@ why), see the "Product requirements" section of [CLAUDE.md](CLAUDE.md).
 
 ## Could have
 
+- **Board grid still leaves a trailing-row gap.** The board's cockpit grid
+  (`category-board.tsx`, CLAUDE.md) uses `grid-flow-row-dense` so compact
+  (empty-category) cells backfill open space next to a taller populated
+  column, and a shrink/grow-to-fit effect scales the whole grid so it never
+  needs its own page scroll. But when a row's cells don't add up to the full
+  column count, the leftover space at that row's right edge just stays
+  blank — a CSS grid item can only occupy the tracks it's assigned; it can't
+  grow to absorb a neighboring empty one the way a flex item would. A first
+  attempt to close this (reading back each cell's auto-placed position via
+  `getComputedStyle`, pinning it explicitly, then widening the rightmost
+  cell in an underfull row) made the layout misbehave badly enough to
+  revert — see CLAUDE.md's board section for the abandoned approach. Needs a
+  different mechanism (or an accepted trade-off) before trying again.
 - **Personalization quiz (rule suggestions).** On first use, ask the user
   where they usually shop for groceries, beauty products, and similar
   categories, then generate suggested categorization rules from the answers

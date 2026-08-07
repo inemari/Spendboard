@@ -163,6 +163,14 @@ function SubcategorySection({
  * only two subcategories, or only "General") — hiding a zone unmounts its
  * drop target along with it, so a hidden subcategory can't accidentally
  * receive a drop while it's filtered out.
+ *
+ * `compact` shrinks the cell for a category with nothing in it — same
+ * dashed-border/colored-header/"Drop here" box any cell uses, just smaller,
+ * so it's still instantly recognizable as a drop target rather than reading
+ * as some other kind of UI element. Caller only passes `compact` for
+ * categories that are actually empty (incl. all subcategories), so it skips
+ * the subcategory zones/filter menu entirely and drops straight onto this
+ * category's own id.
  */
 export function CategoryColumn({
   id,
@@ -170,6 +178,7 @@ export function CategoryColumn({
   transactions,
   subcategories,
   swatch,
+  compact = false,
   ...actions
 }: {
   id: string;
@@ -178,7 +187,12 @@ export function CategoryColumn({
   /** Subcategories render as zones inside this cell, filterable by visibility. */
   subcategories: ColumnSection[];
   swatch: CategorySwatch;
+  compact?: boolean;
 } & ColumnActions) {
+  if (compact) {
+    return <CompactCategoryColumn id={id} title={title} swatch={swatch} />;
+  }
+
   const hasSubcategories = subcategories.length > 0;
   const GENERAL_ID = `${id}__general`;
   const sections: ColumnSection[] = hasSubcategories
@@ -219,7 +233,7 @@ export function CategoryColumn({
     allTransactions.every((t) => actions.selectedIds.has(t.id));
 
   return (
-    <div className="group/category flex h-64 flex-col overflow-hidden rounded-lg border-2 border-dashed  bg-card/20">
+    <div className="group/category col-[span_2] row-[span_4] flex flex-col overflow-hidden rounded-lg border-2 border-dashed bg-card/20">
       <div
         className={cn(
           "flex items-start justify-between gap-0.5 px-2 py-2",
@@ -351,3 +365,39 @@ export function CategoryColumn({
     </div>
   );
 }
+
+/** A shrunk `CategoryColumn` for a category with nothing in it — same shape
+ *  (colored header, dashed border, "Drop here" box), just a fraction of the
+ *  height, since there's no transaction list to make room for. */
+function CompactCategoryColumn({
+  id,
+  title,
+  swatch,
+}: {
+  id: string;
+  title: string;
+  swatch: CategorySwatch;
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id });
+
+  return (
+    <div className="group/category flex flex-col overflow-hidden rounded-lg border-2 border-dashed bg-card/20">
+      <div className={cn("px-2 py-1.5", swatch.soft)}>
+        <h3 className="min-w-0 truncate text-xs font-semibold" title={title}>
+          {title}
+        </h3>
+      </div>
+      <div
+        ref={setNodeRef}
+        className={cn(
+          "flex flex-1 flex-col items-center justify-center gap-0.5 rounded-md p-1 text-center text-[11px] text-muted-foreground transition-colors",
+          isOver && "bg-primary/5",
+        )}
+      >
+        <Inbox className="size-3.5" />
+        Drop here
+      </div>
+    </div>
+  );
+}
+
