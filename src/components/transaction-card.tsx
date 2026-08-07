@@ -68,7 +68,8 @@ export function TransactionCard({
     <Card
       id={`transaction-${transaction.id}`}
       className={cn(
-        "flex flex-col gap-1 p-3 transition-shadow group",
+        "flex flex-col p-3 transition-shadow group",
+        compact ? "gap-0.5 p-2" : "gap-1",
         selected && "ring-2 ring-primary",
         highlighted && "ring-2 ring-amber-500 shadow-lg shadow-amber-500/30",
       )}
@@ -80,13 +81,28 @@ export function TransactionCard({
         )}
       >
         <div className="min-w-0 flex-1">
-          <p className="truncate text-xs font-semibold">
-            {transaction.description}
-          </p>
-          {transaction.location && (
-            <p className="truncate text-[11px] text-muted-foreground">
-              {transaction.location}
+          {compact ? (
+            // Location folds inline instead of onto its own line — same
+            // info, one fewer row per card.
+            <p className="truncate text-xs font-semibold">
+              {transaction.description}
+              {transaction.location && (
+                <span className="ml-1 font-normal text-muted-foreground">
+                  · {transaction.location}
+                </span>
+              )}
             </p>
+          ) : (
+            <>
+              <p className="truncate text-xs font-semibold">
+                {transaction.description}
+              </p>
+              {transaction.location && (
+                <p className="truncate text-[11px] text-muted-foreground">
+                  {transaction.location}
+                </p>
+              )}
+            </>
           )}
         </div>{" "}
         {onToggleSelect && (
@@ -146,12 +162,13 @@ export function TransactionCard({
           </div>
         </>
       )}
-      <div className="flex flex-row">
+      <div className={cn("flex flex-row", compact && "gap-1")}>
         <button
           type="button"
           onClick={onTypeToggle}
           className={cn(
-            "shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-medium transition-colors hover:bg-muted",
+            "shrink-0 rounded-full border font-medium transition-colors hover:bg-muted",
+            compact ? "px-1.5 py-px text-[10px]" : "px-2 py-0.5 text-[11px]",
             transaction.type === "need_review" &&
               "border-destructive/40 bg-destructive/10 text-destructive",
           )}
@@ -161,7 +178,10 @@ export function TransactionCard({
         <button
           type="button"
           onClick={onCardTypeToggle}
-          className="flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium capitalize transition-colors hover:bg-muted"
+          className={cn(
+            "flex shrink-0 items-center gap-1 rounded-full border font-medium capitalize transition-colors hover:bg-muted",
+            compact ? "px-1.5 py-px text-[10px]" : "px-2 py-0.5 text-[11px]",
+          )}
         >
           <CreditCard className="size-2.5" />
           {transaction.card_type}
@@ -192,12 +212,20 @@ export function TransactionCard({
         <button
           type="button"
           onClick={() => setEditingNote(true)}
-          className="group-hover:opacity-100 opacity-0 self-start text-[11px] text-muted-foreground underline underline-offset-2 hover:text-foreground"
+          className={cn(
+            "group-hover:opacity-100 opacity-0 self-start text-muted-foreground underline underline-offset-2 hover:text-foreground",
+            compact ? "text-[10px]" : "text-[11px]",
+          )}
         >
           + Add note
         </button>
       )}{" "}
-      <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+      <div
+        className={cn(
+          "flex items-center justify-between gap-2 text-muted-foreground",
+          compact ? "text-[10px]" : "text-[11px]",
+        )}
+      >
         <span>{formatDate(transaction.date)}</span>
         <span
           className={cn(
