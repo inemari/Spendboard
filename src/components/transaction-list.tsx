@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { ChevronDown, CreditCard, Receipt, Search, SearchX, Trash2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -31,6 +31,7 @@ export function TransactionList({
   selectedIds,
   highlightedIds,
   filterChip,
+  viewToggle,
   onToggleSelect,
   onCategoryChange,
   onTypeToggle,
@@ -44,6 +45,9 @@ export function TransactionList({
   highlightedIds: Set<string>;
   /** Set by the category sidebar's active selection; null when scoped to "all". */
   filterChip: ActiveFilterChip | null;
+  /** The Overview/Board switcher, rendered in this header — optional so this
+   *  list can still be reused (e.g. inside a sheet) without it. */
+  viewToggle?: ReactNode;
   onToggleSelect: (id: string) => void;
   onCategoryChange: (id: string, categoryId: string | null) => void;
   onTypeToggle: (id: string, currentType: Transaction["type"]) => void;
@@ -102,14 +106,17 @@ export function TransactionList({
           </span>
         </h2>
 
-        <div className="relative">
-          <Search className="absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search…"
-            className="h-8 w-full pl-8 text-xs sm:w-48"
-          />
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <Search className="absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search…"
+              className="h-8 w-full pl-8 text-xs sm:w-48"
+            />
+          </div>
+          {viewToggle}
         </div>
       </div>
 

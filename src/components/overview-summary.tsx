@@ -21,7 +21,13 @@ function SplitMeter({
   total,
   onSelectType,
 }: {
-  segments: { type: TxType; label: string; value: number; className: string; swatch: string }[];
+  segments: {
+    type: TxType;
+    label: string;
+    value: number;
+    className: string;
+    swatch: string;
+  }[];
   total: number;
   onSelectType: (type: TxType) => void;
 }) {
@@ -39,7 +45,10 @@ function SplitMeter({
         {present.map((segment) => (
           <div
             key={segment.type}
-            className={cn("h-full first:rounded-l-full last:rounded-r-full", segment.className)}
+            className={cn(
+              "h-full first:rounded-l-full last:rounded-r-full",
+              segment.className,
+            )}
             style={{ width: `${(segment.value / total) * 100}%` }}
           />
         ))}
@@ -54,11 +63,15 @@ function SplitMeter({
             onClick={() => onSelectType(segment.type)}
             className="group flex items-center gap-2 text-left"
           >
-            <span className={cn("size-2.5 shrink-0 rounded-full", segment.swatch)} />
+            <span
+              className={cn("size-2.5 shrink-0 rounded-full", segment.swatch)}
+            />
             <span className="text-xs text-muted-foreground group-hover:text-foreground">
               {segment.label}
             </span>
-            <span className="text-xs font-semibold tabular-nums">{formatSpend(segment.value)}</span>
+            <span className="text-xs font-semibold tabular-nums">
+              {formatSpend(segment.value)}
+            </span>
           </button>
         ))}
       </div>
@@ -75,7 +88,8 @@ export function OverviewSummary({
   categorizeHref: string;
   onSelectType: (type: TxType) => void;
 }) {
-  const { spent, income, commonSpent, personalSpent, needReviewSpent } = overview;
+  const { spent, income, commonSpent, personalSpent, needReviewSpent } =
+    overview;
   const { uncategorizedCount, needReviewCount } = overview;
 
   const segments = [
@@ -103,38 +117,48 @@ export function OverviewSummary({
   ];
 
   return (
-    <section className="flex flex-col gap-5 rounded-2xl border border-border/60 bg-card p-5 sm:p-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
+    <section className="flex flex-col gap-3">
+      <div className="flex flex-col gap-2">
+        <div className="flex items-baseline gap-2">
           <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
             <Wallet className="size-3.5" />
-            Spent this month
+            Spent
           </p>
-          {/* Hero figure: proportional figures, not tabular — tabular-nums makes a
-              large standalone number look loose. */}
-          <p className="font-heading text-4xl font-bold sm:text-5xl">{formatSpend(spent)}</p>
+          <p className="font-heading text-3xl font-bold">
+            {formatSpend(spent)}
+          </p>
         </div>
 
         {income > 0 && (
-          <div className="text-right">
-            <p className="flex items-center justify-end gap-1.5 text-sm text-muted-foreground">
-              <TrendingUp className="size-3.5" />
+          <div className="flex items-baseline gap-2">
+            <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <TrendingUp className="size-3" />
               Income
             </p>
-            <p className="text-xl font-semibold tabular-nums">{formatSpend(income)}</p>
+            <p className="text-sm font-semibold tabular-nums">
+              {formatSpend(income)}
+            </p>
           </div>
         )}
       </div>
 
-      {spent > 0 && <SplitMeter segments={segments} total={spent} onSelectType={onSelectType} />}
+      {spent > 0 && (
+        <SplitMeter
+          segments={segments}
+          total={spent}
+          onSelectType={onSelectType}
+        />
+      )}
 
       {(uncategorizedCount > 0 || needReviewCount > 0) && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-muted/60 px-4 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-muted/60 px-3 py-2">
           <p className="flex items-center gap-2 text-sm">
             <AlertCircle className="size-4 shrink-0 text-primary" />
             <span>
               {uncategorizedCount > 0 && (
-                <strong className="font-semibold">{uncategorizedCount} uncategorized</strong>
+                <strong className="font-semibold">
+                  {uncategorizedCount} uncategorized
+                </strong>
               )}
               {uncategorizedCount > 0 && needReviewCount > 0 && " · "}
               {needReviewCount > 0 && <>{needReviewCount} need review</>}
@@ -142,7 +166,11 @@ export function OverviewSummary({
           </p>
 
           {uncategorizedCount > 0 && (
-            <Button size="sm" nativeButton={false} render={<Link href={categorizeHref} />}>
+            <Button
+              size="sm"
+              nativeButton={false}
+              render={<Link href={categorizeHref} />}
+            >
               Sort them
               <ArrowRight className="size-3.5" />
             </Button>

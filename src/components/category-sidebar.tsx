@@ -49,7 +49,9 @@ export function CategorySidebar({
         onClick={() => onSelectFilter({ kind: "all" })}
         className={cn(
           "flex items-center justify-between rounded-lg border bg-card px-3 py-2 text-sm font-medium transition-colors",
-          filter.kind === "all" ? "border-primary ring-1 ring-primary" : "border-border/60 hover:border-border",
+          filter.kind === "all"
+            ? "border-foreground/20 bg-muted/60"
+            : "border-border/60 hover:border-border",
         )}
       >
         <span>All transactions</span>
@@ -79,22 +81,24 @@ export function CategorySidebar({
             <div className="flex items-baseline gap-2">
               <span className={cn("size-1.5 shrink-0 rounded-full", swatch.bar)} />
               <span className="min-w-0 flex-1 truncate text-sm font-medium">{slice.name}</span>
-              <span className={cn("shrink-0 text-xs font-semibold tabular-nums", swatch.text)}>
-                {Math.round(slice.share * 100)}%
-              </span>
               <span className="shrink-0 text-sm font-semibold tabular-nums">
                 {formatSpend(slice.spent)}
               </span>
-              <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                {slice.transactionCount}
-              </span>
             </div>
 
-            <div className="h-1 w-full overflow-hidden rounded-full bg-chart-track">
-              <div
-                className={cn("h-full rounded-r-full", swatch.bar)}
-                style={{ width: `${Math.max((slice.spent / max) * 100, 1.5)}%` }}
-              />
+            <div className="flex items-center gap-2 pl-3.5">
+              <div className="h-1 min-w-0 flex-1 overflow-hidden rounded-full bg-chart-track">
+                <div
+                  className={cn("h-full rounded-r-full", swatch.bar)}
+                  style={{ width: `${Math.max((slice.spent / max) * 100, 1.5)}%` }}
+                />
+              </div>
+              <span className={cn("shrink-0 text-[11px] font-semibold tabular-nums", swatch.text)}>
+                {Math.round(slice.share * 100)}%
+              </span>
+              <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+                {slice.transactionCount}
+              </span>
             </div>
           </button>
         );
