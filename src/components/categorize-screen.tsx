@@ -48,45 +48,27 @@ import {
   type CategorySwatch,
 } from "@/lib/category-colors";
 import { formatAmount, formatDate, formatTxType } from "@/lib/format";
-import { scatterJitter } from "@/lib/organic-shapes";
+import {
+  nodeSizeForIndex,
+  scatterJitter,
+  subcategorySizeRatio,
+} from "@/lib/organic-shapes";
 import { cn } from "@/lib/utils";
 import type { Category, Transaction } from "@/lib/types";
 
 const NO_PARENT_VALUE = "__none__";
 
-// Size signals whether a blob is hiding subcategories: large means "there's
-// more here," small means "this is the whole thing." A cluster then shrinks
-// its own parent down further still — SHRUNK, not just SMALL — the instant
-// it opens its orbit, freeing up the visual room its satellites fan out into.
-const PARENT_LARGE = 112;
-const PARENT_SMALL = Math.floor(Math.random() * (100 - 84 + 1)) + 84;
-const PARENT_SHRUNK = 76;
-const SATELLITE_BLOB_SIZES = [60, 68, 56];
-const MAX_SATELLITE_BLOB = Math.max(...SATELLITE_BLOB_SIZES);
-
-function sizeForIndex(sizes: number[], index: number): number {
-  return sizes[index % sizes.length];
-}
-
-// Orbit geometry for a parent category with subcategories (see
-// CategoryCluster below) — radius based on the *shrunk* parent size, since
-// that's the parent's footprint whenever the orbit is actually open.
+// Every top-level node gets its own pseudo-random size (nodeSizeForIndex);
+// subcategories are a fixed fraction of their own parent, so the geometry
+// below is computed per cluster rather than from shared constants.
 // Satellites fan out to the right of the (left-anchored) parent across
 // ±FAN_SPREAD_RAD, rather than surrounding it on all sides.
-const ORBIT_RADIUS = PARENT_SHRUNK / 2 + MAX_SATELLITE_BLOB / 2 + 16;
 const FAN_SPREAD_RAD = (45 * Math.PI) / 180;
 const CLUSTER_LEFT_MARGIN = 6;
-const CLUSTER_EXPANDED_WIDTH =
-  CLUSTER_LEFT_MARGIN +
-  PARENT_SHRUNK / 2 +
-  ORBIT_RADIUS +
-  MAX_SATELLITE_BLOB / 2 +
-  6;
-const CLUSTER_EXPANDED_HEIGHT =
-  2 * (ORBIT_RADIUS * Math.sin(FAN_SPREAD_RAD) + MAX_SATELLITE_BLOB / 2) + 8;
+const SATELLITE_GAP = 18;
 
 // Concentric rings drawn around the selected (expanded) parent — thin,
-// translucent, progressively larger than the shrunk parent itself.
+// translucent, progressively larger than the parent itself.
 const SELECTED_RING_GAPS = [10, 22, 36];
 
 export function CategorizeScreen({
@@ -316,19 +298,23 @@ export function CategorizeScreen({
                 </Button>
               </div>
 
-              {/* The cluster: deliberately narrower than the viewport
-                  (max-w-2xl) and tightly gapped, so categories read as one
-                  compact constellation under the card rather than spanning
-                  the full width. */}
+              {/* The cluster: every node is sized independently
+                  (nodeSizeForIndex) so the group reads as a varied
+                  constellation under the card rather than a uniform grid. */}
               <div className="flex flex-wrap max-w-6xl w-full  items-center justify-between ">
                 {tree.map(({ parent, children }, i) => {
                   // Slight organic stagger so rows don't read as a strict CSS
                   // grid — a visual-only transform (doesn't affect the
                   // flex-wrap flow that actually sizes/wraps these items), so
-                  // it can't break layout, only nudge each blob off its slot.
-                  // Stable per category (index-seeded), not random, so it
-                  // doesn't reshuffle on every render.
+                  // it can't break layout, only nudge each node off its slot.
                   const jitter = scatterJitter(i, 5);
+                  // Both size and jitter are seeded off the category's index
+                  // rather than Math.random(): a real random call would pick
+                  // different values on the server than the client (a
+                  // hydration mismatch) and would also resize every node on
+                  // each re-render — so nodes would visibly jump around on
+                  // every hover, drag and categorize.
+                  const size = nodeSizeForIndex(i);
                   return (
                     <div
                       key={parent.id}
@@ -340,6 +326,7 @@ export function CategorizeScreen({
                       {children.length > 0 ? (
                         <CategoryCluster
                           parent={parent}
+                          parentSize={size}
                           subcategories={children}
                           colorMap={colorMap}
                           dropPulse={dropPulse}
@@ -348,7 +335,7 @@ export function CategorizeScreen({
                         <CategoryDropZone
                           id={parent.id}
                           name={parent.name}
-                          size={Math.floor(Math.random() * (150 - 96 + 1)) + 84}
+                          size={size}
                           swatch={colorMap.get(parent.id) ?? NEUTRAL_SWATCH}
                           pulseKey={
                             dropPulse?.id === parent.id
@@ -640,47 +627,63 @@ function GameCard({
   );
 }
 
-/** A parent category blob with its subcategories orbiting around it. Sized
- *  PARENT_LARGE at rest — big, because it's hiding subcategories — with a
- *  "+N" badge; opens purely on hover, shrinking itself to PARENT_SHRUNK and
- *  fanning the satellites out into the room that frees up (see the ORBIT_*
- *  constants). Hover, not "any drag in progress," is what drives this
- *  deliberately: real cursor movement during a drag still fires mouseenter
- *  on whatever it passes over, so a drag continues to reveal a cluster's
- *  subcategories exactly when the cursor reaches it — expanding every
- *  cluster the instant *any* drag starts (an earlier version of this) was
- *  worse: reflowing the whole grid before the cursor had moved anywhere
- *  could shift the very target the user was dragging toward out from under
- *  their cursor, causing an aimed-for drop to land on empty space. Collapsed,
- *  the wrapper is exactly PARENT_LARGE — no reserved orbit space — or every
- *  other row in the grid ends up stretched to match one cluster's footprint;
- *  opening does briefly reflow neighboring blobs, an acceptable trade for
- *  staying compact at rest. */
+/** A parent category node with its subcategories orbiting around it. The
+ *  parent keeps its own `parentSize` throughout; subcategories are a fixed
+ *  fraction of it (`subcategorySizeRatio`), so the size relationship reads
+ *  as parent-and-children whenever they're on screen together. Collapsed,
+ *  it shows just the parent plus a "+N" badge; hovering fans the satellites
+ *  out to the right (see FAN_SPREAD_RAD / SATELLITE_GAP).
+ *
+ *  Hover, not "any drag in progress," is what drives this deliberately:
+ *  real cursor movement during a drag still fires mouseenter on whatever it
+ *  passes over, so a drag continues to reveal a cluster's subcategories
+ *  exactly when the cursor reaches it — expanding every cluster the instant
+ *  *any* drag starts (an earlier version of this) was worse: reflowing the
+ *  grid before the cursor had moved anywhere could shift the very target
+ *  the user was dragging toward out from under their cursor, causing an
+ *  aimed-for drop to land on empty space. Collapsed, the wrapper is exactly
+ *  `parentSize` — no reserved orbit space — or every other row in the grid
+ *  ends up stretched to match one cluster's footprint; opening does briefly
+ *  reflow neighboring nodes, an acceptable trade for staying compact at
+ *  rest. */
 function CategoryCluster({
   parent,
+  parentSize,
   subcategories,
   colorMap,
   dropPulse,
 }: {
   parent: Category;
+  parentSize: number;
   subcategories: Category[];
   colorMap: Map<string, CategorySwatch>;
   dropPulse: { id: string; key: number } | null;
 }) {
   const [hovered, setHovered] = useState(false);
   const expanded = hovered;
-  const wrapperWidth = expanded ? CLUSTER_EXPANDED_WIDTH : PARENT_LARGE;
-  const wrapperHeight = expanded ? CLUSTER_EXPANDED_HEIGHT : PARENT_LARGE;
 
-  // The parent's own center animates from the collapsed square's center out
-  // to a fixed left-anchored point once expanded — "shrink and slide left,"
-  // not a jump. Satellites fan out to the right from that same anchor point
-  // regardless of collapsed/expanded (only their scale/opacity toggles), so
-  // they visibly emerge from where the parent ends up.
-  const anchorX = PARENT_SHRUNK / 2 + CLUSTER_LEFT_MARGIN;
-  const anchorY = CLUSTER_EXPANDED_HEIGHT / 2;
-  const parentCx = expanded ? anchorX : PARENT_LARGE / 2;
-  const parentCy = expanded ? anchorY : PARENT_LARGE / 2;
+  const satelliteSize = Math.round(
+    parentSize * subcategorySizeRatio(subcategories.length),
+  );
+  const orbitRadius = parentSize / 2 + satelliteSize / 2 + SATELLITE_GAP;
+  const expandedWidth =
+    CLUSTER_LEFT_MARGIN + parentSize / 2 + orbitRadius + satelliteSize / 2 + 6;
+  const expandedHeight = Math.max(
+    parentSize,
+    2 * (orbitRadius * Math.sin(FAN_SPREAD_RAD) + satelliteSize / 2) + 8,
+  );
+
+  const wrapperWidth = expanded ? expandedWidth : parentSize;
+  const wrapperHeight = expanded ? expandedHeight : parentSize;
+
+  // The parent's own center slides from the collapsed square's center out to
+  // a left-anchored point once expanded, and the satellites fan out to the
+  // right from that same anchor — so they visibly emerge from where the
+  // parent ends up rather than from an unrelated point.
+  const anchorX = expanded
+    ? CLUSTER_LEFT_MARGIN + parentSize / 2
+    : parentSize / 2;
+  const anchorY = wrapperHeight / 2;
 
   const satelliteOffsets = subcategories.map((c, i) => {
     const angle =
@@ -690,8 +693,8 @@ function CategoryCluster({
           (2 * FAN_SPREAD_RAD * i) / (subcategories.length - 1);
     return {
       category: c,
-      x: Math.cos(angle) * ORBIT_RADIUS,
-      y: Math.sin(angle) * ORBIT_RADIUS,
+      x: Math.cos(angle) * orbitRadius,
+      y: Math.sin(angle) * orbitRadius,
     };
   });
 
@@ -730,7 +733,7 @@ function CategoryCluster({
 
       {/* Concentric rings around the selected parent — several very thin,
           translucent borders, not solid circles. Centered on the parent's
-          anchor and sized off the shrunk parent it surrounds. */}
+          anchor and sized off the parent they surround. */}
       {expanded &&
         SELECTED_RING_GAPS.map((gap) => (
           <div
@@ -740,14 +743,14 @@ function CategoryCluster({
             style={{
               left: anchorX,
               top: anchorY,
-              width: PARENT_SHRUNK + gap * 2,
-              height: PARENT_SHRUNK + gap * 2,
+              width: parentSize + gap * 2,
+              height: parentSize + gap * 2,
               transform: "translate(-50%, -50%)",
             }}
           />
         ))}
 
-      {satelliteOffsets.map(({ category: c, x, y }, i) => (
+      {satelliteOffsets.map(({ category: c, x, y }) => (
         <div
           key={c.id}
           className="absolute transition-all duration-300 ease-out"
@@ -764,7 +767,7 @@ function CategoryCluster({
           <CategoryDropZone
             id={c.id}
             name={c.name}
-            size={sizeForIndex(SATELLITE_BLOB_SIZES, i)}
+            size={satelliteSize}
             swatch={colorMap.get(c.id) ?? NEUTRAL_SWATCH}
             pulseKey={dropPulse?.id === c.id ? dropPulse.key : undefined}
           />
@@ -773,15 +776,15 @@ function CategoryCluster({
       <div
         className="absolute z-10 transition-all duration-300 ease-out"
         style={{
-          left: parentCx,
-          top: parentCy,
+          left: anchorX,
+          top: anchorY,
           transform: "translate(-50%, -50%)",
         }}
       >
         <CategoryDropZone
           id={parent.id}
           name={parent.name}
-          size={expanded ? PARENT_SHRUNK : PARENT_LARGE}
+          size={parentSize}
           swatch={colorMap.get(parent.id) ?? NEUTRAL_SWATCH}
           selected={expanded}
           badge={expanded ? undefined : subcategories.length}

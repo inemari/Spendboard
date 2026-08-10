@@ -2,7 +2,7 @@
 
 import { useDroppable } from "@dnd-kit/core";
 import { ConfettiBurst } from "@/components/confetti-burst";
-import { BLOB_SHAPE_CLASS } from "@/lib/organic-shapes";
+import { NODE_SHAPE_CLASS } from "@/lib/organic-shapes";
 import { cn } from "@/lib/utils";
 import type { CategorySwatch } from "@/lib/category-colors";
 
@@ -37,16 +37,19 @@ export function CategoryDropZone({
   pulseKey?: number;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id });
-  const fontSize = selected
-    ? "text-[13px]"
-    : size >= 100
-      ? "text-[12px]"
-      : size >= 76
-        ? "text-[11px]"
-        : "text-[9px]";
-  // Padding scales with blob size — a fixed padding would leave almost no
-  // room for text on the smallest satellite blobs (56px).
-  const padding = size >= 100 ? "p-4" : size >= 76 ? "p-3" : "p-2";
+  // Both scale with the node's size: subcategory nodes are a half or a
+  // third of their parent, so a single fixed type size/padding would either
+  // overflow the small ones or look lost on the large ones.
+  const fontSize =
+    size >= 120
+      ? "text-[13px]"
+      : size >= 90
+        ? "text-[12px]"
+        : size >= 64
+          ? "text-[11px]"
+          : "text-[9px]";
+  const padding =
+    size >= 120 ? "p-4" : size >= 90 ? "p-3" : size >= 64 ? "p-2" : "p-1";
 
   return (
     // The drop target's own hit area is a plain (unclipped) box, slightly
@@ -63,7 +66,7 @@ export function CategoryDropZone({
       <div
         className={cn(
           "flex size-full select-none items-center justify-center bg-linear-to-br text-center font-medium text-neutral-800 transition-[background,box-shadow]",
-          BLOB_SHAPE_CLASS,
+          NODE_SHAPE_CLASS,
           selected ? swatch.gradientSelected : swatch.gradient,
           fontSize,
           padding,

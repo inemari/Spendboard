@@ -10,12 +10,38 @@ function pseudoRandom(seed: number): number {
   return n - Math.floor(n);
 }
 
-/** The category blob silhouette: a rounded square with three heavily
- *  rounded corners and one tighter corner — soft and geometric, the same
- *  shape for every blob. Deliberately NOT randomized per category (an
- *  earlier version varied the outline itself, which read as "randomly
+/** The category node silhouette: a square with softly rounded corners —
+ *  the same shape for every node. Deliberately NOT randomized per category
+ *  (an earlier version varied the outline itself, which read as "randomly
  *  organic" rather than a consistent design language); only size varies. */
-export const BLOB_SHAPE_CLASS = "rounded-[45%_45%_12%_45%]";
+export const NODE_SHAPE_CLASS = "rounded-2xl";
+
+/** Top-level category nodes are sized pseudo-randomly in this range so the
+ *  cluster reads as varied rather than a uniform grid. */
+export const NODE_MIN_SIZE = 120;
+export const NODE_MAX_SIZE = 160;
+
+/**
+ * A stable size in [NODE_MIN_SIZE, NODE_MAX_SIZE] for the category at
+ * `index`. Seeded off the index rather than `Math.random()` on purpose:
+ * a real random call would (a) pick a different value on the server than
+ * on the client, which React reports as a hydration mismatch, and (b)
+ * reshuffle every node's size on each re-render. Rounded to a whole pixel
+ * for the same hydration reason — fractional values can serialize to
+ * different string lengths on either side.
+ */
+export function nodeSizeForIndex(index: number): number {
+  const t = pseudoRandom(index * 45.164 + 7.3);
+  return Math.round(NODE_MIN_SIZE + t * (NODE_MAX_SIZE - NODE_MIN_SIZE));
+}
+
+/**
+ * How big a subcategory node is relative to its parent: a third once there
+ * are more than three of them (so a wide fan still fits), otherwise a half.
+ */
+export function subcategorySizeRatio(subcategoryCount: number): number {
+  return subcategoryCount > 3 ? 1 / 3 : 1 / 2;
+}
 
 /** A small, stable (x, y, rotation) offset for scattering an item away from
  *  its grid slot — the categorize screen's category grid uses this so blobs

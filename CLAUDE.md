@@ -122,14 +122,28 @@ decisions. For work that's planned but not yet implemented, see
   transaction removes it from the underlying list, which slides the next
   one into the same index for free, no separate "advance" step needed.
   - **Visual treatment: a soft pastel "constellation" of categories.** Each
-    category is a droplet-shaped node (`BLOB_SHAPE_CLASS` in
+    category is a rounded-square node (`NODE_SHAPE_CLASS` in
     `src/lib/organic-shapes.ts` — one consistent silhouette for every node;
     only *size* varies, never the outline) filled with the pastel gradient
     from its own `CategorySwatch` (`gradient`, plus a richer
     `gradientSelected` for the expanded one), dark charcoal label text, and
-    laid out as a tight, slightly-staggered cluster beneath the transaction
-    card rather than a rigid grid. Node size encodes hierarchy: a category
-    with subcategories is drawn larger and carries a "+N" badge.
+    laid out as a slightly-staggered cluster beneath the transaction card
+    rather than a rigid grid. A category with subcategories carries a "+N"
+    badge.
+  - **Node sizing is pseudo-random but deterministic.** Top-level nodes get
+    a size in `[NODE_MIN_SIZE, NODE_MAX_SIZE]` from `nodeSizeForIndex`, and
+    the scatter stagger comes from `scatterJitter` — both seeded off the
+    category's index, never `Math.random()`. A real random call would pick
+    different values on the server than the client (React reports that as a
+    hydration mismatch) *and* re-roll on every render, so nodes would
+    visibly jump around on each hover/drag/categorize. Whole-pixel/2dp
+    rounding matters for the same reason: unrounded floats serialize to
+    different string lengths on either side of hydration.
+  - **Subcategory nodes are a fixed fraction of their own parent** —
+    `subcategorySizeRatio`: a third when there are more than three of them
+    (so a wide fan still fits), otherwise a half. Cluster geometry (orbit
+    radius, expanded footprint) is therefore computed per cluster from the
+    actual sizes rather than from shared constants.
   - **Subcategories fan out on hover, not on drag-start.** Hovering a parent
     shrinks it, slides it left, draws thin translucent connector lines, and
     fans its subcategories out to the right (`CategoryCluster`), with
