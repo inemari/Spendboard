@@ -64,8 +64,14 @@ const NO_PARENT_VALUE = "__none__";
 // Satellites fan out to the right of the (left-anchored) parent across
 // ±FAN_SPREAD_RAD, rather than surrounding it on all sides.
 const FAN_SPREAD_RAD = (45 * Math.PI) / 180;
-const CLUSTER_LEFT_MARGIN = 6;
 const SATELLITE_GAP = 18;
+
+// The ellipse the category nodes orbit on, as a percentage of the
+// constellation container. Wider than tall because the viewport is: a true
+// circle large enough to space the nodes out horizontally would run off the
+// bottom of a laptop screen.
+const RING_RX_PCT = 34;
+const RING_RY_PCT = 32;
 
 // Concentric rings drawn around the selected (expanded) parent — thin,
 // translucent, progressively larger than the parent itself.
@@ -254,79 +260,49 @@ export function CategorizeScreen({
               {/* A thin translucent line from the card down into the
                   constellation — communicates "this transaction is waiting
                   to be assigned below." Behind everything, purely visual. */}
-              <div
-                aria-hidden
-                className="pointer-events-none absolute left-1/2 top-34 -z-10 h-16 w-px -translate-x-1/2 bg-linear-to-b from-primary/30 to-transparent"
-              />
-              {/* A carousel, not a forward-only skip queue: Previous steps
-                  back to a transaction you already passed, Next moves on
-                  without categorizing it — same stepper either way. */}
-              <div className="flex w-full max-w-xs items-center justify-center gap-2">
-                <Button
-                  variant="outline"
-                  size="icon-sm"
-                  className="shrink-0 rounded-full shadow-sm"
-                  onClick={goToPrevious}
-                  disabled={clampedIndex === 0}
-                  aria-label="Previous transaction"
-                >
-                  <ChevronLeft className="size-4" />
-                </Button>
-
-                <div className="relative w-full max-w-xs">
-                  <GameCard
-                    key={current.id}
-                    transaction={current}
-                    onTypeToggle={() => onTypeToggle(current.id, current.type)}
-                    onCardTypeToggle={() =>
-                      onCardTypeToggle(current.id, current.card_type)
-                    }
-                    onNotesChange={(notes) => onNotesChange(current.id, notes)}
-                    onDelete={() => handleDelete(current.id)}
-                  />
-                </div>
-
-                <Button
-                  variant="outline"
-                  size="icon-sm"
-                  className="shrink-0 rounded-full shadow-sm"
-                  onClick={goToNext}
-                  disabled={clampedIndex === transactions.length - 1}
-                  aria-label="Next transaction"
-                >
-                  <ChevronRight className="size-4" />
-                </Button>
-              </div>
-
-              {/* The cluster: every node is sized independently
-                  (nodeSizeForIndex) so the group reads as a varied
-                  constellation under the card rather than a uniform grid. */}
-              <div className="flex flex-wrap max-w-6xl w-full  items-center justify-between ">
+              {/* The constellation: the transaction sits at the centre and
+                  every category orbits it. Nodes are absolutely positioned
+                  on an ellipse, which is what makes expanding a cluster
+                  cheap — an absolutely-positioned node can't push its
+                  neighbours around, so opening one cluster never reflows
+                  the rest (the flow-layout version had to trade compactness
+                  against exactly that). Percentages, not pixels, so the ring
+                  breathes with the viewport instead of needing a breakpoint. */}
+              <div className="relative min-h-144 w-full flex-1">
                 {tree.map(({ parent, children }, i) => {
-                  // Slight organic stagger so rows don't read as a strict CSS
-                  // grid — a visual-only transform (doesn't affect the
-                  // flex-wrap flow that actually sizes/wraps these items), so
-                  // it can't break layout, only nudge each node off its slot.
-                  const jitter = scatterJitter(i, 5);
-                  // Both size and jitter are seeded off the category's index
+                  // Position on the ring, starting at 12 o'clock.
+                  const angle = (i / tree.length) * 2 * Math.PI - Math.PI / 2;
+                  // Alternating radius pulls every other node inward, which
+                  // roughly doubles the spacing available to each node
+                  // without needing a bigger ring.
+                  const reach = i % 2 === 0 ? 1 : 0.78;
+                  const x = Math.cos(angle) * RING_RX_PCT * reach;
+                  const y = Math.sin(angle) * RING_RY_PCT * reach;
+                  // Size and jitter are seeded off the category's index
                   // rather than Math.random(): a real random call would pick
                   // different values on the server than the client (a
-                  // hydration mismatch) and would also resize every node on
-                  // each re-render — so nodes would visibly jump around on
-                  // every hover, drag and categorize.
+                  // hydration mismatch) and would also re-roll on every
+                  // render — so nodes would visibly jump around on every
+                  // hover, drag and categorize.
+                  const jitter = scatterJitter(i, 5);
                   const size = nodeSizeForIndex(i);
                   return (
                     <div
                       key={parent.id}
-                      className={`relative flex   ${i % 2 === 0 ? "mt-auto " : "mb-auto"} ${children.length > 0 && "flex items-center min-h-54 min-w-44 "}`}
+                      className="absolute"
                       style={{
-                        transform: `translate(${jitter.x}px, ${jitter.y}px) rotate(${jitter.rotationDeg}deg)`,
+                        left: `calc(50% + ${x.toFixed(2)}%)`,
+                        top: `calc(50% + ${y.toFixed(2)}%)`,
+                        transform: `translate(-50%, -50%) translate(${jitter.x}px, ${jitter.y}px) rotate(${jitter.rotationDeg}deg)`,
                       }}
                     >
                       {children.length > 0 ? (
                         <CategoryCluster
                           parent={parent}
                           parentSize={size}
+                          // Subcategories fan away from the centre, so they
+                          // never open back over the transaction card.
+                          fanAngle={angle}
                           subcategories={children}
                           colorMap={colorMap}
                           dropPulse={dropPulse}
@@ -347,6 +323,51 @@ export function CategorizeScreen({
                     </div>
                   );
                 })}
+
+                {/* The transaction at the centre of its own orbit. A
+                    carousel, not a forward-only skip queue: Previous steps
+                    back to a transaction you already passed, Next moves on
+                    without categorizing it — same stepper either way. */}
+                <div className="absolute left-1/2 top-1/2 z-20 flex w-full max-w-xs -translate-x-1/2 -translate-y-1/2 items-center justify-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="icon-sm"
+                    className="shrink-0 rounded-full shadow-sm"
+                    onClick={goToPrevious}
+                    disabled={clampedIndex === 0}
+                    aria-label="Previous transaction"
+                  >
+                    <ChevronLeft className="size-4" />
+                  </Button>
+
+                  <div className="relative w-full max-w-xs">
+                    <GameCard
+                      key={current.id}
+                      transaction={current}
+                      onTypeToggle={() =>
+                        onTypeToggle(current.id, current.type)
+                      }
+                      onCardTypeToggle={() =>
+                        onCardTypeToggle(current.id, current.card_type)
+                      }
+                      onNotesChange={(notes) =>
+                        onNotesChange(current.id, notes)
+                      }
+                      onDelete={() => handleDelete(current.id)}
+                    />
+                  </div>
+
+                  <Button
+                    variant="outline"
+                    size="icon-sm"
+                    className="shrink-0 rounded-full shadow-sm"
+                    onClick={goToNext}
+                    disabled={clampedIndex === transactions.length - 1}
+                    aria-label="Next transaction"
+                  >
+                    <ChevronRight className="size-4" />
+                  </Button>
+                </div>
               </div>
 
               {/* Category creation is kept out of the constellation itself —
@@ -632,29 +653,30 @@ function GameCard({
  *  fraction of it (`subcategorySizeRatio`), so the size relationship reads
  *  as parent-and-children whenever they're on screen together. Collapsed,
  *  it shows just the parent plus a "+N" badge; hovering fans the satellites
- *  out to the right (see FAN_SPREAD_RAD / SATELLITE_GAP).
+ *  out along `fanAngle` (the direction pointing away from the constellation's
+ *  centre, so subcategories never open back over the transaction card) across
+ *  ±FAN_SPREAD_RAD.
+ *
+ *  The wrapper never changes size — satellites are absolutely positioned and
+ *  just overflow it — so expanding a cluster cannot move any other node.
  *
  *  Hover, not "any drag in progress," is what drives this deliberately:
  *  real cursor movement during a drag still fires mouseenter on whatever it
- *  passes over, so a drag continues to reveal a cluster's subcategories
- *  exactly when the cursor reaches it — expanding every cluster the instant
- *  *any* drag starts (an earlier version of this) was worse: reflowing the
- *  grid before the cursor had moved anywhere could shift the very target
- *  the user was dragging toward out from under their cursor, causing an
- *  aimed-for drop to land on empty space. Collapsed, the wrapper is exactly
- *  `parentSize` — no reserved orbit space — or every other row in the grid
- *  ends up stretched to match one cluster's footprint; opening does briefly
- *  reflow neighboring nodes, an acceptable trade for staying compact at
- *  rest. */
+ *  passes over, so a drag reveals a cluster's subcategories exactly when the
+ *  cursor reaches it, whereas expanding every cluster the instant *any* drag
+ *  started meant a user could aim at a target that moved before they got
+ *  there. */
 function CategoryCluster({
   parent,
   parentSize,
+  fanAngle,
   subcategories,
   colorMap,
   dropPulse,
 }: {
   parent: Category;
   parentSize: number;
+  fanAngle: number;
   subcategories: Category[];
   colorMap: Map<string, CategorySwatch>;
   dropPulse: { id: string; key: number } | null;
@@ -666,31 +688,19 @@ function CategoryCluster({
     parentSize * subcategorySizeRatio(subcategories.length),
   );
   const orbitRadius = parentSize / 2 + satelliteSize / 2 + SATELLITE_GAP;
-  const expandedWidth =
-    CLUSTER_LEFT_MARGIN + parentSize / 2 + orbitRadius + satelliteSize / 2 + 6;
-  const expandedHeight = Math.max(
-    parentSize,
-    2 * (orbitRadius * Math.sin(FAN_SPREAD_RAD) + satelliteSize / 2) + 8,
-  );
 
-  const wrapperWidth = expanded ? expandedWidth : parentSize;
-  const wrapperHeight = expanded ? expandedHeight : parentSize;
-
-  // The parent's own center slides from the collapsed square's center out to
-  // a left-anchored point once expanded, and the satellites fan out to the
-  // right from that same anchor — so they visibly emerge from where the
-  // parent ends up rather than from an unrelated point.
-  const anchorX = expanded
-    ? CLUSTER_LEFT_MARGIN + parentSize / 2
-    : parentSize / 2;
-  const anchorY = wrapperHeight / 2;
+  // The wrapper stays exactly parent-sized; satellites are absolutely
+  // positioned and simply overflow it. Nothing here resizes, so opening a
+  // cluster can't disturb any other node's position.
+  const centre = parentSize / 2;
 
   const satelliteOffsets = subcategories.map((c, i) => {
-    const angle =
+    const spread =
       subcategories.length === 1
         ? 0
         : -FAN_SPREAD_RAD +
           (2 * FAN_SPREAD_RAD * i) / (subcategories.length - 1);
+    const angle = fanAngle + spread;
     return {
       category: c,
       x: Math.cos(angle) * orbitRadius,
@@ -700,28 +710,28 @@ function CategoryCluster({
 
   return (
     <div
-      className="relative transition-[width,height] duration-300 ease-out"
-      style={{ width: wrapperWidth, height: wrapperHeight }}
+      className="relative"
+      style={{ width: parentSize, height: parentSize }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      {/* Connector lines from the parent's anchor to each open satellite —
+      {/* Connector lines from the parent's centre to each open satellite —
           drawn in the cluster's own local coordinates (the same x/y used to
           place the satellites below), so no cross-component position
           tracking is needed. Rendered first so later elements stack above. */}
       <svg
         aria-hidden
         className="pointer-events-none absolute inset-0 overflow-visible"
-        width={wrapperWidth}
-        height={wrapperHeight}
+        width={parentSize}
+        height={parentSize}
       >
         {satelliteOffsets.map(({ category: c, x, y }) => (
           <line
             key={c.id}
-            x1={anchorX}
-            y1={anchorY}
-            x2={expanded ? anchorX + x : anchorX}
-            y2={expanded ? anchorY + y : anchorY}
+            x1={centre}
+            y1={centre}
+            x2={expanded ? centre + x : centre}
+            y2={expanded ? centre + y : centre}
             stroke="currentColor"
             strokeWidth={1.5}
             strokeLinecap="round"
@@ -732,17 +742,15 @@ function CategoryCluster({
       </svg>
 
       {/* Concentric rings around the selected parent — several very thin,
-          translucent borders, not solid circles. Centered on the parent's
-          anchor and sized off the parent they surround. */}
+          translucent borders, not solid circles. Centered on the parent and
+          sized off it. */}
       {expanded &&
         SELECTED_RING_GAPS.map((gap) => (
           <div
             key={gap}
             aria-hidden
-            className="pointer-events-none absolute rounded-full border border-primary/15"
+            className="pointer-events-none absolute left-1/2 top-1/2 rounded-full border border-primary/15"
             style={{
-              left: anchorX,
-              top: anchorY,
               width: parentSize + gap * 2,
               height: parentSize + gap * 2,
               transform: "translate(-50%, -50%)",
@@ -753,10 +761,8 @@ function CategoryCluster({
       {satelliteOffsets.map(({ category: c, x, y }) => (
         <div
           key={c.id}
-          className="absolute transition-all duration-300 ease-out"
+          className="absolute left-1/2 top-1/2 transition-all duration-300 ease-out"
           style={{
-            left: anchorX,
-            top: anchorY,
             transform: expanded
               ? `translate(-50%, -50%) translate(${x}px, ${y}px)`
               : "translate(-50%, -50%) scale(0)",
@@ -773,14 +779,7 @@ function CategoryCluster({
           />
         </div>
       ))}
-      <div
-        className="absolute z-10 transition-all duration-300 ease-out"
-        style={{
-          left: anchorX,
-          top: anchorY,
-          transform: "translate(-50%, -50%)",
-        }}
-      >
+      <div className="relative z-10">
         <CategoryDropZone
           id={parent.id}
           name={parent.name}

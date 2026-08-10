@@ -126,10 +126,19 @@ decisions. For work that's planned but not yet implemented, see
     `src/lib/organic-shapes.ts` — one consistent silhouette for every node;
     only *size* varies, never the outline) filled with the pastel gradient
     from its own `CategorySwatch` (`gradient`, plus a richer
-    `gradientSelected` for the expanded one), dark charcoal label text, and
-    laid out as a slightly-staggered cluster beneath the transaction card
-    rather than a rigid grid. A category with subcategories carries a "+N"
-    badge.
+    `gradientSelected` for the expanded one), with dark charcoal label text.
+    A category with subcategories carries a "+N" badge.
+  - **The transaction card sits at the centre and the categories orbit it**,
+    absolutely positioned on an ellipse (`RING_RX_PCT` / `RING_RY_PCT`,
+    percentages so the ring scales with the viewport rather than needing a
+    breakpoint; wider than tall because a circle big enough to space nodes
+    horizontally would run off the bottom of a laptop screen). Every other
+    node is pulled slightly inward, which roughly doubles the spacing each
+    node gets without enlarging the ring. Absolute positioning is load-
+    bearing, not incidental: it's why expanding a cluster can't shove its
+    neighbours around, which the earlier flow-layout version couldn't avoid.
+    Subcategories fan out *away* from the centre so they never open back
+    over the card.
   - **Node sizing is pseudo-random but deterministic.** Top-level nodes get
     a size in `[NODE_MIN_SIZE, NODE_MAX_SIZE]` from `nodeSizeForIndex`, and
     the scatter stagger comes from `scatterJitter` — both seeded off the
