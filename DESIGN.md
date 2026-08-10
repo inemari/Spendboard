@@ -72,15 +72,21 @@ tokens.
   app's own surfaces (`#ffffff` light, `#241521` dark) before changing any of
   these values — don't eyeball colorblind-safety.
 
-**The "Where it went" sidebar and the board's kanban columns share a
-different color job and don't use the palette above.** Neither is a
-magnitude chart — every sidebar row and every column header always shows the
-category's name and amount as text, so a color there never carries meaning
-alone. Each category gets its own identity color from a fixed rotation
-(`src/lib/category-colors.ts`'s `buildCategoryColorMap`, same principle as
-the Rules page's column-header gradients in `rules-manager-panel.tsx`), keyed
-by sort order among siblings — not spend rank — so a category's color is the
-same in the sidebar and on the board, and doesn't shift from month to month.
+**The "Where it went" sidebar, the board's kanban columns, and the
+categorize screen's category nodes share a different color job and don't use
+the palette above.** None is a magnitude chart — every sidebar row, column
+header, and category node always shows the category's name as text, so a
+color there never carries meaning alone. Each category gets its own identity
+color from a fixed rotation (`src/lib/category-colors.ts`'s
+`buildCategoryColorMap`, same principle as the Rules page's column-header
+gradients in `rules-manager-panel.tsx`), keyed by sort order among siblings
+— not spend rank — so a category's color is the same everywhere it appears,
+and doesn't shift from month to month. A `CategorySwatch` carries several
+renderings of that one identity hue for different surfaces: a flat `bar`, a
+`soft` pill, a `ring`, plus the soft pastel `gradient` / richer
+`gradientSelected` pair the categorize screen's nodes use — all the same
+underlying identity, so "selected" reads as more prominent without becoming
+a different color.
 Because the color is never the sole channel — the name is always printed
 next to it — this rotation is *not* run through the categorical CVD
 validator the way the split meter's palette is; it can safely exceed 8 hues if

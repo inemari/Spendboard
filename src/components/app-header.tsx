@@ -14,8 +14,8 @@ export function AppHeader({
   actions?: React.ReactNode;
 }) {
   return (
-    <header className="sticky top-0 z-30 border-b border-border/60 bg-background/80 backdrop-blur-md">
-      <div className="flex items-center justify-between gap-3 px-4 py-3 sm:px-6">
+    <header className="sticky top-0 z-30  border-b bg-background/50 backdrop-blur-sm">
+      <div className="flex items-center justify-between px-4 py-2.5 gap-3">
         <div className="flex items-center gap-2">
           <NavMenu year={year} month={month} />
           <MonthNav year={year} month={month} />
