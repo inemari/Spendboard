@@ -19,12 +19,14 @@ import {
 import {
   DndContext,
   DragOverlay,
+  MeasuringStrategy,
   PointerSensor,
   pointerWithin,
   useDraggable,
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragOverEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { createClient } from "@/lib/supabase/client";
@@ -69,9 +71,14 @@ const SATELLITE_GAP = 18;
 // The ellipse the category nodes orbit on, as a percentage of the
 // constellation container. Wider than tall because the viewport is: a true
 // circle large enough to space the nodes out horizontally would run off the
-// bottom of a laptop screen.
-const RING_RX_PCT = 34;
-const RING_RY_PCT = 32;
+// bottom of a laptop screen. RING_RY_PCT is the binding constraint — at
+// 36%, the far edge of a max-size node lands at 36% + ~half a node, which
+// still clears the container on a short laptop screen, so nothing needs to
+// scroll. INNER_REACH pulls alternating nodes inward for spacing; it stays
+// high enough that even those nodes keep clear air around the card.
+const RING_RX_PCT = 40;
+const RING_RY_PCT = 36;
+const RING_INNER_REACH = 0.86;
 
 // Concentric rings drawn around the selected (expanded) parent — thin,
 // translucent, progressively larger than the parent itself.
@@ -117,6 +124,11 @@ export function CategorizeScreen({
   );
   const [activeTransaction, setActiveTransaction] =
     useState<Transaction | null>(null);
+  // Which drop zone the pointer is currently over mid-drag. Tracked through
+  // dnd-kit's own onDragOver rather than the clusters' mouseenter, because
+  // the drag captures the pointer — hover events stop reaching the nodes
+  // underneath it, so a cluster would never open while you drag toward it.
+  const [overId, setOverId] = useState<string | null>(null);
   // How many transactions this session has sorted in a row without a skip —
   // resets on Next (skip) or delete, not on Previous (just reviewing).
   const [streak, setStreak] = useState(0);
@@ -187,13 +199,23 @@ export function CategorizeScreen({
     if (found) setActiveTransaction(found);
   }
 
+  function handleDragOver(event: DragOverEvent) {
+    setOverId(event.over ? String(event.over.id) : null);
+  }
+
   function handleDragEnd(event: DragEndEvent) {
     setActiveTransaction(null);
+    setOverId(null);
     const { active, over } = event;
     if (!over || !current) return;
 
     categorize(String(active.id), String(over.id));
     setDropPulse({ id: String(over.id), key: Date.now() });
+  }
+
+  function handleDragCancel() {
+    setActiveTransaction(null);
+    setOverId(null);
   }
 
   function handleDelete(id: string) {
@@ -207,40 +229,31 @@ export function CategorizeScreen({
   const level = Math.floor(completedCount / 5) + 1;
 
   return (
-    <div className="game-bg flex flex-1 flex-col">
+    <div className="game-bg flex flex-1 flex-col h-full overflow-hidden">
       <DndContext
         sensors={sensors}
         collisionDetection={pointerWithin}
+        // Re-measure droppables continuously: a cluster's subcategories only
+        // take up space once it expands mid-drag, so with the default
+        // measure-once-at-drag-start they'd keep their collapsed (zero-size)
+        // rects and never become droppable.
+        measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
         onDragStart={handleDragStart}
+        onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
+        onDragCancel={handleDragCancel}
       >
-        <div className="flex flex-row items-start justify-between gap-3 border-b bg-background/50 px-4 py-2.5 backdrop-blur-sm">
+        <div className=" flex flex-row items-start justify-between gap-3 border-b bg-background/50 p-2 backdrop-blur-sm">
           <div>
             <div className="flex items-center gap-2">
               <Sparkles className="size-4 text-primary" />
-              <h2 className="text-sm font-bold">Sort it out</h2>
+              <h2 className="text-xs font-bold">Sort it out</h2>
             </div>
             <p className="text-xs text-muted-foreground">
               {transactions.length} uncategorized
             </p>
           </div>
-          <div className="flex flex-col items-end gap-1">
-            <Button
-              variant="outline"
-              size="sm"
-              nativeButton={false}
-              render={<Link href={backHref} />}
-            >
-              Done
-            </Button>
-            {progressTotal > 0 && (
-              <div className="h-1.5 w-28 overflow-hidden rounded-full bg-muted">
-                <div
-                  className="h-full rounded-full bg-linear-to-r from-primary via-secondary to-tertiary transition-all duration-500 ease-out"
-                  style={{ width: `${progressPercent}%` }}
-                />
-              </div>
-            )}
+          <div className="flex flex-col items-center gap-1">
             <span className="flex items-center gap-1 text-[11px] font-semibold text-amber-500">
               <Star className="size-3 fill-amber-400 text-amber-500" />
               Level {level}
@@ -250,16 +263,32 @@ export function CategorizeScreen({
                   {streak}
                 </span>
               )}
-            </span>
+            </span>{" "}
+            {progressTotal > 0 && (
+              <div className="h-1.5 w-28 overflow-hidden rounded-full bg-muted">
+                <div
+                  className="h-full rounded-full bg-linear-to-r from-primary via-secondary to-tertiary transition-all duration-500 ease-out"
+                  style={{ width: `${progressPercent}%` }}
+                />
+              </div>
+            )}
           </div>
+          <Button
+            variant="outline"
+            size="sm"
+            nativeButton={false}
+            render={<Link href={backHref} />}
+          >
+            Done
+          </Button>
         </div>
 
-        <div className="relative flex flex-1 flex-col items-center gap-3 overflow-y-auto p-3">
+        {/* min-h-0 lets this flex child actually shrink to the space left
+            over by the header, and overflow-hidden keeps the constellation
+            from ever producing a scrollbar. */}
+        <div className="relative flex min-h-0 flex-1 flex-col items-center overflow-hidden">
           {current ? (
             <>
-              {/* A thin translucent line from the card down into the
-                  constellation — communicates "this transaction is waiting
-                  to be assigned below." Behind everything, purely visual. */}
               {/* The constellation: the transaction sits at the centre and
                   every category orbits it. Nodes are absolutely positioned
                   on an ellipse, which is what makes expanding a cluster
@@ -268,14 +297,14 @@ export function CategorizeScreen({
                   the rest (the flow-layout version had to trade compactness
                   against exactly that). Percentages, not pixels, so the ring
                   breathes with the viewport instead of needing a breakpoint. */}
-              <div className="relative min-h-144 w-full flex-1">
+              <div className="relative min-h-0 w-full flex-1">
                 {tree.map(({ parent, children }, i) => {
                   // Position on the ring, starting at 12 o'clock.
                   const angle = (i / tree.length) * 2 * Math.PI - Math.PI / 2;
                   // Alternating radius pulls every other node inward, which
                   // roughly doubles the spacing available to each node
                   // without needing a bigger ring.
-                  const reach = i % 2 === 0 ? 1 : 0.78;
+                  const reach = i % 2 === 0 ? 1 : RING_INNER_REACH;
                   const x = Math.cos(angle) * RING_RX_PCT * reach;
                   const y = Math.sin(angle) * RING_RY_PCT * reach;
                   // Size and jitter are seeded off the category's index
@@ -305,6 +334,13 @@ export function CategorizeScreen({
                           fanAngle={angle}
                           subcategories={children}
                           colorMap={colorMap}
+                          // Open while the drag is over this cluster, so a
+                          // transaction dragged at a parent reveals the
+                          // subcategories it can actually be dropped into.
+                          dragOver={
+                            overId === parent.id ||
+                            children.some((c) => c.id === overId)
+                          }
                           dropPulse={dropPulse}
                         />
                       ) : (
@@ -328,7 +364,13 @@ export function CategorizeScreen({
                     carousel, not a forward-only skip queue: Previous steps
                     back to a transaction you already passed, Next moves on
                     without categorizing it — same stepper either way. */}
-                <div className="absolute left-1/2 top-1/2 z-20 flex w-full max-w-xs -translate-x-1/2 -translate-y-1/2 items-center justify-center gap-2">
+                {/* pointer-events-none on the wrapper (re-enabled on the
+                    controls themselves): it's a z-20 box centred over the
+                    ring, so without this its empty margins would swallow
+                    drops aimed at the nodes behind it. Clearance from the
+                    ring comes from RING_RY_PCT/RING_INNER_REACH, not from
+                    padding here, for the same reason. */}
+                <div className="pointer-events-none absolute left-1/2 top-1/2 z-20 flex w-full max-w-md -translate-x-1/2 -translate-y-1/2 items-center justify-center gap-2 *:pointer-events-auto">
                   <Button
                     variant="outline"
                     size="icon-sm"
@@ -340,7 +382,7 @@ export function CategorizeScreen({
                     <ChevronLeft className="size-4" />
                   </Button>
 
-                  <div className="relative w-full max-w-xs">
+                  <div className="relative w-full max-w-xs ">
                     <GameCard
                       key={current.id}
                       transaction={current}
@@ -372,9 +414,12 @@ export function CategorizeScreen({
 
               {/* Category creation is kept out of the constellation itself —
                   a permanently-visible form competed with the categories for
-                  attention. It's one click away instead. */}
+                  attention. It's one click away instead, and overlaid rather
+                  than stacked below so it adds no height for the ring to
+                  compete with. */}
+              <div className="absolute bottom-2 left-1/2 z-30 flex -translate-x-1/2 justify-center">
               {addingCategory ? (
-                <div className="flex w-full max-w-xs flex-col gap-1.5 rounded-xl border border-dashed bg-background/60 p-2">
+                <div className="flex w-full max-w-xs flex-col gap-1.5 rounded-xl border border-dashed bg-background/90 p-2 shadow-sm backdrop-blur-sm">
                   <Input
                     autoFocus
                     placeholder="New category name"
@@ -445,6 +490,7 @@ export function CategorizeScreen({
                   Add category
                 </Button>
               )}
+              </div>
             </>
           ) : (
             <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
@@ -551,9 +597,9 @@ function GameCard({
         // Layered pink/blue glow: two offset colored shadows plus a neutral
         // depth shadow, so the white card floats over the near-white page
         // without needing a border to separate it.
-        "touch-none rounded-xl bg-white p-3 transition-opacity",
+        "touch-none rounded-md bg-white p-3 transition-opacity",
         "shadow-[-15px_10px_35px_rgba(255,120,200,0.20),15px_10px_35px_rgba(80,180,255,0.20),0_8px_25px_rgba(80,60,120,0.10)]",
-        isDragging && "opacity-40",
+        isDragging && "opacity-0",
       )}
     >
       <div className="flex items-start gap-2.5">
@@ -672,6 +718,7 @@ function CategoryCluster({
   fanAngle,
   subcategories,
   colorMap,
+  dragOver,
   dropPulse,
 }: {
   parent: Category;
@@ -679,10 +726,11 @@ function CategoryCluster({
   fanAngle: number;
   subcategories: Category[];
   colorMap: Map<string, CategorySwatch>;
+  dragOver: boolean;
   dropPulse: { id: string; key: number } | null;
 }) {
   const [hovered, setHovered] = useState(false);
-  const expanded = hovered;
+  const expanded = hovered || dragOver;
 
   const satelliteSize = Math.round(
     parentSize * subcategorySizeRatio(subcategories.length),

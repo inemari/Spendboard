@@ -20,7 +20,10 @@ export default async function CategorizePage({
   );
 
   return (
-    <div className="mx-auto flex min-h-svh w-full max-w-[1600px] flex-col">
+    // h-svh (not min-h-svh) plus overflow-hidden: the categorize screen is a
+    // fixed-viewport constellation, so it must not be allowed to grow taller
+    // than the screen and introduce a scrollbar.
+    <div className="mx-auto flex h-svh w-full max-w-[1600px] flex-col overflow-hidden">
       <AppHeader year={yearNum} month={monthNum} userEmail={userEmail} />
       <CategorizePageClient
         initialTransactions={transactions}

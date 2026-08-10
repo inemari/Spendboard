@@ -138,7 +138,18 @@ decisions. For work that's planned but not yet implemented, see
     bearing, not incidental: it's why expanding a cluster can't shove its
     neighbours around, which the earlier flow-layout version couldn't avoid.
     Subcategories fan out *away* from the centre so they never open back
-    over the card.
+    over the card. The whole screen is fixed to the viewport (`h-svh` +
+    `overflow-hidden` on the page wrapper, `min-h-0` on the flex children)
+    — the constellation is meant to be taken in at a glance, so it must
+    never produce a scrollbar.
+  - **A cluster opens when a drag is over it**, driven by dnd-kit's
+    `onDragOver` rather than the nodes' own `mouseenter`: the drag captures
+    the pointer, so hover events stop reaching the nodes underneath and a
+    cluster would otherwise never open while you drag toward it. This also
+    needs `measuring: { droppable: { strategy: MeasuringStrategy.Always } }`
+    on the `DndContext` — subcategories only occupy space once expanded, so
+    with the default measure-once-at-drag-start they would keep their
+    collapsed zero-size rects and never become droppable.
   - **Node sizing is pseudo-random but deterministic.** Top-level nodes get
     a size in `[NODE_MIN_SIZE, NODE_MAX_SIZE]` from `nodeSizeForIndex`, and
     the scatter stagger comes from `scatterJitter` — both seeded off the

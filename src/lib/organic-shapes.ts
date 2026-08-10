@@ -14,7 +14,7 @@ function pseudoRandom(seed: number): number {
  *  the same shape for every node. Deliberately NOT randomized per category
  *  (an earlier version varied the outline itself, which read as "randomly
  *  organic" rather than a consistent design language); only size varies. */
-export const NODE_SHAPE_CLASS = "rounded-2xl";
+export const NODE_SHAPE_CLASS = "rounded-full";
 
 /** Top-level category nodes are sized pseudo-randomly in this range so the
  *  cluster reads as varied rather than a uniform grid. */
@@ -31,7 +31,7 @@ export const NODE_MAX_SIZE = 160;
  * different string lengths on either side.
  */
 export function nodeSizeForIndex(index: number): number {
-  const t = pseudoRandom(index * 45.164 + 7.3);
+  const t = pseudoRandom(index * 45.164 + 5.3);
   return Math.round(NODE_MIN_SIZE + t * (NODE_MAX_SIZE - NODE_MIN_SIZE));
 }
 
