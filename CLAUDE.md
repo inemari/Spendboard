@@ -141,7 +141,12 @@ decisions. For work that's planned but not yet implemented, see
     over the card. The whole screen is fixed to the viewport (`h-svh` +
     `overflow-hidden` on the page wrapper, `min-h-0` on the flex children)
     — the constellation is meant to be taken in at a glance, so it must
-    never produce a scrollbar.
+    never produce a scrollbar. Because it can't scroll, it has to fit: the
+    container is measured (`useElementSize`) and every node scaled by
+    `fitNodeScale` so the outermost node always clears the edge. The ring
+    radius is a percentage and scales for free; the node sizes are pixels
+    and are what would otherwise be clipped. The card shrinks with them,
+    or a narrow window closes the ring in around a full-width card.
   - **A cluster opens when a drag is over it**, driven by dnd-kit's
     `onDragOver` rather than the nodes' own `mouseenter`: the drag captures
     the pointer, so hover events stop reaching the nodes underneath and a

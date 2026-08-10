@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -51,6 +51,7 @@ import {
 } from "@/lib/category-colors";
 import { formatAmount, formatDate, formatTxType } from "@/lib/format";
 import {
+  NODE_MAX_SIZE,
   nodeSizeForIndex,
   scatterJitter,
   subcategorySizeRatio,
@@ -83,6 +84,54 @@ const RING_INNER_REACH = 0.86;
 // Concentric rings drawn around the selected (expanded) parent — thin,
 // translucent, progressively larger than the parent itself.
 const SELECTED_RING_GAPS = [10, 22, 36];
+
+// Breathing room kept between the outermost node edge and the container.
+const RING_EDGE_MARGIN = 10;
+// Below this the labels stop being readable, so the screen gives up on
+// shrinking rather than degrading into unreadable dots. There is no mobile
+// layout for the constellation; this only guards small desktop windows.
+const MIN_NODE_SCALE = 0.55;
+
+/** Tracks a element's rendered size. The constellation positions its ring in
+ *  percentages, but node sizes are in pixels — so without knowing the actual
+ *  box we can't tell whether those pixels still fit. */
+function useElementSize<T extends HTMLElement>() {
+  const ref = useRef<T | null>(null);
+  const [size, setSize] = useState({ width: 0, height: 0 });
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    // setState lives in the observer callback, not the effect body: this is
+    // syncing from an external system, which is the pattern effects are for.
+    const observer = new ResizeObserver((entries) => {
+      const rect = entries[0]?.contentRect;
+      if (rect) setSize({ width: rect.width, height: rect.height });
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  return [ref, size] as const;
+}
+
+/**
+ * How much to shrink every node so the ring still fits its container.
+ * The ring radius is a percentage so it already scales; node sizes are
+ * fixed pixels, so on a short or narrow window the outer nodes are what
+ * would spill past the edge (and, since the screen deliberately never
+ * scrolls, get clipped). Returns 1 whenever there's room to spare.
+ */
+function fitNodeScale(width: number, height: number): number {
+  if (!width || !height) return 1;
+  const room = (extent: number, ringPct: number) =>
+    (2 * (extent / 2 - (extent * ringPct) / 100 - RING_EDGE_MARGIN)) /
+    NODE_MAX_SIZE;
+  return Math.max(
+    MIN_NODE_SCALE,
+    Math.min(1, room(height, RING_RY_PCT), room(width, RING_RX_PCT)),
+  );
+}
 
 export function CategorizeScreen({
   transactions,
@@ -146,6 +195,16 @@ export function CategorizeScreen({
   const tree = buildCategoryTree(categories);
   const topLevelCategories = tree.map((g) => g.parent);
   const colorMap = buildCategoryColorMap(categories);
+
+  // The ring is sized in percentages but the nodes in pixels, so the
+  // constellation has to be measured to know whether those pixels still fit.
+  const [ringRef, ringSize] = useElementSize<HTMLDivElement>();
+  const nodeScale = fitNodeScale(ringSize.width, ringSize.height);
+  // The card has to shrink alongside the nodes, or on a narrow window the
+  // ring closes in around a card that stayed full width.
+  const cardMaxWidth = ringSize.width
+    ? Math.min(448, ringSize.width * 0.34)
+    : 448;
 
   async function handleCreateCategory() {
     if (!newCategoryName.trim()) return;
@@ -297,7 +356,7 @@ export function CategorizeScreen({
                   the rest (the flow-layout version had to trade compactness
                   against exactly that). Percentages, not pixels, so the ring
                   breathes with the viewport instead of needing a breakpoint. */}
-              <div className="relative min-h-0 w-full flex-1">
+              <div ref={ringRef} className="relative min-h-0 w-full flex-1">
                 {tree.map(({ parent, children }, i) => {
                   // Position on the ring, starting at 12 o'clock.
                   const angle = (i / tree.length) * 2 * Math.PI - Math.PI / 2;
@@ -314,7 +373,7 @@ export function CategorizeScreen({
                   // render — so nodes would visibly jump around on every
                   // hover, drag and categorize.
                   const jitter = scatterJitter(i, 5);
-                  const size = nodeSizeForIndex(i);
+                  const size = Math.round(nodeSizeForIndex(i) * nodeScale);
                   return (
                     <div
                       key={parent.id}
@@ -370,7 +429,10 @@ export function CategorizeScreen({
                     drops aimed at the nodes behind it. Clearance from the
                     ring comes from RING_RY_PCT/RING_INNER_REACH, not from
                     padding here, for the same reason. */}
-                <div className="pointer-events-none absolute left-1/2 top-1/2 z-20 flex w-full max-w-md -translate-x-1/2 -translate-y-1/2 items-center justify-center gap-2 *:pointer-events-auto">
+                <div
+                  style={{ maxWidth: cardMaxWidth }}
+                  className="pointer-events-none absolute left-1/2 top-1/2 z-20 flex w-full -translate-x-1/2 -translate-y-1/2 items-center justify-center gap-2 *:pointer-events-auto"
+                >
                   <Button
                     variant="outline"
                     size="icon-sm"
