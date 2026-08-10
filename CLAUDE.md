@@ -121,6 +121,28 @@ decisions. For work that's planned but not yet implemented, see
   aren't two different mechanisms. Categorizing (or deleting) the current
   transaction removes it from the underlying list, which slides the next
   one into the same index for free, no separate "advance" step needed.
+  - **Visual treatment: a soft pastel "constellation" of categories.** Each
+    category is a droplet-shaped node (`BLOB_SHAPE_CLASS` in
+    `src/lib/organic-shapes.ts` — one consistent silhouette for every node;
+    only *size* varies, never the outline) filled with the pastel gradient
+    from its own `CategorySwatch` (`gradient`, plus a richer
+    `gradientSelected` for the expanded one), dark charcoal label text, and
+    laid out as a tight, slightly-staggered cluster beneath the transaction
+    card rather than a rigid grid. Node size encodes hierarchy: a category
+    with subcategories is drawn larger and carries a "+N" badge.
+  - **Subcategories fan out on hover, not on drag-start.** Hovering a parent
+    shrinks it, slides it left, draws thin translucent connector lines, and
+    fans its subcategories out to the right (`CategoryCluster`), with
+    concentric rings marking the expanded node. Hover — *not* "any drag in
+    progress" — drives this deliberately: real cursor movement during a drag
+    still fires `mouseenter`, so a drag reveals subcategories exactly when
+    the cursor reaches them, whereas expanding every cluster the instant any
+    drag started reflowed the whole grid before the cursor had moved and
+    could shift the intended target out from under it, making aimed drops
+    land on empty space.
+  - Category creation is behind an "Add category" toggle rather than an
+    always-visible form, so the constellation isn't competing with a form
+    for attention.
 - The board (`category-board.tsx`) is a **compact multi-row cockpit**: every
   category — plus Uncategorized — gets its own cell (`category-column.tsx`,
   still exporting `CategoryColumn`) in one wrapping grid

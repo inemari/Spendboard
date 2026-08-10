@@ -29,7 +29,11 @@ export function NavMenu({ year, month }: { year: number; month: number }) {
 
   const links = [
     { href: base, label: "Overview", Icon: LayoutDashboard },
-    { href: `${base}/categorize`, label: "Categorize", Icon: MousePointerClick },
+    {
+      href: `${base}/categorize`,
+      label: "Categorize",
+      Icon: MousePointerClick,
+    },
     { href: `${base}/categories`, label: "Manage categories", Icon: Tags },
     { href: `${base}/rules`, label: "Rules", Icon: Wand2 },
   ];
@@ -38,12 +42,18 @@ export function NavMenu({ year, month }: { year: number; month: number }) {
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger render={<Button variant="ghost" size="icon" />}>
         <Menu className="size-5" />
-      </SheetTrigger>
+      </SheetTrigger>{" "}
+      <p className="hidden self-center text-md text-foreground sm:flex items-center ">
+        <PiggyBank className="size-6 text-primary pe-1" />
+        <span className="font-bold text-game">Spend</span>Board
+      </p>
       <SheetContent side="left">
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
             <PiggyBank className="size-5 text-primary" />
-            Spendboard
+            <p className="hidden self-center text-xl text-foreground sm:block">
+              <span className="font-bold">Spend</span>Board
+            </p>
           </SheetTitle>
         </SheetHeader>
         <nav className="flex flex-col gap-1 px-2">

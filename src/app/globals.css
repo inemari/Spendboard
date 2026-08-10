@@ -160,3 +160,46 @@
     background-color: var(--primary);
   }
 }
+
+/* One-shot confetti burst (src/components/confetti-burst.tsx) — each piece
+   flies out to its own --confetti-dx/--confetti-dy offset and fades. */
+@keyframes confetti-piece {
+  0% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(
+        calc(-50% + var(--confetti-dx)),
+        calc(-50% + var(--confetti-dy))
+      )
+      scale(0);
+    opacity: 0;
+  }
+}
+.animate-confetti-piece {
+  animation: confetti-piece 550ms ease-out forwards;
+}
+
+/* Categorize screen's background: almost off-white, with only the faintest
+   pink/lavender/blue illumination bleeding in from the edges — the category
+   blobs and the transaction card are meant to supply the color, so anything
+   stronger here competes with them. Theme-aware since it mixes the existing
+   primary/secondary/tertiary tokens rather than hardcoded hues, so it
+   re-derives correctly in dark mode from that mode's own token values. */
+.game-bg {
+  background:
+    radial-gradient(ellipse at 0% 0%, color-mix(in oklab, var(--primary) 7%, transparent), transparent 45%),
+    radial-gradient(ellipse at 100% 0%, color-mix(in oklab, var(--tertiary) 7%, transparent), transparent 45%),
+    radial-gradient(ellipse at 50% 100%, color-mix(in oklab, var(--secondary) 5%, transparent), transparent 50%),
+    color-mix(in oklab, var(--background) 55%, white);
+}
+
+.dark .game-bg {
+  /* The light-mode "toward white" mix would wash the dark surface out. */
+  background:
+    radial-gradient(ellipse at 0% 0%, color-mix(in oklab, var(--primary) 10%, transparent), transparent 45%),
+    radial-gradient(ellipse at 100% 0%, color-mix(in oklab, var(--tertiary) 10%, transparent), transparent 45%),
+    radial-gradient(ellipse at 50% 100%, color-mix(in oklab, var(--secondary) 8%, transparent), transparent 50%),
+    var(--background);
+}
