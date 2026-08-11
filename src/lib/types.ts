@@ -7,6 +7,9 @@ export type Category = {
   is_default: boolean;
   parent_id: string | null;
   sort_order: number;
+  /** A slug from `src/lib/category-icons.ts`, or null to fall back to an
+   *  icon guessed from the name. */
+  icon: string | null;
 };
 
 export type Transaction = {

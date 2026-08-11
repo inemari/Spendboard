@@ -10,6 +10,9 @@ Stack: Next.js (App Router) + TypeScript + Tailwind + shadcn/ui + Supabase (Post
 1. Create a Supabase project at https://supabase.com.
 2. In the Supabase SQL editor, run [`supabase/schema.sql`](supabase/schema.sql) to create the
    `categories`, `months`, and `transactions` tables with row-level security.
+   There's no migration runner: re-run the same file after pulling any change
+   that touches the schema. It's written to be safely re-runnable (every
+   statement is `if not exists` / guarded).
 3. In Supabase Auth settings, create yourself a user (Authentication > Users > Add user),
    or enable email sign-ups temporarily to self-register, then disable sign-ups again.
 4. Copy `.env.local.example` to `.env.local` and fill in your project URL and anon key
