@@ -79,7 +79,8 @@ export function CategoryDropZone({
   // parent to a third-size satellite. Below ~52px there isn't room for both
   // a glyph and a readable label, and the label is the one that identifies
   // the category, so the smallest satellites go icon-less.
-  const iconSize = size >= 52 ? Math.round(Math.min(40, Math.max(14, size * 0.26))) : 0;
+  const iconSize =
+    size >= 52 ? Math.round(Math.min(40, Math.max(14, size * 0.26))) : 0;
   const glyph = categoryIcon(icon, name);
 
   return (
@@ -90,6 +91,11 @@ export function CategoryDropZone({
       ref={setNodeRef}
       style={{ width: size, height: size }}
       className={cn(
+        // min-width/min-height must stay off this box: with an explicit
+        // pixel width/height set via style above, a min-w-fit here would
+        // still win per the CSS box model and stretch the circle wide
+        // enough to fit the label unwrapped — which is exactly how a long
+        // category name ends up rendering outside its own shape.
         "relative shrink-0 transition-[width,height,transform] duration-200",
         isOver && "scale-110",
       )}
