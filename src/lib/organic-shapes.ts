@@ -36,11 +36,13 @@ export function nodeSizeForIndex(index: number): number {
 }
 
 /**
- * How big a subcategory node is relative to its parent: a third once there
- * are more than three of them (so a wide fan still fits), otherwise a half.
+ * How big a subcategory node is relative to its parent. Stays a third once
+ * there are more than three of them: past that the fan's arc has to divide
+ * between more satellites, and anything larger makes them overlap each
+ * other. Below that there's arc to spare, so they run a little over half.
  */
 export function subcategorySizeRatio(subcategoryCount: number): number {
-  return subcategoryCount > 3 ? 1 / 3 : 1 / 2;
+  return subcategoryCount > 3 ? 1 / 3 : 0.55;
 }
 
 /** A small, stable (x, y, rotation) offset for scattering an item away from

@@ -53,7 +53,6 @@ import {
 } from "@/lib/category-colors";
 import { formatAmount, formatDate, formatTxType } from "@/lib/format";
 import {
-  NODE_MAX_SIZE,
   nodeSizeForIndex,
   scatterJitter,
   subcategorySizeRatio,
@@ -69,19 +68,21 @@ const NO_PARENT_VALUE = "__none__";
 // Satellites fan out to the right of the (left-anchored) parent across
 // ±FAN_SPREAD_RAD, rather than surrounding it on all sides.
 const FAN_SPREAD_RAD = (45 * Math.PI) / 180;
-const SATELLITE_GAP = 18;
+const SATELLITE_GAP = 6;
 
 // The ellipse the category nodes orbit on, as a percentage of the
 // constellation container. Wider than tall because the viewport is: a true
 // circle large enough to space the nodes out horizontally would run off the
-// bottom of a laptop screen. RING_RY_PCT is the binding constraint — at
-// 36%, the far edge of a max-size node lands at 36% + ~half a node, which
-// still clears the container on a short laptop screen, so nothing needs to
-// scroll. INNER_REACH pulls alternating nodes inward for spacing; it stays
-// high enough that even those nodes keep clear air around the card.
-const RING_RX_PCT = 40;
-const RING_RY_PCT = 36;
-const RING_INNER_REACH = 0.86;
+// bottom of a laptop screen.
+//
+// Note this sets how much *room* the nodes have, not how far apart they
+// look: nodes grow to fill that room and stop at NODE_MIN_GAP from each
+// other, so a wider ring yields bigger nodes rather than a sparser one.
+// Tightening the ring here would shrink the categories, not close the gaps.
+// INNER_REACH staggers alternating nodes so neighbours interleave.
+const RING_RX_PCT = 36;
+const RING_RY_PCT = 33;
+const RING_INNER_REACH = 0.88;
 
 // Concentric rings drawn around the selected (expanded) parent — thin,
 // translucent, progressively larger than the parent itself.
@@ -89,10 +90,22 @@ const SELECTED_RING_GAPS = [10, 22, 36];
 
 // Breathing room kept between the outermost node edge and the container.
 const RING_EDGE_MARGIN = 10;
+// Clear air between two neighbouring nodes, and between a node and the card.
+// These are what the nodes grow *until* — they set the visible spacing.
+const NODE_MIN_GAP = 22;
+const CARD_MIN_GAP = 28;
+// The card's rendered height, used only to keep nodes off it. Cheaper and
+// steadier than measuring it — it's a fixed-layout card, and a stale
+// measurement mid-transition would make nodes twitch.
+const CARD_HEIGHT = 130;
 // Below this the labels stop being readable, so the screen gives up on
 // shrinking rather than degrading into unreadable dots. There is no mobile
 // layout for the constellation; this only guards small desktop windows.
 const MIN_NODE_SCALE = 0.55;
+// Nodes grow to fill whatever room the ring leaves them, up to this. The cap
+// only stops a sparse constellation (two or three categories) from inflating
+// into a few enormous circles.
+const MAX_NODE_SCALE = 1.9;
 
 /** Tracks a element's rendered size. The constellation positions its ring in
  *  percentages, but node sizes are in pixels — so without knowing the actual
@@ -117,21 +130,170 @@ function useElementSize<T extends HTMLElement>() {
   return [ref, size] as const;
 }
 
+type RingSlot = {
+  /** Outward direction, and where the node sits as a % offset from centre. */
+  angle: number;
+  xPct: number;
+  yPct: number;
+  /** Resolved centre in container pixels (0 until the container is measured). */
+  cx: number;
+  cy: number;
+  baseSize: number;
+  jitter: { x: number; y: number; rotationDeg: number };
+};
+
 /**
- * How much to shrink every node so the ring still fits its container.
- * The ring radius is a percentage so it already scales; node sizes are
- * fixed pixels, so on a short or narrow window the outer nodes are what
- * would spill past the edge (and, since the screen deliberately never
- * scrolls, get clipped). Returns 1 whenever there's room to spare.
+ * Where every top-level node sits on the ring. Positions don't depend on
+ * the node scale — the ring is a percentage of the container — which is what
+ * lets `fitNodeScale` solve for a scale from these positions and then hand
+ * the same slots to the render.
  */
-function fitNodeScale(width: number, height: number): number {
-  if (!width || !height) return 1;
-  const room = (extent: number, ringPct: number) =>
-    (2 * (extent / 2 - (extent * ringPct) / 100 - RING_EDGE_MARGIN)) /
-    NODE_MAX_SIZE;
-  return Math.max(
-    MIN_NODE_SCALE,
-    Math.min(1, room(height, RING_RY_PCT), room(width, RING_RX_PCT)),
+function ringLayout(
+  width: number,
+  height: number,
+  count: number,
+): RingSlot[] {
+  return Array.from({ length: count }, (_, i) => {
+    const angle = (i / count) * 2 * Math.PI - Math.PI / 2;
+    // Alternating radius staggers neighbours so they interleave rather than
+    // sitting shoulder to shoulder on one line.
+    const reach = i % 2 === 0 ? 1 : RING_INNER_REACH;
+    const jitter = scatterJitter(i, 5);
+    const xPct = Math.cos(angle) * RING_RX_PCT * reach;
+    const yPct = Math.sin(angle) * RING_RY_PCT * reach;
+    return {
+      angle,
+      xPct,
+      yPct,
+      cx: width * (0.5 + xPct / 100) + jitter.x,
+      cy: height * (0.5 + yPct / 100) + jitter.y,
+      baseSize: nodeSizeForIndex(i),
+      jitter,
+    };
+  });
+}
+
+/**
+ * The largest scale at which no node overlaps another node, the card, or the
+ * container edge. Nodes are circles at known centres, so each constraint is
+ * just "this distance must cover both radii" — solving each for the scale and
+ * taking the smallest is exact, not a heuristic. An earlier version compared
+ * average arc length per node against node width, which reads as reasonable
+ * but guarantees nothing: it says nothing about any *particular* pair, and
+ * the ring's sizes and radii both vary per node.
+ *
+ * The result is free to exceed 1: nodes grow into whatever room the ring
+ * leaves them and stop at the first thing they'd touch, so the constellation
+ * fills the screen at any size rather than only ever shrinking to fit.
+ */
+function fitNodeScale(
+  slots: RingSlot[],
+  width: number,
+  height: number,
+  cardWidth: number,
+): number {
+  if (!width || !height || slots.length === 0) return 1;
+
+  let scale = MAX_NODE_SCALE;
+  const limit = (available: number, combinedBase: number) => {
+    if (combinedBase <= 0) return;
+    scale = Math.min(scale, (2 * available) / combinedBase);
+  };
+
+  for (const slot of slots) {
+    // Container edge: the nearest side bounds the node's radius.
+    const toEdge =
+      Math.min(slot.cx, slot.cy, width - slot.cx, height - slot.cy) -
+      RING_EDGE_MARGIN;
+    limit(toEdge, slot.baseSize);
+
+    // The card, treated as a rectangle at the centre: distance from the node
+    // to the nearest point on it.
+    const dx = Math.max(Math.abs(slot.cx - width / 2) - cardWidth / 2, 0);
+    const dy = Math.max(Math.abs(slot.cy - height / 2) - CARD_HEIGHT / 2, 0);
+    limit(Math.hypot(dx, dy) - CARD_MIN_GAP, slot.baseSize);
+  }
+
+  // Every pair of nodes.
+  for (let i = 0; i < slots.length; i++) {
+    for (let j = i + 1; j < slots.length; j++) {
+      const gap = Math.hypot(
+        slots[i].cx - slots[j].cx,
+        slots[i].cy - slots[j].cy,
+      );
+      limit(gap - NODE_MIN_GAP, slots[i].baseSize + slots[j].baseSize);
+    }
+  }
+
+  return Math.max(MIN_NODE_SCALE, Math.min(MAX_NODE_SCALE, scale));
+}
+
+/**
+ * Picks which way a cluster's subcategories fan. Straight outward (away
+ * from the card) is the default, but a node sitting near the container edge
+ * has no room out there — its satellites would be half off-screen — so the
+ * fan rotates until the whole thing fits. Rotations are tried smallest
+ * first and alternating in both directions, so a cluster only ever swings
+ * as far from "outward" as it actually has to, and only points back toward
+ * the card as a last resort.
+ */
+function chooseFanAngle({
+  outward,
+  rotationRad,
+  nodeX,
+  nodeY,
+  orbitRadius,
+  satelliteSize,
+  count,
+  width,
+  height,
+}: {
+  outward: number;
+  rotationRad: number;
+  nodeX: number;
+  nodeY: number;
+  orbitRadius: number;
+  satelliteSize: number;
+  count: number;
+  width: number;
+  height: number;
+}): number {
+  if (!width || !height) return outward;
+
+  const half = satelliteSize / 2;
+  const offsets = fanOffsets(count);
+  // The node's wrapper is rotated by the scatter jitter, and the satellites
+  // rotate with it — so the on-screen angle is the local angle plus that.
+  const fits = (local: number) =>
+    offsets.every((offset) => {
+      const a = local + offset + rotationRad;
+      const x = nodeX + Math.cos(a) * orbitRadius;
+      const y = nodeY + Math.sin(a) * orbitRadius;
+      return (
+        x - half >= RING_EDGE_MARGIN &&
+        x + half <= width - RING_EDGE_MARGIN &&
+        y - half >= RING_EDGE_MARGIN &&
+        y + half <= height - RING_EDGE_MARGIN
+      );
+    });
+
+  const step = Math.PI / 12; // 15°
+  for (let i = 0; i <= 12; i++) {
+    for (const direction of i === 0 ? [0] : [1, -1]) {
+      const candidate = outward + direction * i * step;
+      if (fits(candidate)) return candidate;
+    }
+  }
+  return outward;
+}
+
+/** Where each satellite sits within its cluster's fan, as an angular offset
+ *  from the fan's centre line. */
+function fanOffsets(count: number): number[] {
+  if (count <= 1) return [0];
+  return Array.from(
+    { length: count },
+    (_, i) => -FAN_SPREAD_RAD + (2 * FAN_SPREAD_RAD * i) / (count - 1),
   );
 }
 
@@ -202,12 +364,18 @@ export function CategorizeScreen({
   // The ring is sized in percentages but the nodes in pixels, so the
   // constellation has to be measured to know whether those pixels still fit.
   const [ringRef, ringSize] = useElementSize<HTMLDivElement>();
-  const nodeScale = fitNodeScale(ringSize.width, ringSize.height);
   // The card has to shrink alongside the nodes, or on a narrow window the
   // ring closes in around a card that stayed full width.
   const cardMaxWidth = ringSize.width
-    ? Math.min(448, ringSize.width * 0.34)
-    : 448;
+    ? Math.min(380, ringSize.width * 0.3)
+    : 380;
+  const slots = ringLayout(ringSize.width, ringSize.height, tree.length);
+  const nodeScale = fitNodeScale(
+    slots,
+    ringSize.width,
+    ringSize.height,
+    cardMaxWidth,
+  );
 
   async function handleCreateCategory() {
     if (!newCategoryName.trim()) return;
@@ -363,39 +531,53 @@ export function CategorizeScreen({
                   breathes with the viewport instead of needing a breakpoint. */}
               <div ref={ringRef} className="relative min-h-0 w-full flex-1">
                 {tree.map(({ parent, children }, i) => {
-                  // Position on the ring, starting at 12 o'clock.
-                  const angle = (i / tree.length) * 2 * Math.PI - Math.PI / 2;
-                  // Alternating radius pulls every other node inward, which
-                  // roughly doubles the spacing available to each node
-                  // without needing a bigger ring.
-                  const reach = i % 2 === 0 ? 1 : RING_INNER_REACH;
-                  const x = Math.cos(angle) * RING_RX_PCT * reach;
-                  const y = Math.sin(angle) * RING_RY_PCT * reach;
-                  // Size and jitter are seeded off the category's index
-                  // rather than Math.random(): a real random call would pick
-                  // different values on the server than the client (a
-                  // hydration mismatch) and would also re-roll on every
-                  // render — so nodes would visibly jump around on every
-                  // hover, drag and categorize.
-                  const jitter = scatterJitter(i, 5);
-                  const size = Math.round(nodeSizeForIndex(i) * nodeScale);
+                  // Slot positions and base sizes come from ringLayout, the
+                  // same source fitNodeScale solved against — so what's drawn
+                  // is exactly what was proven not to overlap.
+                  const slot = slots[i];
+                  const size = Math.round(slot.baseSize * nodeScale);
+
+                  // Cluster geometry is resolved here, not inside
+                  // CategoryCluster, because picking a fan direction needs
+                  // the node's position within the measured container —
+                  // which only this scope knows.
+                  const satelliteSize = Math.round(
+                    size * subcategorySizeRatio(children.length),
+                  );
+                  const orbitRadius =
+                    size / 2 + satelliteSize / 2 + SATELLITE_GAP;
+                  const fanAngle = chooseFanAngle({
+                    outward: slot.angle,
+                    rotationRad: (slot.jitter.rotationDeg * Math.PI) / 180,
+                    nodeX: slot.cx,
+                    nodeY: slot.cy,
+                    orbitRadius,
+                    satelliteSize,
+                    count: children.length,
+                    width: ringSize.width,
+                    height: ringSize.height,
+                  });
+
                   return (
                     <div
                       key={parent.id}
                       className="absolute"
                       style={{
-                        left: `calc(50% + ${x.toFixed(2)}%)`,
-                        top: `calc(50% + ${y.toFixed(2)}%)`,
-                        transform: `translate(-50%, -50%) translate(${jitter.x}px, ${jitter.y}px) rotate(${jitter.rotationDeg}deg)`,
+                        left: `calc(50% + ${slot.xPct.toFixed(2)}%)`,
+                        top: `calc(50% + ${slot.yPct.toFixed(2)}%)`,
+                        transform: `translate(-50%, -50%) translate(${slot.jitter.x}px, ${slot.jitter.y}px) rotate(${slot.jitter.rotationDeg}deg)`,
                       }}
                     >
                       {children.length > 0 ? (
                         <CategoryCluster
                           parent={parent}
                           parentSize={size}
-                          // Subcategories fan away from the centre, so they
-                          // never open back over the transaction card.
-                          fanAngle={angle}
+                          satelliteSize={satelliteSize}
+                          orbitRadius={orbitRadius}
+                          // Points away from the card where there's room to
+                          // open, and swings along the edge where there
+                          // isn't, so satellites never hang off-screen.
+                          fanAngle={fanAngle}
                           subcategories={children}
                           colorMap={colorMap}
                           // Open while the drag is over this cluster, so a
@@ -798,6 +980,8 @@ function GameCard({
 function CategoryCluster({
   parent,
   parentSize,
+  satelliteSize,
+  orbitRadius,
   fanAngle,
   subcategories,
   colorMap,
@@ -806,6 +990,8 @@ function CategoryCluster({
 }: {
   parent: Category;
   parentSize: number;
+  satelliteSize: number;
+  orbitRadius: number;
   fanAngle: number;
   subcategories: Category[];
   colorMap: Map<string, CategorySwatch>;
@@ -815,23 +1001,13 @@ function CategoryCluster({
   const [hovered, setHovered] = useState(false);
   const expanded = hovered || dragOver;
 
-  const satelliteSize = Math.round(
-    parentSize * subcategorySizeRatio(subcategories.length),
-  );
-  const orbitRadius = parentSize / 2 + satelliteSize / 2 + SATELLITE_GAP;
-
   // The wrapper stays exactly parent-sized; satellites are absolutely
   // positioned and simply overflow it. Nothing here resizes, so opening a
   // cluster can't disturb any other node's position.
   const centre = parentSize / 2;
 
   const satelliteOffsets = subcategories.map((c, i) => {
-    const spread =
-      subcategories.length === 1
-        ? 0
-        : -FAN_SPREAD_RAD +
-          (2 * FAN_SPREAD_RAD * i) / (subcategories.length - 1);
-    const angle = fanAngle + spread;
+    const angle = fanAngle + fanOffsets(subcategories.length)[i];
     return {
       category: c,
       x: Math.cos(angle) * orbitRadius,
