@@ -22,17 +22,14 @@ export function formatTxType(type: TxType): string {
   return type === "need_review" ? "Need review" : type[0].toUpperCase() + type.slice(1);
 }
 
-const monthFormatter = new Intl.DateTimeFormat("nb-NO", { month: "long", year: "numeric" });
 const dayHeadingFormatter = new Intl.DateTimeFormat("nb-NO", {
   weekday: "long",
   day: "numeric",
   month: "long",
 });
 
-/** "august 2026" — the header's month label. */
-export function formatMonthLabel(year: number, month: number): string {
-  return monthFormatter.format(new Date(year, month - 1, 1));
-}
+// Month labelling lives in date-range.ts's formatRangeLabel now — the overview
+// is the only screen that names a timeframe, and it names spans, not months.
 
 /** "torsdag 14. august" — the transaction list's day separators. */
 export function formatDayHeading(isoDate: string): string {

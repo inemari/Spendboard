@@ -17,7 +17,7 @@ const TABS: { mode: "day" | "week" | "month"; label: string }[] = [
   { mode: "month", label: "Month" },
 ];
 
-export function TimeframeSwitcher({ year, month }: { year: number; month: number }) {
+export function TimeframeSwitcher() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -26,30 +26,37 @@ export function TimeframeSwitcher({ year, month }: { year: number; month: number
   const from = searchParams.get("from") ?? undefined;
   const to = searchParams.get("to") ?? undefined;
 
-  const range = resolveRange(view, { year, month, date, from, to });
+  const range = resolveRange(view, { date, from, to });
   const [customOpen, setCustomOpen] = useState(false);
   const [customFrom, setCustomFrom] = useState(range.from);
   const [customTo, setCustomTo] = useState(range.to);
 
-  // Day/week/range navigation stays on this same page instance (query params
-  // only) — routing to a different [year]/[month] path, even one implied by
-  // a shifted date, is a genuinely different page in Next.js and remounts
-  // the whole subtree, wiping the board's Overview/Board toggle state. Only
-  // the month view is meant to actually change which month's page you're on.
-  function navigate(params: { view: ViewMode; date?: string; year?: number; month?: number; from?: string; to?: string }) {
-    const targetYear = params.view === "month" ? params.year ?? year : year;
-    const targetMonth = params.view === "month" ? params.month ?? month : month;
+  // Every navigation here is query-params-only on `/` — the timeframe is the
+  // whole of the overview's URL state. Nothing touches the path, so switching
+  // views or stepping across a month boundary never remounts the subtree and
+  // never wipes the board's Overview/Board toggle. Params are omitted when
+  // they'd restate the default (month view anchored on today), keeping the
+  // common case a bare `/`.
+  function navigate(params: { view: ViewMode; date?: string; from?: string; to?: string }) {
     const query = new URLSearchParams();
     if (params.view !== "month") query.set("view", params.view);
-    if (params.view !== "month" && params.date) query.set("date", params.date);
+    // An anchor that just restates "today" is what you get with no param at all.
+    const isDefaultAnchor =
+      params.view !== "range" && params.date === resolveRange(params.view, {}).anchor;
+    if (params.view !== "range" && params.date && !isDefaultAnchor) {
+      query.set("date", params.date);
+    }
     if (params.view === "range" && params.from) query.set("from", params.from);
     if (params.view === "range" && params.to) query.set("to", params.to);
     const qs = query.toString();
-    router.push(`/${targetYear}/${targetMonth}${qs ? `?${qs}` : ""}`);
+    router.push(qs ? `/?${qs}` : "/");
   }
 
   function selectTab(mode: "day" | "week" | "month") {
-    navigate({ view: mode, date: range.anchor, year, month });
+    // Re-resolve through the target view so the anchor is in that view's own
+    // canonical form — switching Day -> Month carries the month over, but as
+    // its 1st rather than leaving the 26th sitting in the URL.
+    navigate({ view: mode, date: resolveRange(mode, { date: range.anchor }).anchor });
   }
 
   /** Seed the fields from whatever range is showing each time the menu opens. */
@@ -63,8 +70,10 @@ export function TimeframeSwitcher({ year, month }: { year: number; month: number
 
   function step(delta: number) {
     if (view === "range") return;
-    const next = shiftByView(view, { year, month, date }, delta);
-    navigate({ view, date: next.date, year: next.year, month: next.month });
+    // Step from the resolved anchor, not the raw param: with no `date` in the
+    // URL the anchor is today's, and one click back must land on the previous
+    // month rather than re-deriving "today" and going nowhere.
+    navigate({ view, date: shiftByView(view, { date: range.anchor }, delta).date });
   }
 
   function applyCustomRange() {

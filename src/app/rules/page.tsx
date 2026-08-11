@@ -1,27 +1,16 @@
 import { createClient } from "@/lib/supabase/server";
-import { loadWorkspaceData } from "@/lib/workspace-data";
+import { loadCategoriesAndRules } from "@/lib/workspace-data";
 import { AppHeader } from "@/components/app-header";
 import { RulesManagerPanel } from "@/components/rules-manager-panel";
 
-export default async function RulesPage({
-  params,
-}: {
-  params: Promise<{ year: string; month: string }>;
-}) {
-  const { year, month } = await params;
-  const yearNum = Number(year);
-  const monthNum = Number(month);
-
+/** Rules are account-wide — no timeframe, no transactions to load. */
+export default async function RulesPage() {
   const supabase = await createClient();
-  const { userEmail, categories, rules, rulesError } = await loadWorkspaceData(
-    supabase,
-    yearNum,
-    monthNum,
-  );
+  const { userEmail, categories, rules, rulesError } = await loadCategoriesAndRules(supabase);
 
   return (
     <div className="mx-auto flex min-h-svh w-full max-w-[1600px] flex-col">
-      <AppHeader year={yearNum} month={monthNum} userEmail={userEmail} />
+      <AppHeader userEmail={userEmail} />
 
       {rulesError && (
         <p className="m-6 rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">

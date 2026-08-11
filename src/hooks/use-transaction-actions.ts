@@ -1,7 +1,7 @@
 "use client";
 
 import { createElement, useEffect, useMemo, useState } from "react";
-import { useRouter, usePathname } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Wand2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -39,11 +39,7 @@ export function useTransactionActions(
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
   const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
-  const pathname = usePathname();
-  const rulesHref = useMemo(() => {
-    const [, year, month] = pathname.split("/");
-    return `/${year}/${month}/rules`;
-  }, [pathname]);
+  const rulesHref = "/rules";
 
   const totals = useMemo(() => computeTotals(transactions, categories), [transactions, categories]);
 

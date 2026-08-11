@@ -21,12 +21,16 @@ Stack: Next.js (App Router) + TypeScript + Tailwind + shadcn/ui + Supabase (Post
    npm run dev
    ```
 
-6. Open http://localhost:3000 — you'll be redirected to `/login`, then to the current
-   month's workspace after signing in.
+6. Open http://localhost:3000 — you'll be redirected to `/login`, then to the
+   overview for the current month after signing in.
 
 ## Project structure
 
-- `src/app/[year]/[month]/page.tsx` — the main monthly workspace.
+- `src/app/page.tsx` — the overview. The only screen with a timeframe, and the
+  only one whose URL carries date state (`?view`/`?date`/`?from`/`?to`); a bare
+  `/` is the current month.
+- `src/app/categorize/`, `src/app/categories/`, `src/app/rules/` — the other
+  screens. All account-wide, no dates in their URLs.
 - `src/app/login/page.tsx` — Supabase Auth login.
 - `src/lib/supabase/` — browser/server Supabase clients + session-refresh middleware.
 - `src/middleware.ts` — redirects unauthenticated requests to `/login`.

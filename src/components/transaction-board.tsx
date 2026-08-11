@@ -25,17 +25,11 @@ import type { Category, Transaction, TxType } from "@/lib/types";
 type View = "overview" | "board";
 
 export function TransactionBoard({
-  year,
-  month,
   initialTransactions,
   categories,
-  categorizeHref,
 }: {
-  year: number;
-  month: number;
   initialTransactions: Transaction[];
   categories: Category[];
-  categorizeHref: string;
 }) {
   const {
     transactions,
@@ -102,8 +96,6 @@ export function TransactionBoard({
   const timeframeLabel = formatRangeLabel(
     timeframeView,
     resolveRange(timeframeView, {
-      year,
-      month,
       date: searchParams.get("date") ?? undefined,
       from: searchParams.get("from") ?? undefined,
       to: searchParams.get("to") ?? undefined,
@@ -214,7 +206,7 @@ export function TransactionBoard({
           the board's own canvas is what gives the board its extra vertical
           room. */}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/60 bg-card px-3 py-2">
-        <TimeframeSwitcher year={year} month={month} />
+        <TimeframeSwitcher />
 
         {transactions.length > 0 && (
           <div className="flex items-center gap-2">
@@ -248,7 +240,7 @@ export function TransactionBoard({
               <aside className="flex flex-col gap-4 rounded-2xl border border-border/60 bg-card p-4 sm:p-5">
                 <OverviewSummary
                   overview={overview}
-                  categorizeHref={categorizeHref}
+                  categorizeHref="/categorize"
                   onSelectType={setOverviewType}
                 />
                 <div className="flex flex-col gap-1.5 border-t border-border/60 pt-4">

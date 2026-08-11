@@ -23,6 +23,7 @@ import {
   type RuleConflictItem,
 } from "@/components/resolve-rule-conflicts-dialog";
 import { describeRuleConditions } from "@/lib/rule-description";
+import { monthAnchorFor } from "@/lib/date-range";
 import { flattenWithDepth } from "@/lib/category-tree";
 import { ruleMatchesTransaction } from "@/lib/apply-rules";
 import { cn } from "@/lib/utils";
@@ -40,9 +41,14 @@ const CATEGORY_GRADIENTS = [
   "from-amber-200 to-orange-300",
 ];
 
+/**
+ * Deep-link to the overview showing the month the first affected transaction
+ * falls in, with those cards ring-highlighted. Anchors the overview's `date`
+ * param rather than a path segment — the overview is the only screen with a
+ * timeframe, and it keeps it in the query string.
+ */
 function highlightHref(date: string, ids: string[]): string {
-  const [year, month] = date.split("-").map(Number);
-  return `/${year}/${month}?highlight=${ids.join(",")}`;
+  return `/?date=${monthAnchorFor(date)}&highlight=${ids.join(",")}`;
 }
 
 const OPERATOR_LABELS: Record<string, string> = {
