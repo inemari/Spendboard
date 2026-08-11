@@ -112,6 +112,15 @@ decisions. For work that's planned but not yet implemented, see
 - **Month navigation**: prev/next arrows in `app-header.tsx` via
   `month-nav.tsx`. Any month is reachable; there is no "has data" check, so
   stepping into an empty month shows the empty state.
+- **Empty timeframes get their own state** (`transaction-board.tsx`), naming
+  the range that came back empty via `formatRangeLabel` — an empty month
+  suggests uploading a statement, an empty day/week/custom range suggests
+  widening or stepping the range instead (there's nothing to upload *for* a
+  sub-month range that the month itself doesn't already cover). This lives on
+  the board, not in `transaction-list.tsx` — that component has its own
+  "no transactions yet" state, but every panel below the toolbar is gated on
+  `transactions.length > 0`, so the list never mounted to show it and the
+  page rendered as a bare toolbar over blank space.
 - Categorize transactions via dropdown, drag-and-drop board (desktop), or the
   one-by-one "Categorize" screen (drag a card onto its category — or use its
   Prev/Next arrows to step through the uncategorized list without touching
@@ -366,6 +375,16 @@ decisions. For work that's planned but not yet implemented, see
   assumption. Date-range math (`resolveRange`, `shiftByView`,
   `formatRangeLabel`) lives in `src/lib/date-range.ts`, including a hoisted
   `shiftMonth` that `month-nav.tsx` now imports instead of keeping its own copy.
+  - **The custom range's from/to fields live in a popover on the Custom tab**,
+    not inline beside the tabs. Clicking Custom opens the menu (seeded from
+    whatever range is currently showing) and only its **Show me** button
+    navigates — so
+    picking a start date no longer half-applies a range while the end date is
+    still the old one. Once applied, the label slot shows the range in words
+    where the day/week/month arrows would be (a custom span has no natural
+    next/previous to step to). The popover primitive is
+    `src/components/ui/popover.tsx`, wrapping Base UI's `Popover` — the same
+    package `dropdown-menu.tsx` already uses; no new dependency.
   - **Day/week/custom-range navigation never changes the URL's `[year]/[month]`
     path**, even when the shifted date falls in a different month — only
     query params (`view`/`date`/`from`/`to`) change. Routing to a different

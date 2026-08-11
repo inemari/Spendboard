@@ -1,17 +1,20 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { CalendarRange, ChevronLeft, ChevronRight } from "lucide-react";
 import { useState } from "react";
 import { formatRangeLabel, resolveRange, shiftByView, type ViewMode } from "@/lib/date-range";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 
-const TABS: { mode: ViewMode; label: string }[] = [
+/** Custom is not in here — it's the popover trigger, not a plain tab. */
+const TABS: { mode: "day" | "week" | "month"; label: string }[] = [
   { mode: "day", label: "Day" },
   { mode: "week", label: "Week" },
   { mode: "month", label: "Month" },
-  { mode: "range", label: "Custom" },
 ];
 
 export function TimeframeSwitcher({ year, month }: { year: number; month: number }) {
@@ -24,6 +27,7 @@ export function TimeframeSwitcher({ year, month }: { year: number; month: number
   const to = searchParams.get("to") ?? undefined;
 
   const range = resolveRange(view, { year, month, date, from, to });
+  const [customOpen, setCustomOpen] = useState(false);
   const [customFrom, setCustomFrom] = useState(range.from);
   const [customTo, setCustomTo] = useState(range.to);
 
@@ -44,12 +48,17 @@ export function TimeframeSwitcher({ year, month }: { year: number; month: number
     router.push(`/${targetYear}/${targetMonth}${qs ? `?${qs}` : ""}`);
   }
 
-  function selectTab(mode: ViewMode) {
-    if (mode === "range") {
-      navigate({ view: "range", from: range.from, to: range.to });
-      return;
-    }
+  function selectTab(mode: "day" | "week" | "month") {
     navigate({ view: mode, date: range.anchor, year, month });
+  }
+
+  /** Seed the fields from whatever range is showing each time the menu opens. */
+  function toggleCustom(open: boolean) {
+    if (open) {
+      setCustomFrom(range.from);
+      setCustomTo(range.to);
+    }
+    setCustomOpen(open);
   }
 
   function step(delta: number) {
@@ -60,32 +69,86 @@ export function TimeframeSwitcher({ year, month }: { year: number; month: number
 
   function applyCustomRange() {
     navigate({ view: "range", from: customFrom, to: customTo });
+    setCustomOpen(false);
   }
 
+  // Candy system (DESIGN.md): pills, bouncy scale on hover/press, and the
+  // active pill wearing brand pink with its own tinted shadow.
   const arrow =
-    "flex size-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-30 disabled:hover:bg-transparent";
+    "flex size-8 items-center justify-center rounded-full text-muted-foreground transition-all duration-200 ease-out hover:scale-110 hover:bg-background hover:text-foreground active:scale-95";
+  const tab =
+    "rounded-full px-3 py-1 text-sm font-medium transition-all duration-200 ease-out hover:scale-[1.03] active:scale-[0.97]";
+  const tabActive =
+    "bg-primary text-primary-foreground shadow-[0_4px_16px_rgba(224,64,160,0.25)]";
+  const tabIdle = "text-muted-foreground hover:bg-background/70 hover:text-foreground";
 
   return (
     <>
-      <div className="flex items-center gap-1 rounded-md bg-muted p-1">
-        {TABS.map((tab) => (
+      <div className="flex items-center gap-1 rounded-full bg-muted p-1">
+        {TABS.map((t) => (
           <button
-            key={tab.mode}
+            key={t.mode}
             type="button"
-            onClick={() => selectTab(tab.mode)}
-            className={cn(
-              "rounded-sm px-2.5 py-1 text-sm font-medium transition-colors",
-              view === tab.mode
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground",
-            )}
+            onClick={() => selectTab(t.mode)}
+            className={cn(tab, view === t.mode ? tabActive : tabIdle)}
           >
-            {tab.label}
+            {t.label}
           </button>
         ))}
+
+        <Popover open={customOpen} onOpenChange={toggleCustom}>
+          <PopoverTrigger
+            className={cn(
+              tab,
+              "inline-flex items-center gap-1.5",
+              view === "range" || customOpen ? tabActive : tabIdle,
+            )}
+          >
+            <CalendarRange className="size-3.5" />
+            Custom
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-64 space-y-3 rounded-2xl">
+            <p className="font-heading text-sm font-bold">Pick your own span ✨</p>
+            <div className="space-y-1">
+              <label htmlFor="custom-range-from" className="text-xs font-medium text-secondary">
+                From
+              </label>
+              <Input
+                id="custom-range-from"
+                type="date"
+                value={customFrom}
+                onChange={(e) => setCustomFrom(e.target.value)}
+                className="h-8 w-full"
+              />
+            </div>
+            <div className="space-y-1">
+              <label htmlFor="custom-range-to" className="text-xs font-medium text-secondary">
+                To
+              </label>
+              <Input
+                id="custom-range-to"
+                type="date"
+                value={customTo}
+                onChange={(e) => setCustomTo(e.target.value)}
+                className="h-8 w-full"
+              />
+            </div>
+            <Button
+              onClick={applyCustomRange}
+              disabled={!customFrom || !customTo || customFrom > customTo}
+              className="w-full"
+            >
+              Show me
+            </Button>
+          </PopoverContent>
+        </Popover>
       </div>
 
-      {view !== "range" && (
+      {view === "range" ? (
+        <Badge variant="secondary" className="h-7 px-3 text-sm">
+          {formatRangeLabel(view, range)}
+        </Badge>
+      ) : (
         <div className="flex items-center gap-1">
           <button type="button" onClick={() => step(-1)} aria-label="Previous" className={arrow}>
             <ChevronLeft className="size-4" />
@@ -95,31 +158,6 @@ export function TimeframeSwitcher({ year, month }: { year: number; month: number
           </span>
           <button type="button" onClick={() => step(1)} aria-label="Next" className={arrow}>
             <ChevronRight className="size-4" />
-          </button>
-        </div>
-      )}
-
-      {view === "range" && (
-        <div className="flex items-center gap-2">
-          <Input
-            type="date"
-            value={customFrom}
-            onChange={(e) => setCustomFrom(e.target.value)}
-            className="h-8 w-36"
-          />
-          <span className="text-sm text-muted-foreground">to</span>
-          <Input
-            type="date"
-            value={customTo}
-            onChange={(e) => setCustomTo(e.target.value)}
-            className="h-8 w-36"
-          />
-          <button
-            type="button"
-            onClick={applyCustomRange}
-            className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:opacity-90"
-          >
-            Apply
           </button>
         </div>
       )}
