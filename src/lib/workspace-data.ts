@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ensureDefaultCategories } from "@/lib/ensure-default-categories";
+import { resolveRange } from "@/lib/date-range";
 import type { Category, Rule, Transaction } from "@/lib/types";
 
 async function loadCategoriesAndRules(supabase: SupabaseClient) {
@@ -32,35 +33,25 @@ async function loadCategoriesAndRules(supabase: SupabaseClient) {
 const TRANSACTION_COLUMNS =
   "id, month_id, date, description, location, notes, amount, category_id, type, card_type";
 
+/**
+ * A calendar month's transactions — by transaction *date*, not by `month_id`.
+ *
+ * `month_id` is which month page a file was uploaded from, which is not the
+ * same thing: the upload route stamps every row in a file with that one id,
+ * so a statement spanning a month boundary (a credit-card period running
+ * mid-month to mid-month, say) files its July-dated rows under August. Reading
+ * by `month_id` therefore hid those rows on `/2026/7` while counting them into
+ * August's total — and disagreed with the day/week/custom views right next to
+ * it, which have always read by date. `months` rows still exist; they scope
+ * uploads and the `(month_id, source_hash)` dedup key, not reads.
+ */
 export async function loadWorkspaceData(supabase: SupabaseClient, year: number, month: number) {
-  const shared = await loadCategoriesAndRules(supabase);
-
-  const { data: monthRow } = await supabase
-    .from("months")
-    .select("id")
-    .eq("year", year)
-    .eq("month", month)
-    .maybeSingle();
-
-  let transactions: Transaction[] = [];
-  let transactionsError: string | null = null;
-
-  if (monthRow) {
-    const { data, error } = await supabase
-      .from("transactions")
-      .select(TRANSACTION_COLUMNS)
-      .eq("month_id", monthRow.id);
-    transactions = data ?? [];
-    transactionsError = error?.message ?? null;
-  }
-
-  return { ...shared, transactions, transactionsError };
+  return loadWorkspaceDataForRange(supabase, resolveRange("month", { year, month }));
 }
 
 /**
- * Overview-only loader for the day/week/custom-range views — queries
- * transactions by date directly instead of resolving a single months row,
- * since a range can span or fall short of a whole calendar month.
+ * Loader for an arbitrary date span — the day/week/custom-range views, and
+ * (via `loadWorkspaceData`) whole months too.
  */
 export async function loadWorkspaceDataForRange(
   supabase: SupabaseClient,

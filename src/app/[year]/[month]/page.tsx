@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { loadWorkspaceData, loadWorkspaceDataForRange } from "@/lib/workspace-data";
+import { loadWorkspaceDataForRange } from "@/lib/workspace-data";
 import { resolveRange, type ViewMode } from "@/lib/date-range";
 import { AppHeader } from "@/components/app-header";
 import { UploadButton } from "@/components/upload-button";
@@ -20,13 +20,13 @@ export default async function MonthWorkspacePage({
     viewParam === "day" || viewParam === "week" || viewParam === "range" ? viewParam : "month";
 
   const supabase = await createClient();
+  // Every view — month included — loads by date range now, so the four tabs
+  // can't disagree about which transactions belong to the span they name.
   const { userEmail, categories, categoriesError, transactions, transactionsError } =
-    view === "month"
-      ? await loadWorkspaceData(supabase, yearNum, monthNum)
-      : await loadWorkspaceDataForRange(
-          supabase,
-          resolveRange(view, { year: yearNum, month: monthNum, date, from, to }),
-        );
+    await loadWorkspaceDataForRange(
+      supabase,
+      resolveRange(view, { year: yearNum, month: monthNum, date, from, to }),
+    );
 
   return (
     <div className="mx-auto flex min-h-svh w-full max-w-[1600px] flex-col">
