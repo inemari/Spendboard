@@ -41,7 +41,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CategoryDropZone } from "@/components/category-drop-zone";
+import { CategoryIconPicker } from "@/components/category-icon-picker";
 import { ConfettiBurst } from "@/components/confetti-burst";
 import { buildCategoryTree } from "@/lib/category-tree";
 import {
@@ -164,6 +166,7 @@ export function CategorizeScreen({
   // this same index — no separate "advance" step needed.
   const [index, setIndex] = useState(0);
   const [newCategoryName, setNewCategoryName] = useState("");
+  const [newCategoryIcon, setNewCategoryIcon] = useState<string | null>(null);
   const [newCategoryParentId, setNewCategoryParentId] =
     useState(NO_PARENT_VALUE);
   const [creatingCategory, setCreatingCategory] = useState(false);
@@ -215,6 +218,7 @@ export function CategorizeScreen({
       categories,
       newCategoryName,
       newCategoryParentId === NO_PARENT_VALUE ? null : newCategoryParentId,
+      newCategoryIcon,
     );
     setCreatingCategory(false);
 
@@ -224,6 +228,7 @@ export function CategorizeScreen({
     }
 
     setNewCategoryName("");
+    setNewCategoryIcon(null);
     setNewCategoryParentId(NO_PARENT_VALUE);
     setAddingCategory(false);
     router.refresh();
@@ -406,6 +411,7 @@ export function CategorizeScreen({
                         <CategoryDropZone
                           id={parent.id}
                           name={parent.name}
+                          icon={parent.icon}
                           size={size}
                           swatch={colorMap.get(parent.id) ?? NEUTRAL_SWATCH}
                           pulseKey={
@@ -476,82 +482,97 @@ export function CategorizeScreen({
 
               {/* Category creation is kept out of the constellation itself —
                   a permanently-visible form competed with the categories for
-                  attention. It's one click away instead, and overlaid rather
-                  than stacked below so it adds no height for the ring to
-                  compete with. */}
-              <div className="absolute bottom-2 left-1/2 z-30 flex -translate-x-1/2 justify-center">
-              {addingCategory ? (
-                <div className="flex w-full max-w-xs flex-col gap-1.5 rounded-xl border border-dashed bg-background/90 p-2 shadow-sm backdrop-blur-sm">
-                  <Input
-                    autoFocus
-                    placeholder="New category name"
-                    value={newCategoryName}
-                    onChange={(e) => setNewCategoryName(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") void handleCreateCategory();
-                      if (e.key === "Escape") setAddingCategory(false);
-                    }}
-                    className="h-8"
-                  />
-                  <Select
-                    value={newCategoryParentId}
-                    onValueChange={(value) =>
-                      setNewCategoryParentId(value ?? NO_PARENT_VALUE)
-                    }
+                  attention. It's a popover off one small button instead, so
+                  the form only exists while it's being used and never takes
+                  height away from the ring. The trigger stays put whether or
+                  not the form is open (an earlier version swapped the button
+                  itself for the form, so the thing you'd just clicked moved
+                  out from under the cursor). */}
+              <div className="absolute bottom-2 left-1/2 z-30 -translate-x-1/2">
+                <Popover open={addingCategory} onOpenChange={setAddingCategory}>
+                  <PopoverTrigger
+                    className={cn(
+                      "inline-flex items-center gap-1.5 rounded-full border bg-background/90 px-3 py-1.5 text-xs font-medium shadow-sm backdrop-blur-sm transition-colors",
+                      addingCategory
+                        ? "border-primary text-primary"
+                        : "border-border/60 text-muted-foreground hover:text-foreground",
+                    )}
                   >
-                    <SelectTrigger className="h-8">
-                      <SelectValue placeholder="Parent category">
-                        {newCategoryParentId === NO_PARENT_VALUE
-                          ? "No parent"
-                          : topLevelCategories.find(
-                              (c) => c.id === newCategoryParentId,
-                            )?.name}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={NO_PARENT_VALUE}>
-                        No parent (top-level category)
-                      </SelectItem>
-                      {topLevelCategories.map((c) => (
-                        <SelectItem key={c.id} value={c.id}>
-                          Subcategory of {c.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <div className="flex gap-1.5">
+                    <Plus className="size-4" />
+                    Add category
+                  </PopoverTrigger>
+
+                  <PopoverContent side="top" className="w-80 space-y-3 rounded-2xl">
+                    <p className="font-heading text-sm font-bold">New category ✨</p>
+
+                    {/* Icon and name on one line, in that order: the picker
+                        previews whatever the name would resolve to on its own,
+                        so it reads as "here's your icon, change it if you
+                        like" rather than a separate decision to make. */}
+                    <div className="flex items-center gap-2">
+                      <CategoryIconPicker
+                        value={newCategoryIcon}
+                        name={newCategoryName}
+                        onChange={setNewCategoryIcon}
+                        className="size-9"
+                      />
+                      <Input
+                        autoFocus
+                        placeholder="Category name"
+                        value={newCategoryName}
+                        onChange={(e) => setNewCategoryName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") void handleCreateCategory();
+                        }}
+                        className="h-9 flex-1"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-secondary">
+                        Where does it belong?
+                      </label>
+                      <Select
+                        value={newCategoryParentId}
+                        onValueChange={(value) =>
+                          setNewCategoryParentId(value ?? NO_PARENT_VALUE)
+                        }
+                      >
+                        <SelectTrigger className="h-9 w-full">
+                          <SelectValue placeholder="Parent category">
+                            {newCategoryParentId === NO_PARENT_VALUE
+                              ? "Its own category"
+                              : `Under ${
+                                  topLevelCategories.find(
+                                    (c) => c.id === newCategoryParentId,
+                                  )?.name
+                                }`}
+                          </SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={NO_PARENT_VALUE}>
+                            Its own category
+                          </SelectItem>
+                          {topLevelCategories.map((c) => (
+                            <SelectItem key={c.id} value={c.id}>
+                              Under {c.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
                     <Button
                       type="button"
-                      size="sm"
-                      className="flex-1"
+                      className="w-full"
                       onClick={() => void handleCreateCategory()}
                       disabled={creatingCategory || !newCategoryName.trim()}
                     >
                       <Plus className="size-4" />
-                      Add
+                      Add it
                     </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setAddingCategory(false)}
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="text-muted-foreground"
-                  onClick={() => setAddingCategory(true)}
-                >
-                  <Plus className="size-4" />
-                  Add category
-                </Button>
-              )}
+                  </PopoverContent>
+                </Popover>
               </div>
             </>
           ) : (
@@ -883,6 +904,7 @@ function CategoryCluster({
           <CategoryDropZone
             id={c.id}
             name={c.name}
+            icon={c.icon}
             size={satelliteSize}
             swatch={colorMap.get(c.id) ?? NEUTRAL_SWATCH}
             pulseKey={dropPulse?.id === c.id ? dropPulse.key : undefined}
@@ -893,6 +915,7 @@ function CategoryCluster({
         <CategoryDropZone
           id={parent.id}
           name={parent.name}
+          icon={parent.icon}
           size={parentSize}
           swatch={colorMap.get(parent.id) ?? NEUTRAL_SWATCH}
           selected={expanded}
