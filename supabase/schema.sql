@@ -22,6 +22,13 @@ alter table categories drop column if exists color;
 -- top-level category) — enforced by the app, not the schema.
 alter table categories add column if not exists parent_id uuid references categories(id) on delete cascade;
 
+-- The icon a category wears in the overview's "Where it went" sidebar. Stores
+-- one of our own stable slugs (see src/lib/category-icons.ts), never a lucide
+-- export name, so upgrading the icon package can't invalidate saved rows.
+-- Nullable: a category with no icon renders one guessed from its name, so
+-- rows created before this column existed still look right with no backfill.
+alter table categories add column if not exists icon text;
+
 -- Manual drag-to-reorder within a group (top-level categories, or the
 -- subcategories of one parent). New rows default to 0 and get pushed to the
 -- end of their group at insert time by the app; pre-existing rows are all 0

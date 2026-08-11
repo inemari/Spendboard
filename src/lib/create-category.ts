@@ -6,6 +6,9 @@ export async function createCategory(
   categories: Category[],
   name: string,
   parentId: string | null,
+  /** A slug from `src/lib/category-icons.ts`. Null leaves the category without
+   *  one, which renders an icon guessed from its name instead. */
+  icon: string | null = null,
 ): Promise<{ error: string | null }> {
   const trimmed = name.trim();
   if (!trimmed) return { error: "Name is required." };
@@ -15,6 +18,7 @@ export async function createCategory(
   const { error } = await supabase.from("categories").insert({
     name: trimmed,
     parent_id: parentId,
+    icon,
     sort_order: siblingCount,
   });
 

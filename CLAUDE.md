@@ -110,7 +110,11 @@ decisions. For work that's planned but not yet implemented, see
   The sidebar is navigation, not just a readout: clicking a category (or "All
   transactions" / "Uncategorized") scopes the list to it and shows a colored
   chip beside the "Transactions" heading; clicking the active row again
-  resets to "All." Each category gets its own accent color from a fixed
+  resets to "All." Every row leads with a **pastel disc holding that
+  category's icon** (`categories.icon` — see "Category icons" below), in the
+  category's own `badge` color: a second recognition channel next to the color
+  and the name, so the list can be scanned by shape rather than read.
+  Each category gets its own accent color from a fixed
   rotation (`src/lib/category-colors.ts`) so it stays recognizable as a filter
   target — that's an identity/navigation color, unlike the single-hue spend
   bars this replaced, and doesn't need the categorical CVD palette's 8-hue
@@ -294,6 +298,28 @@ decisions. For work that's planned but not yet implemented, see
   per-file after the fact. Individual transactions can still be corrected
   afterward via the per-card toggle or the bulk action bar.
 - Custom category create/rename/delete.
+- **Category icons.** Every category can carry an icon, shown in the overview's
+  "Where it went" sidebar. Picked from a curated, grouped set of lucide glyphs
+  (`src/lib/category-icons.ts`) via `category-icon-picker.tsx` — on the
+  Categories screen, both in the "Add a category" row and per existing category
+  (changing it there saves immediately). The **stored value is our own stable
+  slug** (`"shopping-cart"`), never a lucide export name: lucide renames
+  components across major versions (`CircleHelp` no longer exists in the
+  version pinned here), and a rename must not blank out icons users already
+  saved. Icons are **optional** — `categories.icon` is nullable, and a category
+  without one renders an icon *guessed from its name*
+  (`guessCategoryIconKey`, Norwegian and English keyword hints) rather than a
+  blank disc, so categories created before this existed still read as distinct
+  symbols with no backfill. The picker's first entry ("Automatic") is that
+  null state, previewing whatever the guess currently resolves to.
+- **Default categories ship with icons already set.** A brand-new account is
+  seeded once with the list in `ensure-default-categories.ts` (Groceries,
+  Dining out, Transport, Housing, Utilities, Shopping, Health, Entertainment,
+  Subscriptions, Other), each with its icon, so the sidebar reads as a set of
+  recognizable symbols from the first upload. They're ordinary per-user rows
+  from then on — renaming, re-iconing, reordering or deleting one only affects
+  that user. The seed is skipped entirely once an account has any category, so
+  it never resurrects something a user deleted.
 - Per-category, per-month common/personal/overall totals; uncategorized count.
 - Undo action on the toast shown whenever a transaction's category changes.
 - The user avatar in `app-header.tsx` (top-right, desktop-only) opens
@@ -436,6 +462,10 @@ decisions. For work that's planned but not yet implemented, see
   via the upload button's card-type dialog (applied to every transaction in
   that file) or corrected manually afterward per transaction/selection.
 - `transactions.location` / `transactions.notes`: nullable text.
+- `categories.icon`: nullable text, holding a slug from
+  `src/lib/category-icons.ts` (not a lucide export name — see "Category icons"
+  above). Null means "no icon chosen", which renders one guessed from the
+  category's name, so this column needs no backfill.
 - **`transactions.month_id` is derived from the transaction's own `date`,** by
   the upload route (`monthOf` + a `months` upsert per distinct month in the
   file). A statement spanning a boundary therefore splits correctly: its June
@@ -509,6 +539,8 @@ Do not change these unless the task explicitly requires it:
 - Rules never silently overwrite an already categorized transaction.
 - Retroactive rule application only considers uncategorized transactions.
 - Category colors must remain stable across views and months.
+- `categories.icon` stores our own slug, never a lucide component name, and
+  stays nullable — don't backfill it or make it required.
 - Transaction reads are scoped by `date`, never by `month_id`.
 - No route carries a date in its path. The overview is the only screen with a
   timeframe, and it keeps it in query params.

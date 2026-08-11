@@ -16,7 +16,7 @@ export async function loadCategoriesAndRules(supabase: SupabaseClient) {
 
   const { data: categories, error: categoriesError } = await supabase
     .from("categories")
-    .select("id, name, is_default, parent_id, sort_order")
+    .select("id, name, is_default, parent_id, sort_order, icon")
     .order("sort_order")
     .order("name");
 

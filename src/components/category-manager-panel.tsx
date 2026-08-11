@@ -20,6 +20,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { createClient } from "@/lib/supabase/client";
+import { CategoryIconPicker } from "@/components/category-icon-picker";
 import { buildCategoryTree } from "@/lib/category-tree";
 import { createCategory } from "@/lib/create-category";
 import { Card } from "@/components/ui/card";
@@ -84,6 +85,15 @@ function SortableCategoryRow({
     router.refresh();
   }
 
+  async function handleIconChange(icon: string | null) {
+    const { error } = await supabase.from("categories").update({ icon }).eq("id", category.id);
+    if (error) {
+      toast.error("Failed to change the icon.");
+      return;
+    }
+    router.refresh();
+  }
+
   return (
     <div
       ref={setNodeRef}
@@ -103,6 +113,12 @@ function SortableCategoryRow({
       >
         <GripVertical className="size-4" />
       </button>
+      <CategoryIconPicker
+        value={category.icon}
+        name={name}
+        onChange={(icon) => void handleIconChange(icon)}
+        disabled={saving}
+      />
       <Input
         value={name}
         onChange={(e) => setName(e.target.value)}
@@ -130,6 +146,7 @@ export function CategoryManagerPanel({ categories }: { categories: Category[] })
   const router = useRouter();
   const [items, setItems] = useState(categories);
   const [newName, setNewName] = useState("");
+  const [newIcon, setNewIcon] = useState<string | null>(null);
   const [parentId, setParentId] = useState(NO_PARENT_VALUE);
   const [creating, setCreating] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<{ category: Category; indent: boolean } | null>(
@@ -212,6 +229,7 @@ export function CategoryManagerPanel({ categories }: { categories: Category[] })
       items,
       newName,
       parentId === NO_PARENT_VALUE ? null : parentId,
+      newIcon,
     );
     setCreating(false);
 
@@ -221,6 +239,7 @@ export function CategoryManagerPanel({ categories }: { categories: Category[] })
     }
 
     setNewName("");
+    setNewIcon(null);
     setParentId(NO_PARENT_VALUE);
     router.refresh();
   }
@@ -288,6 +307,12 @@ export function CategoryManagerPanel({ categories }: { categories: Category[] })
       <Card className="flex flex-col gap-3 p-4">
         <h3 className="text-sm font-semibold">Add a category</h3>
         <div className="flex flex-col gap-2 sm:flex-row">
+          <CategoryIconPicker
+            value={newIcon}
+            name={newName}
+            onChange={setNewIcon}
+            className="size-9"
+          />
           <Input
             ref={newNameInputRef}
             placeholder="Category name"

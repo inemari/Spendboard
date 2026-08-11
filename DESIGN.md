@@ -95,10 +95,21 @@ gradients in `rules-manager-panel.tsx`), keyed by sort order among siblings
 — not spend rank — so a category's color is the same everywhere it appears,
 and doesn't shift from month to month. A `CategorySwatch` carries several
 renderings of that one identity hue for different surfaces: a flat `bar`, a
-`soft` pill, a `ring`, plus the soft pastel `gradient` / richer
+`soft` pill, a `badge` disc (a step stronger than `soft` — it sits behind a
+small line-art icon rather than text, and vanishes at chip strength), a
+`ring`, plus the soft pastel `gradient` / richer
 `gradientSelected` pair the categorize screen's nodes use — all the same
 underlying identity, so "selected" reads as more prominent without becoming
 a different color.
+**Each sidebar row also carries the category's own icon**, in a pastel disc in
+that category's `badge` color (`src/lib/category-icons.ts`, chosen by the user
+per category). It's a second recognition channel alongside the color and the
+name, which is what lets the list be scanned by shape rather than read
+top-to-bottom — the sidebar is a filter control, so the faster a row is
+identified the better. A category with no icon of its own falls back to one
+guessed from its name rather than a blank disc, so a list of categories
+created before icons existed still reads as distinct symbols.
+
 Because the color is never the sole channel — the name is always printed
 next to it — this rotation is *not* run through the categorical CVD
 validator the way the split meter's palette is; it can safely exceed 8 hues if
