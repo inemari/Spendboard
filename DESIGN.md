@@ -49,6 +49,18 @@ Bold, fun, and energetic. Saturated colors, pill-shaped elements, and bouncy mic
   `input.tsx`, `badge.tsx`; lift/shadow on `card.tsx`. Category board columns and the
   Categorize screen's drop zones (`category-column.tsx`, `category-drop-zone.tsx`) got the
   same radius treatment since they're central, highly visible UI.
+- `ui/popover.tsx` carries the same 16-20px radius and pink-tinted shadow as `card.tsx`,
+  so the timeframe switcher's custom-range menu reads as a card rather than a system menu.
+- The timeframe switcher (`timeframe-switcher.tsx`) is a pill group: the active tab wears
+  brand pink with its own tinted shadow, every tab and step arrow bounces on
+  hover/press, and an applied custom range shows as a purple `Badge`. The empty-timeframe
+  state on `transaction-board.tsx` pairs that badge with a slow-bouncing
+  pink→purple→blue gradient medallion (`motion-reduce:animate-none`, so the bounce is
+  opt-out for anyone who asks the OS to reduce motion) — bouncy is the house style, but
+  it should never be the only way the state reads.
+- Empty and zero states are written in the same voice as the rest of the app: warm and
+  a little silly ("Nothing here yet!", "This stretch is squeaky clean"), never a flat
+  system message. Keep the actual instruction in the line below the joke.
 
 ## Data visualization
 

@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { LayoutGrid, List, Search } from "lucide-react";
+import { CalendarSearch, LayoutGrid, List, Receipt, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { formatRangeLabel, resolveRange, type ViewMode } from "@/lib/date-range";
 import { useTransactionActions } from "@/hooks/use-transaction-actions";
 import { computeOverview } from "@/lib/overview";
 import { buildCategoryColorMap, NEUTRAL_SWATCH, UNCATEGORIZED_SWATCH } from "@/lib/category-colors";
@@ -17,6 +18,7 @@ import { SimilarTransactionsDialog } from "@/components/similar-transactions-dia
 import { CreateRuleDialog } from "@/components/create-rule-dialog";
 import { DeleteConfirmDialog } from "@/components/delete-confirm-dialog";
 import { TimeframeSwitcher } from "@/components/timeframe-switcher";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import type { Category, Transaction, TxType } from "@/lib/types";
 
@@ -91,6 +93,22 @@ export function TransactionBoard({
     return () => clearTimeout(timeout);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-run when the highlight param itself changes
   }, [highlightParam, view]);
+
+  // Same params the timeframe switcher reads, so the empty state can name the
+  // timeframe that came back empty rather than always saying "this month".
+  const viewParam = searchParams.get("view");
+  const timeframeView: ViewMode =
+    viewParam === "day" || viewParam === "week" || viewParam === "range" ? viewParam : "month";
+  const timeframeLabel = formatRangeLabel(
+    timeframeView,
+    resolveRange(timeframeView, {
+      year,
+      month,
+      date: searchParams.get("date") ?? undefined,
+      from: searchParams.get("from") ?? undefined,
+      to: searchParams.get("to") ?? undefined,
+    }),
+  );
 
   const overview = useMemo(
     () => computeOverview(transactions, categories),
@@ -282,6 +300,38 @@ export function TransactionBoard({
             />
           )}
         </>
+      )}
+
+      {/* Without this the page is just the toolbar over blank space — every
+          panel below is gated on having transactions, and the list's own
+          "no transactions yet" state never mounts because the list doesn't
+          render at all when the timeframe is empty. */}
+      {transactions.length === 0 && (
+        <div className="flex flex-col items-center gap-3 rounded-2xl bg-card px-6 py-16 text-center shadow-[0_4px_16px_rgba(224,64,160,0.08)] ring-1 ring-foreground/10">
+          {/* `[animation-duration:2.4s]` stays an arbitrary property — the
+              `animation-duration-[…]` utility the Tailwind IDE plugin
+              suggests generates no CSS on the installed v4.3.3. */}
+          <span className="flex size-16 animate-bounce items-center justify-center rounded-full bg-linear-to-br from-primary/20 via-secondary/20 to-tertiary/20 text-primary shadow-[0_6px_20px_rgba(224,64,160,0.18)] [animation-duration:2.4s] motion-reduce:animate-none">
+            {timeframeView === "month" ? (
+              <Receipt className="size-7" />
+            ) : (
+              <CalendarSearch className="size-7" />
+            )}
+          </span>
+          <p className="font-heading text-lg font-bold">
+            {timeframeView === "month"
+              ? "Nothing here yet!"
+              : "This stretch is squeaky clean"}
+          </p>
+          <Badge variant="secondary" className="h-7 px-3 text-sm">
+            {timeframeLabel}
+          </Badge>
+          <p className="max-w-sm text-sm text-muted-foreground">
+            {timeframeView === "month"
+              ? "Upload a bank statement to fill this month up — or hop to another month with the arrows."
+              : "Not a single transaction in this span. Stretch it wider, or step along to another one."}
+          </p>
+        </div>
       )}
 
       {selectedIds.size > 0 && (
