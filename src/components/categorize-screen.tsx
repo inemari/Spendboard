@@ -79,33 +79,46 @@ const SATELLITE_GAP = 6;
 // look: nodes grow to fill that room and stop at NODE_MIN_GAP from each
 // other, so a wider ring yields bigger nodes rather than a sparser one.
 // Tightening the ring here would shrink the categories, not close the gaps.
-// INNER_REACH staggers alternating nodes so neighbours interleave.
-const RING_RX_PCT = 36;
-const RING_RY_PCT = 33;
-const RING_INNER_REACH = 0.88;
+// INNER_REACH staggers alternating nodes so neighbours interleave. These
+// four numbers (RX/RY/REACH plus NODE_MIN_GAP/CARD_MIN_GAP below) came from
+// a small brute-force search over a typical category count (~11) against
+// three viewport sizes, maximizing node size at a common desktop width
+// (1280-1600px) subject to staying overlap-free — not floor-clamped by
+// MIN_NODE_SCALE — all the way down to a 1024x540 window. The binding
+// constraint throughout is adjacent-node spacing (fitNodeScale's "pair"
+// case), not the container edge — with ~11 nodes on one ring, how close
+// neighbours can get is what limits growth, so this is a genuine tradeoff
+// point, not an arbitrary round number.
+const RING_RX_PCT = 44;
+const RING_RY_PCT = 38;
+const RING_INNER_REACH = 0.86;
 
 // Concentric rings drawn around the selected (expanded) parent — thin,
 // translucent, progressively larger than the parent itself.
 const SELECTED_RING_GAPS = [10, 22, 36];
 
 // Breathing room kept between the outermost node edge and the container.
-const RING_EDGE_MARGIN = 10;
+const RING_EDGE_MARGIN = 8;
 // Clear air between two neighbouring nodes, and between a node and the card.
 // These are what the nodes grow *until* — they set the visible spacing.
-const NODE_MIN_GAP = 22;
-const CARD_MIN_GAP = 28;
+const NODE_MIN_GAP = 12;
+const CARD_MIN_GAP = 16;
 // The card's rendered height, used only to keep nodes off it. Cheaper and
 // steadier than measuring it — it's a fixed-layout card, and a stale
 // measurement mid-transition would make nodes twitch.
 const CARD_HEIGHT = 130;
 // Below this the labels stop being readable, so the screen gives up on
 // shrinking rather than degrading into unreadable dots. There is no mobile
-// layout for the constellation; this only guards small desktop windows.
+// layout for the constellation; this only guards small desktop windows. Note
+// this is a last-resort floor: below it fitNodeScale's own overlap-free
+// result gets overridden, so on an extreme window it trades "no overlap"
+// for "still legible" — the tuning above keeps real desktop sizes from ever
+// reaching it.
 const MIN_NODE_SCALE = 0.55;
 // Nodes grow to fill whatever room the ring leaves them, up to this. The cap
 // only stops a sparse constellation (two or three categories) from inflating
 // into a few enormous circles.
-const MAX_NODE_SCALE = 1.9;
+const MAX_NODE_SCALE = 2;
 
 /** Tracks a element's rendered size. The constellation positions its ring in
  *  percentages, but node sizes are in pixels — so without knowing the actual
