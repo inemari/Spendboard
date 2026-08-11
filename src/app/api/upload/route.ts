@@ -6,15 +6,13 @@ import type { CardType, Rule } from "@/lib/types";
 
 const CARD_TYPES: CardType[] = ["credit", "debit"];
 
+/** "2026-07-15" -> { year: 2026, month: 7 } */
+function monthOf(isoDate: string): { year: number; month: number } {
+  const [year, month] = isoDate.split("-").map(Number);
+  return { year, month };
+}
+
 export async function POST(request: NextRequest) {
-  const { searchParams } = new URL(request.url);
-  const year = Number(searchParams.get("year"));
-  const month = Number(searchParams.get("month"));
-
-  if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) {
-    return NextResponse.json({ error: "Invalid year/month." }, { status: 400 });
-  }
-
   const supabase = await createClient();
   const {
     data: { user },
@@ -51,25 +49,37 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { data: monthRow, error: monthError } = await supabase
-    .from("months")
-    .upsert({ year, month }, { onConflict: "user_id,year,month" })
-    .select("id")
-    .single();
+  // A file is filed month-by-month, from each transaction's own date — not
+  // under one month picked from the page the upload started from. There is no
+  // such page any more (the overview can be showing any span), and stamping a
+  // whole statement with one month is what used to strand a credit-card
+  // period's July rows under August.
+  const monthKeys = Array.from(
+    new Map(parsed.map((t) => [t.date.slice(0, 7), monthOf(t.date)])).values(),
+  );
 
-  if (monthError || !monthRow) {
+  const { data: monthRows, error: monthError } = await supabase
+    .from("months")
+    .upsert(monthKeys, { onConflict: "user_id,year,month" })
+    .select("id, year, month");
+
+  if (monthError || !monthRows) {
     return NextResponse.json(
       { error: monthError?.message ?? "Failed to create month." },
       { status: 500 },
     );
   }
 
+  const monthIdByKey = new Map(
+    monthRows.map((m) => [`${m.year}-${String(m.month).padStart(2, "0")}`, m.id as string]),
+  );
+
   const { data: rules } = await supabase
     .from("rules")
     .select("id, category_id, created_at, conditions");
 
   const rows = parsed.map((t) => ({
-    month_id: monthRow.id,
+    month_id: monthIdByKey.get(t.date.slice(0, 7))!,
     date: t.date,
     description: t.description,
     location: t.location,
@@ -108,7 +118,7 @@ export async function POST(request: NextRequest) {
     const { data: existingWithoutLocation } = await supabase
       .from("transactions")
       .select("id, source_hash")
-      .eq("month_id", monthRow.id)
+      .in("month_id", Array.from(monthIdByKey.values()))
       .is("location", null)
       .in("source_hash", Array.from(parsedLocationByHash.keys()));
 

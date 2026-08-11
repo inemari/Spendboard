@@ -1,9 +1,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ensureDefaultCategories } from "@/lib/ensure-default-categories";
-import { resolveRange } from "@/lib/date-range";
 import type { Category, Rule, Transaction } from "@/lib/types";
 
-async function loadCategoriesAndRules(supabase: SupabaseClient) {
+/**
+ * Categories + rules + the signed-in user, with no transactions and no
+ * timeframe — what the Categories and Rules screens need, both of which are
+ * account-wide and have nothing to do with dates.
+ */
+export async function loadCategoriesAndRules(supabase: SupabaseClient) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -34,24 +38,12 @@ const TRANSACTION_COLUMNS =
   "id, month_id, date, description, location, notes, amount, category_id, type, card_type";
 
 /**
- * A calendar month's transactions — by transaction *date*, not by `month_id`.
+ * Transactions for a date span — the overview's only loader, covering all four
+ * of its views (a month is just `resolveRange("month", …)`).
  *
- * `month_id` is which month page a file was uploaded from, which is not the
- * same thing: the upload route stamps every row in a file with that one id,
- * so a statement spanning a month boundary (a credit-card period running
- * mid-month to mid-month, say) files its July-dated rows under August. Reading
- * by `month_id` therefore hid those rows on `/2026/7` while counting them into
- * August's total — and disagreed with the day/week/custom views right next to
- * it, which have always read by date. `months` rows still exist; they scope
- * uploads and the `(month_id, source_hash)` dedup key, not reads.
- */
-export async function loadWorkspaceData(supabase: SupabaseClient, year: number, month: number) {
-  return loadWorkspaceDataForRange(supabase, resolveRange("month", { year, month }));
-}
-
-/**
- * Loader for an arbitrary date span — the day/week/custom-range views, and
- * (via `loadWorkspaceData`) whole months too.
+ * Scoped by transaction `date`, never by `month_id`: `month_id` records which
+ * month a file was *uploaded under*, so reading by it hid a statement's
+ * July-dated rows on July's screen while counting them into August's total.
  */
 export async function loadWorkspaceDataForRange(
   supabase: SupabaseClient,
@@ -64,6 +56,24 @@ export async function loadWorkspaceDataForRange(
     .select(TRANSACTION_COLUMNS)
     .gte("date", range.from)
     .lte("date", range.to);
+
+  return {
+    ...shared,
+    transactions: (data ?? []) as Transaction[],
+    transactionsError: error?.message ?? null,
+  };
+}
+
+/**
+ * Every transaction the user has, no timeframe at all — what the Categorize
+ * screen works from. Sorting the pile is a "clear the backlog" job, not a
+ * per-month one: scoping it to a month left uncategorized transactions
+ * stranded on months the user had no reason to revisit.
+ */
+export async function loadAllTransactions(supabase: SupabaseClient) {
+  const shared = await loadCategoriesAndRules(supabase);
+
+  const { data, error } = await supabase.from("transactions").select(TRANSACTION_COLUMNS);
 
   return {
     ...shared,

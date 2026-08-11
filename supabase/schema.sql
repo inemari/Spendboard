@@ -69,10 +69,9 @@ end $$;
 create table if not exists transactions (
   id uuid primary key default gen_random_uuid(),
   user_id uuid references auth.users not null default auth.uid(),
-  -- Which month page the file was uploaded from — NOT which month the
-  -- transaction falls in (a statement spanning a boundary files all its rows
-  -- under one month). Scopes uploads and the dedup key below; reads scope by
-  -- `date`.
+  -- Derived from this row's own `date` at upload time, so a statement spanning
+  -- a month boundary splits across two months rows. Scopes the dedup key
+  -- below; reads always scope by `date`, never through here.
   month_id uuid references months(id) on delete cascade not null,
   date date not null,
   description text not null, -- card title (from the "Spesifikasjon" column)

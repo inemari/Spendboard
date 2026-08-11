@@ -22,12 +22,18 @@ export function shiftMonth(year: number, month: number, delta: number): { year: 
   return { year: d.getFullYear(), month: d.getMonth() + 1 };
 }
 
-function startOfMonthISO(year: number, month: number): string {
-  return toISODate(new Date(year, month - 1, 1));
+/** First of the month containing `date`. Also the canonical `?date=` value for month view. */
+export function startOfMonthISO(date: Date): string {
+  return toISODate(new Date(date.getFullYear(), date.getMonth(), 1));
 }
 
-function endOfMonthISO(year: number, month: number): string {
-  return toISODate(new Date(year, month, 0));
+function endOfMonthISO(date: Date): string {
+  return toISODate(new Date(date.getFullYear(), date.getMonth() + 1, 0));
+}
+
+/** `?date=` for the month a given ISO date falls in — e.g. linking back to a transaction's month. */
+export function monthAnchorFor(isoDate: string): string {
+  return startOfMonthISO(parseISODate(isoDate));
 }
 
 /** Monday-start week containing `date`. */
@@ -49,32 +55,40 @@ export type ResolvedRange = { from: string; to: string; anchor: string };
 
 /**
  * Turns a view mode + its URL params into a concrete inclusive date range.
- * `anchor` is the single date used for stepping (see shiftByView) — for
- * `month` it's the 1st of the month, for `range` it's `from`.
+ *
+ * Everything hangs off one optional `date` anchor — the only timeframe state
+ * in the URL, and the reason no route needs a `[year]/[month]` segment. Omit
+ * it and every view falls back to today (so a bare `/` is the current month).
+ * `anchor` is the date used for stepping (see shiftByView): for `month` it's
+ * normalised to the 1st, for `range` it's `from`.
  */
 export function resolveRange(
   view: ViewMode,
-  params: { year: number; month: number; date?: string; from?: string; to?: string },
+  params: { date?: string; from?: string; to?: string } = {},
 ): ResolvedRange {
+  const anchorDate = parseISODate(params.date ?? todayISO());
+
   switch (view) {
     case "day": {
-      const anchor = params.date ?? todayISO();
+      const anchor = toISODate(anchorDate);
       return { from: anchor, to: anchor, anchor };
     }
     case "week": {
-      const anchor = params.date ?? todayISO();
-      const anchorDate = parseISODate(anchor);
-      return { from: toISODate(startOfWeek(anchorDate)), to: toISODate(endOfWeek(anchorDate)), anchor };
+      return {
+        from: toISODate(startOfWeek(anchorDate)),
+        to: toISODate(endOfWeek(anchorDate)),
+        anchor: toISODate(anchorDate),
+      };
     }
     case "range": {
-      const from = params.from ?? startOfMonthISO(params.year, params.month);
-      const to = params.to ?? endOfMonthISO(params.year, params.month);
+      const from = params.from ?? startOfMonthISO(anchorDate);
+      const to = params.to ?? endOfMonthISO(anchorDate);
       return { from, to, anchor: from };
     }
     case "month":
     default: {
-      const anchor = startOfMonthISO(params.year, params.month);
-      return { from: anchor, to: endOfMonthISO(params.year, params.month), anchor };
+      const anchor = startOfMonthISO(anchorDate);
+      return { from: anchor, to: endOfMonthISO(anchorDate), anchor };
     }
   }
 }
@@ -85,19 +99,18 @@ export function resolveRange(
  */
 export function shiftByView(
   view: "day" | "week" | "month",
-  params: { year: number; month: number; date?: string },
+  params: { date?: string },
   delta: number,
-): { date?: string; year: number; month: number } {
+): { date: string } {
+  const anchorDate = parseISODate(params.date ?? todayISO());
+
   if (view === "month") {
-    const next = shiftMonth(params.year, params.month, delta);
-    return { year: next.year, month: next.month };
+    const next = shiftMonth(anchorDate.getFullYear(), anchorDate.getMonth() + 1, delta);
+    return { date: `${next.year}-${pad(next.month)}-01` };
   }
 
-  const anchor = params.date ?? todayISO();
-  const anchorDate = parseISODate(anchor);
-  const days = view === "week" ? 7 * delta : delta;
-  anchorDate.setDate(anchorDate.getDate() + days);
-  return { date: toISODate(anchorDate), year: anchorDate.getFullYear(), month: anchorDate.getMonth() + 1 };
+  anchorDate.setDate(anchorDate.getDate() + (view === "week" ? 7 * delta : delta));
+  return { date: toISODate(anchorDate) };
 }
 
 const dayLabelFormatter = new Intl.DateTimeFormat("nb-NO", { day: "numeric", month: "short" });

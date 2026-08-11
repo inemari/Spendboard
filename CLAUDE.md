@@ -11,10 +11,17 @@ visual design system.
 
 ## Architecture map
 
-- `src/app/[year]/[month]/` — the month workspace: overview (`page.tsx`),
-  `categorize/`, `categories/`, `rules/`. `src/app/admin/rules/` — admin
-  rule-template management. `src/app/api/upload/` — the upload endpoint.
-  `src/app/login/` — sign-in.
+- **Routes are flat and dateless.** `src/app/page.tsx` — the overview, the one
+  screen with a timeframe and so the only one carrying date state, all of it in
+  query params (`?view`/`?date`/`?from`/`?to`; a bare `/` is the current
+  month). `src/app/categorize/`, `categories/`, `rules/` — account-wide, no
+  dates. `src/app/admin/rules/` — admin rule-template management.
+  `src/app/api/upload/` — the upload endpoint. `src/app/login/` — sign-in.
+  There is deliberately **no `[year]/[month]` path segment**: it made every
+  URL claim a month even on screens that have nothing to do with one, and it
+  put a second month control (the header's) in competition with the overview's
+  own. It also cost a full subtree remount whenever a week/day step crossed a
+  month boundary. Do not reintroduce a date into any path.
 - `src/components/` — UI. `ui/` holds shadcn primitives; everything else is
   app-specific (board, list, dialogs, headers).
 - `src/lib/` — framework-free logic: parsing (`parse-transactions.ts`,
@@ -46,7 +53,9 @@ decisions. For work that's planned but not yet implemented, see
 
 ### Must have (implemented)
 
-- Upload a bank statement for a given month; transactions are parsed,
+- Upload a bank statement (from the overview, whatever timeframe it happens to
+  be showing — each transaction is filed under the month its own date falls in,
+  so the upload carries no year/month of its own); transactions are parsed,
   de-duplicated (by date+description+amount hash), and shown as cards. The
   upload button (`upload-button.tsx`) only asks for the file and the card
   type (Credit/Debit — see below); it does **not** ask which bank/export
@@ -92,7 +101,7 @@ decisions. For work that's planned but not yet implemented, see
   for the Excel format, `Navn` for Nordea Debit), and its **subtitle is the
   location column** (`Sted` for Excel, `Betalingstype` for Nordea Debit),
   when present.
-- The month workspace (`/[year]/[month]`) is an **overview dashboard**
+- The overview (`/`) is a **dashboard**
   (`transaction-board.tsx`): a hero "spent this month" figure, a common /
   personal / need-review split meter, a **clickable "Where it went" category
   sidebar** (`category-sidebar.tsx`, subcategory spend rolled into its
@@ -115,9 +124,8 @@ decisions. For work that's planned but not yet implemented, see
   arrows and the month title), which meant two competing month controls
   stacked above each other on the one screen that already had one. Any month
   is reachable; there is no "has data" check, so stepping into an empty month
-  shows the empty state. Consequence: the month-scoped sub-pages
-  (categorize/categories/rules) no longer name their month in the header —
-  reach another month from the overview.
+  shows the empty state. The other screens don't name a month at all, because
+  none of them is scoped to one.
 - **Empty timeframes get their own state** (`transaction-board.tsx`), naming
   the range that came back empty via `formatRangeLabel` — an empty month
   suggests uploading a statement, an empty day/week/custom range suggests
@@ -130,7 +138,12 @@ decisions. For work that's planned but not yet implemented, see
 - Categorize transactions via dropdown, drag-and-drop board (desktop), or the
   one-by-one "Categorize" screen (drag a card onto its category — or use its
   Prev/Next arrows to step through the uncategorized list without touching
-  it, same as the board carousel's stepper below). `categorize-screen.tsx`
+  it, same as the board carousel's stepper below). **The Categorize screen is
+  account-wide** (`loadAllTransactions`): it works from every uncategorized
+  transaction the user has, whatever month it fell in. Clearing the backlog
+  isn't a per-month job — scoping it to one month left uncategorized
+  transactions stranded on months the user had no reason to revisit, and there
+  was no way to see how much was left overall. `categorize-screen.tsx`
   is a plain index into the uncategorized list, not a forward-only skip
   queue — Previous and Next are the same stepper, so "skip" and "go back"
   aren't two different mechanisms. Categorizing (or deleting) the current
@@ -300,8 +313,8 @@ decisions. For work that's planned but not yet implemented, see
   user pick which to move too, then optionally create a persistent
   categorization **rule** (`rules` table) via a follow-up confirm dialog
   (`src/components/create-rule-dialog.tsx`). Rules are listed/deletable on the
-  `/[year]/[month]/rules` page and auto-applied to matching descriptions at
-  upload time (`src/app/api/upload/route.ts`).
+  `/rules` page and auto-applied to matching descriptions at upload time
+  (`src/app/api/upload/route.ts`).
 - Delete a transaction, single or bulk-selected, with an `AlertDialog`
   confirmation (`delete-confirm-dialog.tsx`, driven by
   `use-transaction-actions.ts`'s `pendingDelete`/`confirmDelete`/
@@ -322,8 +335,10 @@ decisions. For work that's planned but not yet implemented, see
   categorized transactions are never touched. When two or more rules match the
   same transaction with _different_ categories, nothing is written silently —
   `resolve-rule-conflicts-dialog.tsx` asks per transaction. The success toast's
-  "Show" action deep-links to `/[year]/[month]?highlight=<ids>`, which scrolls
-  to and briefly ring-highlights those cards.
+  "Show" action deep-links to `/?date=<1st of that month>&highlight=<ids>`
+  (`highlightHref` in `rules-manager-panel.tsx`, via `monthAnchorFor`), which
+  scrolls to and briefly ring-highlights those cards, then clears the
+  `highlight` param after a few seconds.
 - **Rule matching conditions: equals, contains, starts with (name);
   contains, doesn't contain (subtitle).** `RuleCondition`
   (`src/lib/types.ts`), `apply-rules.ts`'s matcher, and the operator dropdown
@@ -370,16 +385,25 @@ decisions. For work that's planned but not yet implemented, see
 
 - **Flexible timeframe switcher (day / week / month / custom range), overview
   only.** `timeframe-switcher.tsx` adds Day/Week/Month/Custom tabs above the
-  board on `/[year]/[month]`. Upload, categorize, categories, and rules stay
-  month-scoped. Every read goes through `loadWorkspaceDataForRange` in
-  `src/lib/workspace-data.ts`, which queries `transactions` by `date`
-  (`.gte`/`.lte`, backed by the additive `transactions_user_id_date_idx`
-  index); `loadWorkspaceData(year, month)` is now just that loader over
-  `resolveRange("month", …)`. `computeOverview`/`computeTotals` needed no
-  changes — they already operated on a flat `Transaction[]` with no month
-  assumption. Date-range math (`resolveRange`, `shiftByView`,
-  `formatRangeLabel`) lives in `src/lib/date-range.ts`, including `shiftMonth`
-  (hoisted there out of the since-removed `month-nav.tsx`).
+  board on `/`. It is the app's **only** timeframe control, and the overview is
+  the only screen that has one: categorize is account-wide, and categories and
+  rules have nothing to do with dates.
+  - **One optional `date` anchor is the whole of the URL's timeframe state.**
+    `resolveRange(view, { date, from, to })` draws the span around it and
+    `shiftByView(view, { date }, delta)` steps it; both take an anchor date
+    rather than a year/month pair, which is what lets every route be dateless.
+    Omit `date` and every view falls back to today, so a bare `/` is the
+    current month. Params are omitted when they'd only restate that default
+    (see `navigate`/`selectTab`), and `selectTab` re-resolves the anchor
+    through the *target* view so switching Day → Month carries the month over
+    as its 1st instead of leaving an arbitrary day in the URL.
+  - Every read goes through `loadWorkspaceDataForRange` in
+    `src/lib/workspace-data.ts`, which queries `transactions` by `date`
+    (`.gte`/`.lte`, backed by the additive `transactions_user_id_date_idx`
+    index). `computeOverview`/`computeTotals` needed no changes — they already
+    operated on a flat `Transaction[]` with no month assumption. Date-range
+    math (`resolveRange`, `shiftByView`, `shiftMonth`, `monthAnchorFor`,
+    `formatRangeLabel`) all lives in `src/lib/date-range.ts`.
   - **The custom range's from/to fields live in a popover on the Custom tab**,
     not inline beside the tabs. Clicking Custom opens the menu (seeded from
     whatever range is currently showing) and only its **Show me** button
@@ -390,15 +414,14 @@ decisions. For work that's planned but not yet implemented, see
     next/previous to step to). The popover primitive is
     `src/components/ui/popover.tsx`, wrapping Base UI's `Popover` — the same
     package `dropdown-menu.tsx` already uses; no new dependency.
-  - **Day/week/custom-range navigation never changes the URL's `[year]/[month]`
-    path**, even when the shifted date falls in a different month — only
-    query params (`view`/`date`/`from`/`to`) change. Routing to a different
-    value of a dynamic path segment is a genuinely different page in Next.js
-    App Router and remounts the whole subtree, which was silently resetting
-    `transaction-board.tsx`'s Overview/Board toggle on every week-arrow click
-    that crossed a month boundary. Only the Month tab's step arrows are
-    meant to actually change which month's page you're on — and since the
-    header's month arrows are gone, they're now the only control that does.
+  - **No navigation here ever touches the path** — every tab, arrow and range
+    only rewrites query params on `/`. This started as a fix for one bug:
+    routing to a different value of a dynamic path segment is a genuinely
+    different page in Next.js App Router and remounts the whole subtree, which
+    silently reset `transaction-board.tsx`'s Overview/Board toggle on every
+    week-arrow click that crossed a month boundary. Keeping the month in the
+    query string rather than the path removed the dynamic segment entirely, so
+    the class of bug is gone rather than worked around.
 
 ## Data model notes
 
@@ -413,21 +436,24 @@ decisions. For work that's planned but not yet implemented, see
   via the upload button's card-type dialog (applied to every transaction in
   that file) or corrected manually afterward per transaction/selection.
 - `transactions.location` / `transactions.notes`: nullable text.
-- **`transactions.month_id` records which month page the file was uploaded
-  from — it is not "which month this transaction belongs to."** The upload
-  route stamps every row in a file with the one `months` row for the page the
-  upload started from, so a statement spanning a boundary (a credit-card
-  period running mid-month to mid-month) files its July-dated rows under
-  August. **Never scope a read by `month_id`; scope it by `date`.** Reading by
-  `month_id` is what used to make `/2026/7` render "Nothing here yet!" while
-  the exact same July span in the Custom tab showed the transactions, and
-  wrongly rolled them into August's total. `month_id` still scopes uploads and
-  the `(month_id, source_hash)` dedup key — a consequence worth knowing: the
-  same file uploaded from two different month pages dedups against itself only
-  within each page, so it can produce duplicate rows that a date-scoped read
-  now correctly shows side by side.
+- **`transactions.month_id` is derived from the transaction's own `date`,** by
+  the upload route (`monthOf` + a `months` upsert per distinct month in the
+  file). A statement spanning a boundary therefore splits correctly: its June
+  rows get June's `months` row and its July rows get July's.
+  - **Never scope a read by `month_id` anyway; scope it by `date`.** Reads have
+    no business joining through `months`, and the two must not be free to
+    disagree.
+  - Historical decision — do not treat as current implementation requirements.
+    `month_id` used to be "which month page the upload was started from," the
+    same value stamped on every row in the file. That made a credit-card
+    period's July rows show up under August: the old month-scoped read rendered
+    "Nothing here yet!" on July while the exact same July span in the Custom
+    tab listed them, and August's total silently included them. It also meant
+    re-uploading one file from two different month pages produced duplicate
+    rows, since the `(month_id, source_hash)` dedup key differed. Both went
+    away with the date-derived `month_id`; the dedup key itself is unchanged.
 - Re-uploading a statement (`src/app/api/upload/route.ts`) never overwrites
-  fields on transactions that already exist for that month (matched by
+  fields on transactions that already exist (matched by `month_id` +
   `source_hash`) — this protects the user's manual categorization from being
   clobbered on re-import. The one deliberate exception: `location` is
   backfilled on existing rows when it's currently `null`, since transactions
@@ -484,6 +510,9 @@ Do not change these unless the task explicitly requires it:
 - Retroactive rule application only considers uncategorized transactions.
 - Category colors must remain stable across views and months.
 - Transaction reads are scoped by `date`, never by `month_id`.
+- No route carries a date in its path. The overview is the only screen with a
+  timeframe, and it keeps it in query params.
+- The Categorize screen is account-wide; don't scope it to a month.
 - Do not install a new package when the repository already has a reasonable way to solve the problem. If a new dependency is genuinely warranted, explain why before adding it.
 - Before introducing a new UI pattern, search existing components, shared constants, and nearby implementation for an established equivalent — reuse it rather than inventing a new one.
 

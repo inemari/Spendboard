@@ -23,15 +23,7 @@ const ACCEPT = Array.from(
   new Set(STATEMENT_FORMATS.flatMap((f) => f.accept.split(","))),
 ).join(",");
 
-export function UploadButton({
-  year,
-  month,
-  categories,
-}: {
-  year: number;
-  month: number;
-  categories: Category[];
-}) {
+export function UploadButton({ categories }: { categories: Category[] }) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const pendingCardTypeRef = useRef<CardType | null>(null);
@@ -46,7 +38,10 @@ export function UploadButton({
       formData.set("file", file);
       formData.set("cardType", cardType);
 
-      const res = await fetch(`/api/upload?year=${year}&month=${month}`, {
+      // No year/month: each transaction is filed under the month its own date
+      // falls in, so the upload doesn't depend on what the overview happens to
+      // be showing (which can be a span covering several months, or none).
+      const res = await fetch("/api/upload", {
         method: "POST",
         body: formData,
       });
@@ -128,7 +123,7 @@ export function UploadButton({
       <NewTransactionsSheet
         transactions={newTransactions}
         categories={categories}
-        categorizeHref={`/${year}/${month}/categorize`}
+        categorizeHref="/categorize"
         onOpenChange={(open) => !open && setNewTransactions(null)}
       />
     </>

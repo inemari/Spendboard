@@ -33,11 +33,9 @@ export default async function AdminRulesPage() {
     items: (t.rule_template_items ?? []) as RuleTemplateItem[],
   }));
 
-  const now = new Date();
-
   return (
     <div className="mx-auto flex min-h-svh w-full max-w-[1600px] flex-col">
-      <AppHeader year={now.getFullYear()} month={now.getMonth() + 1} userEmail={user?.email} />
+      <AppHeader userEmail={user?.email} />
 
       {(templatesError || usersError) && (
         <p className="m-6 rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">

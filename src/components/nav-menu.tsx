@@ -22,21 +22,18 @@ import {
 import { cn } from "@/lib/utils";
 import { SignOutButton } from "./sign-out-button";
 
-export function NavMenu({ year, month }: { year: number; month: number }) {
+// Static: no screen but the overview has a timeframe, and the overview's own
+// timeframe lives in query params, so none of these need a date to link to.
+const links = [
+  { href: "/", label: "Overview", Icon: LayoutDashboard },
+  { href: "/categorize", label: "Categorize", Icon: MousePointerClick },
+  { href: "/categories", label: "Manage categories", Icon: Tags },
+  { href: "/rules", label: "Rules", Icon: Wand2 },
+];
+
+export function NavMenu() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
-  const base = `/${year}/${month}`;
-
-  const links = [
-    { href: base, label: "Overview", Icon: LayoutDashboard },
-    {
-      href: `${base}/categorize`,
-      label: "Categorize",
-      Icon: MousePointerClick,
-    },
-    { href: `${base}/categories`, label: "Manage categories", Icon: Tags },
-    { href: `${base}/rules`, label: "Rules", Icon: Wand2 },
-  ];
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
