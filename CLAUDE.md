@@ -159,7 +159,15 @@ decisions. For work that's planned but not yet implemented, see
     only *size* varies, never the outline) filled with the pastel gradient
     from its own `CategorySwatch` (`gradient`, plus a richer
     `gradientSelected` for the expanded one), with dark charcoal label text.
-    A category with subcategories carries a "+N" badge.
+    A category with subcategories carries a "+N" badge. Each node also draws
+    **the category's own icon above its label** (`categoryIcon`, same slug and
+    same name-guess fallback as the overview sidebar), sized as a fraction of
+    the node rather than a fixed size, since a node ranges from a full-size
+    parent to a third-size satellite. Below ~52px the node drops the icon and
+    keeps the label — the label is what identifies the category, and neither
+    fits legibly at that size. Icons matter more here than anywhere else in
+    the app: mid-drag the cursor and card are moving across the ring, which is
+    exactly when a small text label is hardest to read.
   - **The transaction card sits at the centre and the categories orbit it**,
     absolutely positioned on an ellipse (`RING_RX_PCT` / `RING_RY_PCT`,
     percentages so the ring scales with the viewport rather than needing a
@@ -211,9 +219,17 @@ decisions. For work that's planned but not yet implemented, see
     drag started reflowed the whole grid before the cursor had moved and
     could shift the intended target out from under it, making aimed drops
     land on empty space.
-  - Category creation is behind an "Add category" toggle rather than an
-    always-visible form, so the constellation isn't competing with a form
-    for attention.
+  - Category creation is a **popover off a small "Add category" button**
+    pinned below the ring — icon picker and name on one line, then "Where does
+    it belong?" (its own category, or under an existing one), then Add. Not an
+    always-visible form, so the constellation isn't competing with a form for
+    attention, and not a form that *replaces* the button in place either
+    (which moved the thing you'd just clicked out from under the cursor, and
+    left a cramped stack of 8px-tall controls floating over the bottom of the
+    ring). The icon picker sits before the name field and defaults to
+    "Automatic", so it previews the icon the typed name would get on its own —
+    the choice reads as "here's your icon, change it if you like" rather than
+    another required decision.
 - The board (`category-board.tsx`) is a **compact multi-row cockpit**: every
   category — plus Uncategorized — gets its own cell (`category-column.tsx`,
   still exporting `CategoryColumn`) in one wrapping grid

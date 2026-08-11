@@ -3,7 +3,11 @@
 import type { ReactNode } from "react";
 import { CircleDashed, Layers, type LucideIcon } from "lucide-react";
 import { formatSpend } from "@/lib/format";
-import { NEUTRAL_SWATCH, UNCATEGORIZED_SWATCH, type CategorySwatch } from "@/lib/category-colors";
+import {
+  NEUTRAL_SWATCH,
+  UNCATEGORIZED_SWATCH,
+  type CategorySwatch,
+} from "@/lib/category-colors";
 import { categoryIcon } from "@/lib/category-icons";
 import { cn } from "@/lib/utils";
 import type { CategorySlice } from "@/lib/overview";
@@ -52,13 +56,18 @@ export function CategorySidebar({
         swatch={NEUTRAL_SWATCH}
         name="All transactions"
         active={filter.kind === "all"}
-        trailing={<span className="text-sm text-muted-foreground tabular-nums">{totalCount}</span>}
+        trailing={
+          <span className="text-sm text-muted-foreground tabular-nums">
+            {totalCount}
+          </span>
+        }
         onClick={() => onSelectFilter({ kind: "all" })}
       />
 
       {breakdown.map((slice) => {
         const swatch = colorMap.get(slice.id) ?? NEUTRAL_SWATCH;
-        const active = filter.kind === "category" && filter.sliceId === slice.id;
+        const active =
+          filter.kind === "category" && filter.sliceId === slice.id;
 
         return (
           <SidebarRow
@@ -68,14 +77,25 @@ export function CategorySidebar({
             name={slice.name}
             active={active}
             trailing={
-              <span className="text-sm font-semibold tabular-nums">{formatSpend(slice.spent)}</span>
+              <span className=" font-semibold tabular-nums">
+                {formatSpend(slice.spent)}
+              </span>
             }
-            meter={{ fraction: slice.spent / max, share: slice.share, count: slice.transactionCount }}
+            meter={{
+              fraction: slice.spent / max,
+              share: slice.share,
+              count: slice.transactionCount,
+            }}
             onClick={() =>
               onSelectFilter(
                 active
                   ? { kind: "all" }
-                  : { kind: "category", sliceId: slice.id, categoryIds: slice.categoryIds, name: slice.name },
+                  : {
+                      kind: "category",
+                      sliceId: slice.id,
+                      categoryIds: slice.categoryIds,
+                      name: slice.name,
+                    },
               )
             }
           />
@@ -90,12 +110,20 @@ export function CategorySidebar({
           active={filter.kind === "uncategorized"}
           trailing={
             <span className="flex items-baseline gap-2">
-              <span className="text-sm font-semibold tabular-nums">{formatSpend(uncategorizedSpent)}</span>
-              <span className="text-xs tabular-nums text-muted-foreground">{uncategorizedCount}</span>
+              <span className="text-sm font-semibold tabular-nums">
+                {formatSpend(uncategorizedSpent)}
+              </span>
+              <span className="text-xs tabular-nums text-muted-foreground">
+                {uncategorizedCount}
+              </span>
             </span>
           }
           onClick={() =>
-            onSelectFilter(filter.kind === "uncategorized" ? { kind: "all" } : { kind: "uncategorized" })
+            onSelectFilter(
+              filter.kind === "uncategorized"
+                ? { kind: "all" }
+                : { kind: "uncategorized" },
+            )
           }
         />
       )}
@@ -133,8 +161,10 @@ function SidebarRow({
       type="button"
       onClick={onClick}
       className={cn(
-        "flex items-center gap-3 rounded-xl border bg-card px-2.5 py-2 text-left transition-colors",
-        active ? cn("border-transparent ring-2", swatch.ring) : "border-transparent hover:bg-muted/50",
+        "flex items-center gap-3 rounded-xl border text-xs bg-card px-2.5 py-2 text-left transition-colors",
+        active
+          ? cn("border-transparent ring-2", swatch.ring)
+          : "border-transparent hover:bg-muted/50",
       )}
     >
       <span
@@ -148,7 +178,7 @@ function SidebarRow({
 
       <span className="flex min-w-0 flex-1 flex-col gap-1.5">
         <span className="flex items-baseline gap-2">
-          <span className="min-w-0 flex-1 truncate text-sm font-semibold" title={name}>
+          <span className="min-w-0 flex-1 truncate  font-semibold" title={name}>
             {name}
           </span>
           <span className="shrink-0">{trailing}</span>
@@ -161,12 +191,6 @@ function SidebarRow({
                 className={cn("block h-full rounded-full", swatch.bar)}
                 style={{ width: `${Math.max(meter.fraction * 100, 2)}%` }}
               />
-            </span>
-            <span className={cn("shrink-0 text-[11px] font-semibold tabular-nums", swatch.text)}>
-              {Math.round(meter.share * 100)}%
-            </span>
-            <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
-              {meter.count}
             </span>
           </span>
         )}

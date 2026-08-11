@@ -101,14 +101,19 @@ small line-art icon rather than text, and vanishes at chip strength), a
 `gradientSelected` pair the categorize screen's nodes use — all the same
 underlying identity, so "selected" reads as more prominent without becoming
 a different color.
-**Each sidebar row also carries the category's own icon**, in a pastel disc in
+**Each sidebar row — and each of the categorize screen's constellation nodes —
+also carries the category's own icon**, in the sidebar as a pastel disc in
 that category's `badge` color (`src/lib/category-icons.ts`, chosen by the user
 per category). It's a second recognition channel alongside the color and the
 name, which is what lets the list be scanned by shape rather than read
 top-to-bottom — the sidebar is a filter control, so the faster a row is
-identified the better. A category with no icon of its own falls back to one
-guessed from its name rather than a blank disc, so a list of categories
-created before icons existed still reads as distinct symbols.
+identified the better. On the constellation nodes it matters even more: the
+label is hardest to read exactly when a drag is in progress, since the
+cursor and the dragged card are both moving across the ring, so the icon is
+often the faster of the two to recognize mid-drag. A category with no icon of
+its own falls back to one guessed from its name rather than a blank disc, so
+a list of categories created before icons existed still reads as distinct
+symbols.
 
 Because the color is never the sole channel — the name is always printed
 next to it — this rotation is *not* run through the categorical CVD
