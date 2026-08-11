@@ -38,10 +38,11 @@ why), see the "Product requirements" section of [CLAUDE.md](CLAUDE.md).
   a rule "name contains Blivakker → Hud og hårpleie." Depends on the default
   rules above landing first, since a suggestion is essentially the same
   create-rule mechanism seeded from quiz answers instead of a fixed list.
-- **Month switcher only steps blindly.** `month-nav.tsx` always links to the
-  adjacent month; it doesn't know which months have data, so there's no picker
-  and no indication that a neighbouring month is empty. The `months` table
-  already records which exist (`supabase/schema.sql`).
+- **Month switcher only steps blindly.** The overview's Month tab
+  (`timeframe-switcher.tsx`) always steps to the adjacent month; it doesn't
+  know which months have data, so there's no picker and no indication that a
+  neighbouring month is empty. The `months` table already records which exist
+  (`supabase/schema.sql`).
 - **Edit raw transaction fields.** Only category/type/card_type/notes are
   editable; `description`/`date`/`amount` are rendered as plain text with no
   edit affordance, so a bank-export typo can't be corrected in the app.

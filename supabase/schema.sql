@@ -69,6 +69,10 @@ end $$;
 create table if not exists transactions (
   id uuid primary key default gen_random_uuid(),
   user_id uuid references auth.users not null default auth.uid(),
+  -- Which month page the file was uploaded from — NOT which month the
+  -- transaction falls in (a statement spanning a boundary files all its rows
+  -- under one month). Scopes uploads and the dedup key below; reads scope by
+  -- `date`.
   month_id uuid references months(id) on delete cascade not null,
   date date not null,
   description text not null, -- card title (from the "Spesifikasjon" column)
@@ -89,8 +93,8 @@ alter table transactions add column if not exists location text;
 alter table transactions add column if not exists notes text;
 alter table transactions add column if not exists card_type card_type not null default 'credit';
 
--- Supports the overview's day/week/custom-range views, which query
--- transactions by date directly instead of by month_id.
+-- Supports every transaction read — month, day, week and custom-range views
+-- all query by date rather than by month_id.
 create index if not exists transactions_user_id_date_idx on transactions (user_id, date);
 
 -- `add column if not exists` above is a no-op once the column already exists,
