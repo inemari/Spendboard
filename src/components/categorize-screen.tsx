@@ -49,7 +49,7 @@ import {
 import { CategoryDropZone } from "@/components/category-drop-zone";
 import { CategoryIconPicker } from "@/components/category-icon-picker";
 import { ConfettiBurst } from "@/components/confetti-burst";
-import { buildCategoryTree } from "@/lib/category-tree";
+import { buildCategoryTree, type CategoryGroup } from "@/lib/category-tree";
 import {
   buildCategoryColorMap,
   NEUTRAL_SWATCH,
@@ -175,6 +175,10 @@ type RingSlot = {
   cx: number;
   cy: number;
   baseSize: number;
+  /** How many subcategories this node has. 0 for a plain leaf-level node —
+   *  `fitNodeScale` only reserves satellite-fan room for slots where this
+   *  is positive. */
+  childCount: number;
   jitter: { x: number; y: number; rotationDeg: number };
 };
 
@@ -184,8 +188,13 @@ type RingSlot = {
  * lets `fitNodeScale` solve for a scale from these positions and then hand
  * the same slots to the render.
  */
-function ringLayout(width: number, height: number, count: number): RingSlot[] {
-  return Array.from({ length: count }, (_, i) => {
+function ringLayout(
+  width: number,
+  height: number,
+  groups: CategoryGroup[],
+): RingSlot[] {
+  const count = groups.length;
+  return groups.map((group, i) => {
     const angle = (i / count) * 2 * Math.PI - Math.PI / 2;
     // Alternating radius staggers neighbours so they interleave rather than
     // sitting shoulder to shoulder on one line.
@@ -200,19 +209,70 @@ function ringLayout(width: number, height: number, count: number): RingSlot[] {
       cx: width * (0.5 + xPct / 100) + jitter.x,
       cy: height * (0.5 + yPct / 100) + jitter.y,
       baseSize: nodeSizeForIndex(i),
+      childCount: group.children.length,
       jitter,
     };
   });
 }
 
 /**
+ * How much room a node needs, expressed in the same "diameter-equivalent"
+ * units `fitNodeScale`'s `limit` helper already uses for a bare node
+ * (`limit`'s `2*available/combinedBase` is exactly `available >=
+ * (combinedBase/2)*scale`, i.e. `combinedBase/2` is the node's *radius*
+ * coefficient — so `combinedBase` itself must be twice that). A plain node
+ * (`childCount === 0`) needs just its own diameter, `baseSize` — the same
+ * value `limit` was already being called with before clusters existed. A
+ * cluster needs the full reach of its own satellite fan instead: twice the
+ * farthest a satellite's outer edge gets from the cluster's centre, at scale
+ * `s`:
+ *
+ *   reach(s) = (baseSize*s)/2 [parent radius] + baseSize*s*ratio [gap +
+ *              satellite diameter, since orbitRadius already adds one
+ *              satellite radius and the outer edge adds a second] +
+ *              SATELLITE_GAP
+ *
+ * `SATELLITE_GAP` is a fixed pixel gap, not a fraction of the node, so it
+ * can't fold into the pure-linear-through-the-origin form `limit` expects —
+ * every caller reserving cluster room has to subtract this `constant` from
+ * the available distance *before* handing it to `limit`, since `limit`'s
+ * own `2*available/combinedBase` scaling only applies to the part that
+ * actually grows with `scale`.
+ *
+ * This is deliberately a full circle of clearance, not just the direction
+ * `chooseFanAngle` happens to pick: solving *which* direction is cheap only
+ * once room is guaranteed to exist somewhere, and a node's fan direction can
+ * change (drag-over, window resize) independently of this scale being
+ * computed. Reserving room in every direction is what turns "some rotation
+ * probably fits" into a real guarantee.
+ */
+function clusterFootprint(
+  baseSize: number,
+  childCount: number,
+): { linear: number; constant: number } {
+  if (childCount === 0) return { linear: baseSize, constant: 0 };
+  const ratio = subcategorySizeRatio(childCount);
+  return { linear: baseSize * (1 + 2 * ratio), constant: SATELLITE_GAP };
+}
+
+/**
  * The largest scale at which no node overlaps another node, the card, or the
- * container edge. Nodes are circles at known centres, so each constraint is
+ * container edge — and at which every cluster has *some* direction its
+ * satellites can fan into without crossing any of those same three things.
+ * Nodes (and, for a cluster, its full satellite footprint — see
+ * `clusterFootprint`) are circles at known centres, so each constraint is
  * just "this distance must cover both radii" — solving each for the scale and
  * taking the smallest is exact, not a heuristic. An earlier version compared
  * average arc length per node against node width, which reads as reasonable
  * but guarantees nothing: it says nothing about any *particular* pair, and
  * the ring's sizes and radii both vary per node.
+ *
+ * Folding cluster footprints in here, rather than leaving `chooseFanAngle` to
+ * search for a fitting direction after the fact, is what makes that search
+ * always succeed: without it, a tightly packed ring could scale every node
+ * as if it were bare, then discover only at render time that a cluster's
+ * satellites have nowhere on screen to go in *any* rotation — which is
+ * exactly the offscreen satellites this was written to fix.
  *
  * The result is free to exceed 1: nodes grow into whatever room the ring
  * leaves them and stop at the first thing they'd touch, so the constellation
@@ -232,33 +292,44 @@ function fitNodeScale(
   if (!width || !height || slots.length === 0) return MIN_NODE_SCALE;
 
   let scale = MAX_NODE_SCALE;
-  const limit = (available: number, combinedBase: number) => {
-    if (combinedBase <= 0) return;
-    scale = Math.min(scale, (2 * available) / combinedBase);
+  // `available` already had `constant` subtracted by the caller — see
+  // `clusterFootprint`'s doc comment for why that offset can't fold into
+  // this otherwise-linear-through-the-origin form.
+  const limit = (available: number, combinedLinear: number) => {
+    if (combinedLinear <= 0) return;
+    scale = Math.min(scale, (2 * available) / combinedLinear);
   };
 
   for (const slot of slots) {
-    // Container edge: the nearest side bounds the node's radius.
+    const { linear, constant } = clusterFootprint(
+      slot.baseSize,
+      slot.childCount,
+    );
+
+    // Container edge: the nearest side bounds the node's (or, for a
+    // cluster, the satellite fan's) full-circle reach.
     const toEdge =
       Math.min(slot.cx, slot.cy, width - slot.cx, height - slot.cy) -
       RING_EDGE_MARGIN;
-    limit(toEdge, slot.baseSize);
+    limit(toEdge - constant, linear);
 
     // The card, treated as a rectangle at the centre: distance from the node
     // to the nearest point on it.
     const dx = Math.max(Math.abs(slot.cx - width / 2) - cardWidth / 2, 0);
     const dy = Math.max(Math.abs(slot.cy - height / 2) - CARD_HEIGHT / 2, 0);
-    limit(Math.hypot(dx, dy) - CARD_MIN_GAP, slot.baseSize);
+    limit(Math.hypot(dx, dy) - CARD_MIN_GAP - constant, linear);
   }
 
   // Every pair of nodes.
   for (let i = 0; i < slots.length; i++) {
+    const a = clusterFootprint(slots[i].baseSize, slots[i].childCount);
     for (let j = i + 1; j < slots.length; j++) {
+      const b = clusterFootprint(slots[j].baseSize, slots[j].childCount);
       const gap = Math.hypot(
         slots[i].cx - slots[j].cx,
         slots[i].cy - slots[j].cy,
       );
-      limit(gap - NODE_MIN_GAP, slots[i].baseSize + slots[j].baseSize);
+      limit(gap - NODE_MIN_GAP - a.constant - b.constant, a.linear + b.linear);
     }
   }
 
@@ -480,7 +551,7 @@ export function CategorizeScreen({
   const cardMaxWidth = ringSize.width
     ? Math.min(380, ringSize.width * 0.3)
     : 380;
-  const slots = ringLayout(ringSize.width, ringSize.height, tree.length);
+  const slots = ringLayout(ringSize.width, ringSize.height, tree);
   const nodeScale = fitNodeScale(
     slots,
     ringSize.width,

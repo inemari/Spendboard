@@ -90,13 +90,16 @@ export function CategoryDropZone({
     // it, and so the target is a little easier to drop onto than the circle
     // alone would be. The inner shape stays pinned to exactly `size`, not a
     // percentage of this box: the constellation's overlap-free layout
-    // (fitNodeScale/chooseFanAngle in categorize-screen.tsx) treats every
-    // node as a circle of exactly this diameter, so growing the *painted*
-    // circle past `size` re-introduces the overlaps that math promises are
-    // impossible.
+    // (fitNodeScale/chooseFanAngle/clusterFootprint in categorize-screen.tsx)
+    // treats every node — and every cluster's full satellite fan — as a
+    // circle of exactly this diameter, so growing the *painted* circle past
+    // `size` reintroduces the overlaps that math promises are impossible.
+    // This has already regressed once before from a padding change that
+    // grew this box without re-pinning the inner shape — if this box's
+    // padding needs to change again, this inner div must stay untouched.
     <div
       ref={setNodeRef}
-      style={{ width: size + 24, height: size + 20 }}
+      style={{ width: size + 32, height: size + 32 }}
       className={cn(
         "relative flex shrink-0 items-center justify-center transition-[width,height,transform] duration-200",
         isOver && "scale-110",
