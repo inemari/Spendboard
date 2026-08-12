@@ -85,24 +85,32 @@ export function CategoryDropZone({
 
   return (
     // The drop target's own hit area is a plain (unclipped) box, slightly
-    // more generous than the shape painted inside it — the "+N" badge lives
-    // outside that inner shape so it isn't clipped along with it.
+    // more generous than the shape painted inside it — both so the "+N"
+    // badge (which lives outside the inner shape) isn't clipped along with
+    // it, and so the target is a little easier to drop onto than the circle
+    // alone would be. The inner shape stays pinned to exactly `size`, not a
+    // percentage of this box: the constellation's overlap-free layout
+    // (fitNodeScale/chooseFanAngle in categorize-screen.tsx) treats every
+    // node as a circle of exactly this diameter, so growing the *painted*
+    // circle past `size` re-introduces the overlaps that math promises are
+    // impossible.
     <div
       ref={setNodeRef}
-      style={{ width: size, height: size }}
+      style={{ width: size + 24, height: size + 20 }}
       className={cn(
-        // min-width/min-height must stay off this box: with an explicit
-        // pixel width/height set via style above, a min-w-fit here would
-        // still win per the CSS box model and stretch the circle wide
-        // enough to fit the label unwrapped — which is exactly how a long
-        // category name ends up rendering outside its own shape.
-        "relative shrink-0 transition-[width,height,transform] duration-200",
+        "relative flex shrink-0 items-center justify-center transition-[width,height,transform] duration-200",
         isOver && "scale-110",
       )}
     >
       <div
+        style={{ width: size, height: size }}
         className={cn(
-          "flex size-full select-none flex-col items-center justify-center gap-1 bg-linear-to-br text-center font-medium text-neutral-800 transition-[background,box-shadow]",
+          // min-width/min-height must stay off this box: with an explicit
+          // pixel width/height set via style above, a min-w-fit here would
+          // still win per the CSS box model and stretch the circle wide
+          // enough to fit the label unwrapped — which is exactly how a long
+          // category name ends up rendering outside its own shape.
+          "flex select-none flex-col items-center justify-center gap-1 bg-linear-to-br text-center font-medium text-neutral-800 transition-[background,box-shadow]",
           NODE_SHAPE_CLASS,
           selected ? swatch.gradientSelected : swatch.gradient,
           fontSize,
