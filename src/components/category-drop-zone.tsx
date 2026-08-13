@@ -99,7 +99,7 @@ export function CategoryDropZone({
     // padding needs to change again, this inner div must stay untouched.
     <div
       ref={setNodeRef}
-      style={{ width: size + 44, height: size + 32 }}
+      style={{ width: size, height: size }}
       className={cn(
         "relative flex shrink-0 items-center justify-center transition-[width,height,transform] duration-200",
         isOver && "scale-110",
@@ -148,7 +148,7 @@ export function CategoryDropZone({
         </p>
       </div>
       {badge !== undefined && badge > 0 && (
-        <span className="absolute -right-1.5 -top-1.5 flex size-6 items-center justify-center rounded-full border border-black/5 bg-white text-[11px] font-semibold text-neutral-700 shadow-sm">
+        <span className="absolute right-1 top-1 flex size-6 items-center justify-center rounded-full border border-black/5 bg-white text-[11px] font-semibold text-neutral-700 shadow-sm">
           +{badge}
         </span>
       )}
