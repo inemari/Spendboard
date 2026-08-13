@@ -99,7 +99,7 @@ export function CategoryDropZone({
     // padding needs to change again, this inner div must stay untouched.
     <div
       ref={setNodeRef}
-      style={{ width: size + 32, height: size + 32 }}
+      style={{ width: size + 44, height: size + 32 }}
       className={cn(
         "relative flex shrink-0 items-center justify-center transition-[width,height,transform] duration-200",
         isOver && "scale-110",
