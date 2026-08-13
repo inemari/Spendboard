@@ -18,8 +18,8 @@ export const NODE_SHAPE_CLASS = "rounded-full";
 
 /** Top-level category nodes are sized pseudo-randomly in this range so the
  *  cluster reads as varied rather than a uniform grid. */
-export const NODE_MIN_SIZE = 120;
-export const NODE_MAX_SIZE = 160;
+export const NODE_MIN_SIZE = 180;
+export const NODE_MAX_SIZE = 240;
 
 /**
  * A stable size in [NODE_MIN_SIZE, NODE_MAX_SIZE] for the category at
@@ -36,11 +36,13 @@ export function nodeSizeForIndex(index: number): number {
 }
 
 /**
- * How big a subcategory node is relative to its parent: a third once there
- * are more than three of them (so a wide fan still fits), otherwise a half.
+ * How big a subcategory node is relative to its parent. Stays a third once
+ * there are more than three of them: past that the fan's arc has to divide
+ * between more satellites, and anything larger makes them overlap each
+ * other. Below that there's arc to spare, so they run a little over half.
  */
 export function subcategorySizeRatio(subcategoryCount: number): number {
-  return subcategoryCount > 3 ? 1 / 3 : 1 / 2;
+  return subcategoryCount > 3 ? 1 / 3 : 0.6;
 }
 
 /** A small, stable (x, y, rotation) offset for scattering an item away from

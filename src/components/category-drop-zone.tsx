@@ -79,24 +79,41 @@ export function CategoryDropZone({
   // parent to a third-size satellite. Below ~52px there isn't room for both
   // a glyph and a readable label, and the label is the one that identifies
   // the category, so the smallest satellites go icon-less.
-  const iconSize = size >= 52 ? Math.round(Math.min(40, Math.max(14, size * 0.26))) : 0;
+  const iconSize =
+    size >= 52 ? Math.round(Math.min(40, Math.max(14, size * 0.26))) : 0;
   const glyph = categoryIcon(icon, name);
 
   return (
     // The drop target's own hit area is a plain (unclipped) box, slightly
-    // more generous than the shape painted inside it — the "+N" badge lives
-    // outside that inner shape so it isn't clipped along with it.
+    // more generous than the shape painted inside it — both so the "+N"
+    // badge (which lives outside the inner shape) isn't clipped along with
+    // it, and so the target is a little easier to drop onto than the circle
+    // alone would be. The inner shape stays pinned to exactly `size`, not a
+    // percentage of this box: the constellation's overlap-free layout
+    // (fitNodeScale/chooseFanAngle/clusterFootprint in categorize-screen.tsx)
+    // treats every node — and every cluster's full satellite fan — as a
+    // circle of exactly this diameter, so growing the *painted* circle past
+    // `size` reintroduces the overlaps that math promises are impossible.
+    // This has already regressed once before from a padding change that
+    // grew this box without re-pinning the inner shape — if this box's
+    // padding needs to change again, this inner div must stay untouched.
     <div
       ref={setNodeRef}
       style={{ width: size, height: size }}
       className={cn(
-        "relative shrink-0 transition-[width,height,transform] duration-200",
+        "relative flex shrink-0 items-center justify-center transition-[width,height,transform] duration-200",
         isOver && "scale-110",
       )}
     >
       <div
+        style={{ width: size, height: size }}
         className={cn(
-          "flex size-full select-none flex-col items-center justify-center gap-1 bg-linear-to-br text-center font-medium text-neutral-800 transition-[background,box-shadow]",
+          // min-width/min-height must stay off this box: with an explicit
+          // pixel width/height set via style above, a min-w-fit here would
+          // still win per the CSS box model and stretch the circle wide
+          // enough to fit the label unwrapped — which is exactly how a long
+          // category name ends up rendering outside its own shape.
+          "flex select-none flex-col items-center justify-center gap-1 bg-linear-to-br text-center font-medium text-neutral-800 transition-[background,box-shadow]",
           NODE_SHAPE_CLASS,
           selected ? swatch.gradientSelected : swatch.gradient,
           fontSize,
@@ -131,7 +148,7 @@ export function CategoryDropZone({
         </p>
       </div>
       {badge !== undefined && badge > 0 && (
-        <span className="absolute -right-1.5 -top-1.5 flex size-6 items-center justify-center rounded-full border border-black/5 bg-white text-[11px] font-semibold text-neutral-700 shadow-sm">
+        <span className="absolute right-1 top-1 flex size-6 items-center justify-center rounded-full border border-black/5 bg-white text-[11px] font-semibold text-neutral-700 shadow-sm">
           +{badge}
         </span>
       )}

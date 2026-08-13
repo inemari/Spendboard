@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -41,11 +41,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { CategoryDropZone } from "@/components/category-drop-zone";
 import { CategoryIconPicker } from "@/components/category-icon-picker";
 import { ConfettiBurst } from "@/components/confetti-burst";
-import { buildCategoryTree } from "@/lib/category-tree";
+import { buildCategoryTree, type CategoryGroup } from "@/lib/category-tree";
 import {
   buildCategoryColorMap,
   NEUTRAL_SWATCH,
@@ -53,7 +57,6 @@ import {
 } from "@/lib/category-colors";
 import { formatAmount, formatDate, formatTxType } from "@/lib/format";
 import {
-  NODE_MAX_SIZE,
   nodeSizeForIndex,
   scatterJitter,
   subcategorySizeRatio,
@@ -69,18 +72,35 @@ const NO_PARENT_VALUE = "__none__";
 // Satellites fan out to the right of the (left-anchored) parent across
 // ±FAN_SPREAD_RAD, rather than surrounding it on all sides.
 const FAN_SPREAD_RAD = (45 * Math.PI) / 180;
-const SATELLITE_GAP = 18;
+const SATELLITE_GAP = 6;
+// How long a cluster stays expanded after the drag leaves it with nothing
+// else to land on — bridges the real screen gap between a parent's own
+// droppable rect and a satellite's, which a straight-line drag from the
+// parent's centre toward a satellite passes through. Re-entering the same
+// cluster within this window cancels the pending collapse.
+const STICKY_CLUSTER_GRACE_MS = 500;
 
 // The ellipse the category nodes orbit on, as a percentage of the
 // constellation container. Wider than tall because the viewport is: a true
 // circle large enough to space the nodes out horizontally would run off the
-// bottom of a laptop screen. RING_RY_PCT is the binding constraint — at
-// 36%, the far edge of a max-size node lands at 36% + ~half a node, which
-// still clears the container on a short laptop screen, so nothing needs to
-// scroll. INNER_REACH pulls alternating nodes inward for spacing; it stays
-// high enough that even those nodes keep clear air around the card.
-const RING_RX_PCT = 40;
-const RING_RY_PCT = 36;
+// bottom of a laptop screen.
+//
+// Note this sets how much *room* the nodes have, not how far apart they
+// look: nodes grow to fill that room and stop at NODE_MIN_GAP from each
+// other, so a wider ring yields bigger nodes rather than a sparser one.
+// Tightening the ring here would shrink the categories, not close the gaps.
+// INNER_REACH staggers alternating nodes so neighbours interleave. These
+// four numbers (RX/RY/REACH plus NODE_MIN_GAP/CARD_MIN_GAP below) came from
+// a small brute-force search over a typical category count (~11) against
+// three viewport sizes, maximizing node size at a common desktop width
+// (1280-1600px) subject to staying overlap-free — not floor-clamped by
+// MIN_NODE_SCALE — all the way down to a 1024x540 window. The binding
+// constraint throughout is adjacent-node spacing (fitNodeScale's "pair"
+// case), not the container edge — with ~11 nodes on one ring, how close
+// neighbours can get is what limits growth, so this is a genuine tradeoff
+// point, not an arbitrary round number.
+const RING_RX_PCT = 44;
+const RING_RY_PCT = 38;
 const RING_INNER_REACH = 0.86;
 
 // Concentric rings drawn around the selected (expanded) parent — thin,
@@ -88,27 +108,56 @@ const RING_INNER_REACH = 0.86;
 const SELECTED_RING_GAPS = [10, 22, 36];
 
 // Breathing room kept between the outermost node edge and the container.
-const RING_EDGE_MARGIN = 10;
+const RING_EDGE_MARGIN = 8;
+// Clear air between two neighbouring nodes, and between a node and the card.
+// These are what the nodes grow *until* — they set the visible spacing.
+const NODE_MIN_GAP = 12;
+const CARD_MIN_GAP = 16;
+// The card's rendered height, used only to keep nodes off it. Cheaper and
+// steadier than measuring it — it's a fixed-layout card, and a stale
+// measurement mid-transition would make nodes twitch.
+const CARD_HEIGHT = 130;
 // Below this the labels stop being readable, so the screen gives up on
 // shrinking rather than degrading into unreadable dots. There is no mobile
-// layout for the constellation; this only guards small desktop windows.
+// layout for the constellation; this only guards small desktop windows. Note
+// this is a last-resort floor: below it fitNodeScale's own overlap-free
+// result gets overridden, so on an extreme window it trades "no overlap"
+// for "still legible" — the tuning above keeps real desktop sizes from ever
+// reaching it.
 const MIN_NODE_SCALE = 0.55;
+// Nodes grow to fill whatever room the ring leaves them, up to this. The cap
+// only stops a sparse constellation (two or three categories) from inflating
+// into a few enormous circles.
+const MAX_NODE_SCALE = 2;
 
 /** Tracks a element's rendered size. The constellation positions its ring in
  *  percentages, but node sizes are in pixels — so without knowing the actual
- *  box we can't tell whether those pixels still fit. */
+ *  box we can't tell whether those pixels still fit.
+ *
+ *  Uses `useLayoutEffect`, not `useEffect`, and reads the size synchronously
+ *  on mount rather than waiting for `ResizeObserver`'s first (inherently
+ *  async) callback. `ResizeObserver` alone means the first commit paints
+ *  with size {0,0} — and since `fitNodeScale` treats "unmeasured" as "don't
+ *  scale down," nodes render at full size for one frame, then visibly
+ *  shrink once the real measurement lands a tick later. `useLayoutEffect`
+ *  runs, and can schedule a re-render, before the browser paints, so
+ *  reading the real size here means the *first painted frame* already has
+ *  it — no flash. The observer stays, for later resizes. */
 function useElementSize<T extends HTMLElement>() {
   const ref = useRef<T | null>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
+    const rect = el.getBoundingClientRect();
+    setSize({ width: rect.width, height: rect.height });
+
     // setState lives in the observer callback, not the effect body: this is
     // syncing from an external system, which is the pattern effects are for.
     const observer = new ResizeObserver((entries) => {
-      const rect = entries[0]?.contentRect;
-      if (rect) setSize({ width: rect.width, height: rect.height });
+      const r = entries[0]?.contentRect;
+      if (r) setSize({ width: r.width, height: r.height });
     });
     observer.observe(el);
     return () => observer.disconnect();
@@ -117,21 +166,257 @@ function useElementSize<T extends HTMLElement>() {
   return [ref, size] as const;
 }
 
+type RingSlot = {
+  /** Outward direction, and where the node sits as a % offset from centre. */
+  angle: number;
+  xPct: number;
+  yPct: number;
+  /** Resolved centre in container pixels (0 until the container is measured). */
+  cx: number;
+  cy: number;
+  baseSize: number;
+  /** How many subcategories this node has. 0 for a plain leaf-level node —
+   *  `fitNodeScale` only reserves satellite-fan room for slots where this
+   *  is positive. */
+  childCount: number;
+  jitter: { x: number; y: number; rotationDeg: number };
+};
+
 /**
- * How much to shrink every node so the ring still fits its container.
- * The ring radius is a percentage so it already scales; node sizes are
- * fixed pixels, so on a short or narrow window the outer nodes are what
- * would spill past the edge (and, since the screen deliberately never
- * scrolls, get clipped). Returns 1 whenever there's room to spare.
+ * Where every top-level node sits on the ring. Positions don't depend on
+ * the node scale — the ring is a percentage of the container — which is what
+ * lets `fitNodeScale` solve for a scale from these positions and then hand
+ * the same slots to the render.
  */
-function fitNodeScale(width: number, height: number): number {
-  if (!width || !height) return 1;
-  const room = (extent: number, ringPct: number) =>
-    (2 * (extent / 2 - (extent * ringPct) / 100 - RING_EDGE_MARGIN)) /
-    NODE_MAX_SIZE;
-  return Math.max(
-    MIN_NODE_SCALE,
-    Math.min(1, room(height, RING_RY_PCT), room(width, RING_RX_PCT)),
+function ringLayout(
+  width: number,
+  height: number,
+  groups: CategoryGroup[],
+): RingSlot[] {
+  const count = groups.length;
+  return groups.map((group, i) => {
+    const angle = (i / count) * 2 * Math.PI - Math.PI / 2;
+    // Alternating radius staggers neighbours so they interleave rather than
+    // sitting shoulder to shoulder on one line.
+    const reach = i % 2 === 0 ? 1 : RING_INNER_REACH;
+    const jitter = scatterJitter(i, 5);
+    const xPct = Math.cos(angle) * RING_RX_PCT * reach;
+    const yPct = Math.sin(angle) * RING_RY_PCT * reach;
+    return {
+      angle,
+      xPct,
+      yPct,
+      cx: width * (0.5 + xPct / 100) + jitter.x,
+      cy: height * (0.5 + yPct / 100) + jitter.y,
+      baseSize: nodeSizeForIndex(i),
+      childCount: group.children.length,
+      jitter,
+    };
+  });
+}
+
+/**
+ * How much room a node needs, expressed in the same "diameter-equivalent"
+ * units `fitNodeScale`'s `limit` helper already uses for a bare node
+ * (`limit`'s `2*available/combinedBase` is exactly `available >=
+ * (combinedBase/2)*scale`, i.e. `combinedBase/2` is the node's *radius*
+ * coefficient — so `combinedBase` itself must be twice that). A plain node
+ * (`childCount === 0`) needs just its own diameter, `baseSize` — the same
+ * value `limit` was already being called with before clusters existed. A
+ * cluster needs the full reach of its own satellite fan instead: twice the
+ * farthest a satellite's outer edge gets from the cluster's centre, at scale
+ * `s`:
+ *
+ *   reach(s) = (baseSize*s)/2 [parent radius] + baseSize*s*ratio [gap +
+ *              satellite diameter, since orbitRadius already adds one
+ *              satellite radius and the outer edge adds a second] +
+ *              SATELLITE_GAP
+ *
+ * `SATELLITE_GAP` is a fixed pixel gap, not a fraction of the node, so it
+ * can't fold into the pure-linear-through-the-origin form `limit` expects —
+ * every caller reserving cluster room has to subtract this `constant` from
+ * the available distance *before* handing it to `limit`, since `limit`'s
+ * own `2*available/combinedBase` scaling only applies to the part that
+ * actually grows with `scale`.
+ *
+ * This is deliberately a full circle of clearance, not just the direction
+ * `chooseFanAngle` happens to pick: solving *which* direction is cheap only
+ * once room is guaranteed to exist somewhere, and a node's fan direction can
+ * change (drag-over, window resize) independently of this scale being
+ * computed. Reserving room in every direction is what turns "some rotation
+ * probably fits" into a real guarantee.
+ */
+function clusterFootprint(
+  baseSize: number,
+  childCount: number,
+): { linear: number; constant: number } {
+  if (childCount === 0) return { linear: baseSize, constant: 0 };
+  const ratio = subcategorySizeRatio(childCount);
+  return { linear: baseSize * (1 + 2 * ratio), constant: SATELLITE_GAP };
+}
+
+/**
+ * The largest scale at which no node overlaps another node, the card, or the
+ * container edge — and at which every cluster has *some* direction its
+ * satellites can fan into without crossing any of those same three things.
+ * Nodes (and, for a cluster, its full satellite footprint — see
+ * `clusterFootprint`) are circles at known centres, so each constraint is
+ * just "this distance must cover both radii" — solving each for the scale and
+ * taking the smallest is exact, not a heuristic. An earlier version compared
+ * average arc length per node against node width, which reads as reasonable
+ * but guarantees nothing: it says nothing about any *particular* pair, and
+ * the ring's sizes and radii both vary per node.
+ *
+ * Folding cluster footprints in here, rather than leaving `chooseFanAngle` to
+ * search for a fitting direction after the fact, is what makes that search
+ * always succeed: without it, a tightly packed ring could scale every node
+ * as if it were bare, then discover only at render time that a cluster's
+ * satellites have nowhere on screen to go in *any* rotation — which is
+ * exactly the offscreen satellites this was written to fix.
+ *
+ * The result is free to exceed 1: nodes grow into whatever room the ring
+ * leaves them and stop at the first thing they'd touch, so the constellation
+ * fills the screen at any size rather than only ever shrinking to fit.
+ */
+function fitNodeScale(
+  slots: RingSlot[],
+  width: number,
+  height: number,
+  cardWidth: number,
+): number {
+  // MIN_NODE_SCALE, not 1 or MAX_NODE_SCALE: this only fires before the
+  // container has been measured (useElementSize resolves synchronously on
+  // mount, so in practice it shouldn't render at all), and starting small
+  // rather than large means an unmeasured frame — if one ever slips through
+  // — grows into place instead of visibly shrinking down to the real size.
+  if (!width || !height || slots.length === 0) return MIN_NODE_SCALE;
+
+  let scale = MAX_NODE_SCALE;
+  // `available` already had `constant` subtracted by the caller — see
+  // `clusterFootprint`'s doc comment for why that offset can't fold into
+  // this otherwise-linear-through-the-origin form.
+  const limit = (available: number, combinedLinear: number) => {
+    if (combinedLinear <= 0) return;
+    scale = Math.min(scale, (2 * available) / combinedLinear);
+  };
+
+  for (const slot of slots) {
+    const { linear, constant } = clusterFootprint(
+      slot.baseSize,
+      slot.childCount,
+    );
+
+    // Container edge: the nearest side bounds the node's (or, for a
+    // cluster, the satellite fan's) full-circle reach.
+    const toEdge =
+      Math.min(slot.cx, slot.cy, width - slot.cx, height - slot.cy) -
+      RING_EDGE_MARGIN;
+    limit(toEdge - constant, linear);
+
+    // The card, treated as a rectangle at the centre: distance from the node
+    // to the nearest point on it.
+    const dx = Math.max(Math.abs(slot.cx - width / 2) - cardWidth / 2, 0);
+    const dy = Math.max(Math.abs(slot.cy - height / 2) - CARD_HEIGHT / 2, 0);
+    limit(Math.hypot(dx, dy) - CARD_MIN_GAP - constant, linear);
+  }
+
+  // Every pair of nodes.
+  for (let i = 0; i < slots.length; i++) {
+    const a = clusterFootprint(slots[i].baseSize, slots[i].childCount);
+    for (let j = i + 1; j < slots.length; j++) {
+      const b = clusterFootprint(slots[j].baseSize, slots[j].childCount);
+      const gap = Math.hypot(
+        slots[i].cx - slots[j].cx,
+        slots[i].cy - slots[j].cy,
+      );
+      limit(gap - NODE_MIN_GAP - a.constant - b.constant, a.linear + b.linear);
+    }
+  }
+
+  return Math.max(MIN_NODE_SCALE, Math.min(MAX_NODE_SCALE, scale));
+}
+
+/**
+ * Picks which way a cluster's subcategories fan. Straight outward (away
+ * from the card) is the default, but two things can make that direction
+ * unusable: a node near the container edge has no room out there (its
+ * satellites would be half off-screen), and a node near a sibling has no
+ * room *that way* either — a satellite whose circle overlaps a sibling's
+ * gives dnd-kit two droppables with genuinely overlapping hit-rects at the
+ * same point, and there's no guarantee its collision detection resolves
+ * that in the visually-obvious (topmost-painted) satellite's favor; a drag
+ * aimed at the satellite can land on the sibling instead. Avoiding the
+ * overlap outright sidesteps the ambiguity rather than relying on winning
+ * whatever tie-break dnd-kit happens to use. Rotations are tried smallest
+ * first and alternating in both directions, so a cluster only ever swings
+ * as far from "outward" as it actually has to, and only points back toward
+ * the card as a last resort.
+ */
+function chooseFanAngle({
+  outward,
+  rotationRad,
+  nodeX,
+  nodeY,
+  orbitRadius,
+  satelliteSize,
+  count,
+  width,
+  height,
+  siblings,
+}: {
+  outward: number;
+  rotationRad: number;
+  nodeX: number;
+  nodeY: number;
+  orbitRadius: number;
+  satelliteSize: number;
+  count: number;
+  width: number;
+  height: number;
+  /** Every other top-level node's resolved centre and on-screen size, so a
+   *  satellite can be kept clear of them too, not just the container edge. */
+  siblings: { cx: number; cy: number; size: number }[];
+}): number {
+  if (!width || !height) return outward;
+
+  const half = satelliteSize / 2;
+  const offsets = fanOffsets(count);
+  // The node's wrapper is rotated by the scatter jitter, and the satellites
+  // rotate with it — so the on-screen angle is the local angle plus that.
+  const fits = (local: number) =>
+    offsets.every((offset) => {
+      const a = local + offset + rotationRad;
+      const x = nodeX + Math.cos(a) * orbitRadius;
+      const y = nodeY + Math.sin(a) * orbitRadius;
+      const clearsEdge =
+        x - half >= RING_EDGE_MARGIN &&
+        x + half <= width - RING_EDGE_MARGIN &&
+        y - half >= RING_EDGE_MARGIN &&
+        y + half <= height - RING_EDGE_MARGIN;
+      const clearsSiblings = siblings.every(
+        (s) =>
+          Math.hypot(x - s.cx, y - s.cy) >= half + s.size / 2 + NODE_MIN_GAP,
+      );
+      return clearsEdge && clearsSiblings;
+    });
+
+  const step = Math.PI / 12; // 15°
+  for (let i = 0; i <= 12; i++) {
+    for (const direction of i === 0 ? [0] : [1, -1]) {
+      const candidate = outward + direction * i * step;
+      if (fits(candidate)) return candidate;
+    }
+  }
+  return outward;
+}
+
+/** Where each satellite sits within its cluster's fan, as an angular offset
+ *  from the fan's centre line. */
+function fanOffsets(count: number): number[] {
+  if (count <= 1) return [0];
+  return Array.from(
+    { length: count },
+    (_, i) => -FAN_SPREAD_RAD + (2 * FAN_SPREAD_RAD * i) / (count - 1),
   );
 }
 
@@ -176,11 +461,24 @@ export function CategorizeScreen({
   );
   const [activeTransaction, setActiveTransaction] =
     useState<Transaction | null>(null);
-  // Which drop zone the pointer is currently over mid-drag. Tracked through
-  // dnd-kit's own onDragOver rather than the clusters' mouseenter, because
-  // the drag captures the pointer — hover events stop reaching the nodes
-  // underneath it, so a cluster would never open while you drag toward it.
-  const [overId, setOverId] = useState<string | null>(null);
+  // Which cluster (by parent id) should currently be expanded during a
+  // drag. Driven by dnd-kit's own onDragOver rather than the clusters'
+  // mouseenter — the drag captures the pointer, so mouseenter/mouseleave
+  // never fire on other elements while it's held; onDragOver is the only
+  // signal that still reaches a cluster the pointer is heading toward.
+  //
+  // It's sticky (see setStickyClusterOver below) rather than a plain
+  // "current over.id" mirror: the gap between a parent's own droppable
+  // rect and a satellite's is real screen space that belongs to neither,
+  // so a straight-line drag from the parent's centre toward a satellite
+  // passes through a moment where `over` is genuinely null. Clearing the
+  // expansion immediately on that null collapses the satellites — which
+  // were the drop target — before the pointer ever reaches them. A short
+  // grace period bridges that gap; re-entering the same cluster cancels it.
+  const [stickyClusterId, setStickyClusterId] = useState<string | null>(null);
+  const stickyClusterTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   // How many transactions this session has sorted in a row without a skip —
   // resets on Next (skip) or delete, not on Previous (just reviewing).
   const [streak, setStreak] = useState(0);
@@ -199,15 +497,67 @@ export function CategorizeScreen({
   const topLevelCategories = tree.map((g) => g.parent);
   const colorMap = buildCategoryColorMap(categories);
 
+  // The parent id of whichever cluster `id` belongs to (as the parent
+  // itself or one of its subcategories), or null if it's not part of any
+  // cluster — a leaf category, or nothing.
+  function clusterIdFor(id: string | null): string | null {
+    if (!id) return null;
+    for (const { parent, children } of tree) {
+      if (children.length === 0) continue;
+      if (parent.id === id || children.some((c) => c.id === id)) {
+        return parent.id;
+      }
+    }
+    return null;
+  }
+
+  function setStickyClusterOver(overId: string | null) {
+    const clusterId = clusterIdFor(overId);
+    if (stickyClusterTimeoutRef.current) {
+      clearTimeout(stickyClusterTimeoutRef.current);
+      stickyClusterTimeoutRef.current = null;
+    }
+    if (clusterId) {
+      setStickyClusterId(clusterId);
+    } else {
+      // Don't clear immediately — give the pointer time to reach the
+      // satellite it was headed for before the cluster it came from closes.
+      stickyClusterTimeoutRef.current = setTimeout(() => {
+        setStickyClusterId(null);
+        stickyClusterTimeoutRef.current = null;
+      }, STICKY_CLUSTER_GRACE_MS);
+    }
+  }
+  function clearStickyClusterOver() {
+    if (stickyClusterTimeoutRef.current) {
+      clearTimeout(stickyClusterTimeoutRef.current);
+      stickyClusterTimeoutRef.current = null;
+    }
+    setStickyClusterId(null);
+  }
+
   // The ring is sized in percentages but the nodes in pixels, so the
   // constellation has to be measured to know whether those pixels still fit.
   const [ringRef, ringSize] = useElementSize<HTMLDivElement>();
-  const nodeScale = fitNodeScale(ringSize.width, ringSize.height);
+  // False for exactly one render: the page is server-rendered, so the first
+  // paint has no client-side measurement to work from, and nodes fall back
+  // to MIN_NODE_SCALE (see fitNodeScale) until useLayoutEffect corrects it.
+  // Nodes fade in only once `measured`, so that correction is invisible —
+  // without this, the CSS size transition below animates the jump from
+  // fallback to real scale, which reads as the constellation glitching.
+  const measured = ringSize.width > 0 && ringSize.height > 0;
   // The card has to shrink alongside the nodes, or on a narrow window the
   // ring closes in around a card that stayed full width.
   const cardMaxWidth = ringSize.width
-    ? Math.min(448, ringSize.width * 0.34)
-    : 448;
+    ? Math.min(380, ringSize.width * 0.3)
+    : 380;
+  const slots = ringLayout(ringSize.width, ringSize.height, tree);
+  const nodeScale = fitNodeScale(
+    slots,
+    ringSize.width,
+    ringSize.height,
+    cardMaxWidth,
+  );
 
   async function handleCreateCategory() {
     if (!newCategoryName.trim()) return;
@@ -264,12 +614,12 @@ export function CategorizeScreen({
   }
 
   function handleDragOver(event: DragOverEvent) {
-    setOverId(event.over ? String(event.over.id) : null);
+    setStickyClusterOver(event.over ? String(event.over.id) : null);
   }
 
   function handleDragEnd(event: DragEndEvent) {
     setActiveTransaction(null);
-    setOverId(null);
+    clearStickyClusterOver();
     const { active, over } = event;
     if (!over || !current) return;
 
@@ -279,7 +629,7 @@ export function CategorizeScreen({
 
   function handleDragCancel() {
     setActiveTransaction(null);
-    setOverId(null);
+    clearStickyClusterOver();
   }
 
   function handleDelete(id: string) {
@@ -336,6 +686,102 @@ export function CategorizeScreen({
                 />
               </div>
             )}
+          </div>{" "}
+          {/* Category creation is kept out of the constellation itself —
+                  a permanently-visible form competed with the categories for
+                  attention. It's a popover off one small button instead, so
+                  the form only exists while it's being used and never takes
+                  height away from the ring. The trigger stays put whether or
+                  not the form is open (an earlier version swapped the button
+                  itself for the form, so the thing you'd just clicked moved
+                  out from under the cursor). */}
+          <div className="">
+            <Popover open={addingCategory} onOpenChange={setAddingCategory}>
+              <PopoverTrigger
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-full border bg-background/90 px-3 py-1.5 text-xs font-medium shadow-sm backdrop-blur-sm transition-colors",
+                  addingCategory
+                    ? "border-primary text-primary"
+                    : "border-border/60 text-muted-foreground hover:text-foreground",
+                )}
+              >
+                <Plus className="size-4" />
+                Add category
+              </PopoverTrigger>
+
+              <PopoverContent side="top" className="w-80 space-y-3 rounded-2xl">
+                <p className="font-heading text-sm font-bold">
+                  New category ✨
+                </p>
+
+                {/* Icon and name on one line, in that order: the picker
+                        previews whatever the name would resolve to on its own,
+                        so it reads as "here's your icon, change it if you
+                        like" rather than a separate decision to make. */}
+                <div className="flex items-center gap-2">
+                  <CategoryIconPicker
+                    value={newCategoryIcon}
+                    name={newCategoryName}
+                    onChange={setNewCategoryIcon}
+                    className="size-9"
+                  />
+                  <Input
+                    autoFocus
+                    placeholder="Category name"
+                    value={newCategoryName}
+                    onChange={(e) => setNewCategoryName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") void handleCreateCategory();
+                    }}
+                    className="h-9 flex-1"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-secondary">
+                    Where does it belong?
+                  </label>
+                  <Select
+                    value={newCategoryParentId}
+                    onValueChange={(value) =>
+                      setNewCategoryParentId(value ?? NO_PARENT_VALUE)
+                    }
+                  >
+                    <SelectTrigger className="h-9 w-full">
+                      <SelectValue placeholder="Parent category">
+                        {newCategoryParentId === NO_PARENT_VALUE
+                          ? "Its own category"
+                          : `Under ${
+                              topLevelCategories.find(
+                                (c) => c.id === newCategoryParentId,
+                              )?.name
+                            }`}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NO_PARENT_VALUE}>
+                        Its own category
+                      </SelectItem>
+                      {topLevelCategories.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          Under {c.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <Button
+                  type="button"
+                  className="w-full"
+                  onClick={() => void handleCreateCategory()}
+                  disabled={creatingCategory || !newCategoryName.trim()}
+                >
+                  <Plus className="size-4" />
+                  Add it
+                </Button>
+              </PopoverContent>
+            </Popover>
           </div>
           <Button
             variant="outline"
@@ -363,48 +809,83 @@ export function CategorizeScreen({
                   breathes with the viewport instead of needing a breakpoint. */}
               <div ref={ringRef} className="relative min-h-0 w-full flex-1">
                 {tree.map(({ parent, children }, i) => {
-                  // Position on the ring, starting at 12 o'clock.
-                  const angle = (i / tree.length) * 2 * Math.PI - Math.PI / 2;
-                  // Alternating radius pulls every other node inward, which
-                  // roughly doubles the spacing available to each node
-                  // without needing a bigger ring.
-                  const reach = i % 2 === 0 ? 1 : RING_INNER_REACH;
-                  const x = Math.cos(angle) * RING_RX_PCT * reach;
-                  const y = Math.sin(angle) * RING_RY_PCT * reach;
-                  // Size and jitter are seeded off the category's index
-                  // rather than Math.random(): a real random call would pick
-                  // different values on the server than the client (a
-                  // hydration mismatch) and would also re-roll on every
-                  // render — so nodes would visibly jump around on every
-                  // hover, drag and categorize.
-                  const jitter = scatterJitter(i, 5);
-                  const size = Math.round(nodeSizeForIndex(i) * nodeScale);
+                  // Slot positions and base sizes come from ringLayout, the
+                  // same source fitNodeScale solved against — so what's drawn
+                  // is exactly what was proven not to overlap.
+                  const slot = slots[i];
+                  const size = Math.round(slot.baseSize * nodeScale);
+
+                  // Cluster geometry is resolved here, not inside
+                  // CategoryCluster, because picking a fan direction needs
+                  // the node's position within the measured container —
+                  // which only this scope knows.
+                  const satelliteSize = Math.round(
+                    size * subcategorySizeRatio(children.length),
+                  );
+                  const orbitRadius =
+                    size / 2 + satelliteSize / 2 + SATELLITE_GAP;
+                  const fanAngle = chooseFanAngle({
+                    outward: slot.angle,
+                    rotationRad: (slot.jitter.rotationDeg * Math.PI) / 180,
+                    nodeX: slot.cx,
+                    nodeY: slot.cy,
+                    orbitRadius,
+                    satelliteSize,
+                    count: children.length,
+                    width: ringSize.width,
+                    height: ringSize.height,
+                    // Every *other* top-level node — a satellite fanning
+                    // into one of these would give dnd-kit two genuinely
+                    // overlapping droppable rects at the same point.
+                    siblings: slots
+                      .filter((_, j) => j !== i)
+                      .map((s) => ({
+                        cx: s.cx,
+                        cy: s.cy,
+                        size: Math.round(s.baseSize * nodeScale),
+                      })),
+                  });
+
                   return (
                     <div
                       key={parent.id}
-                      className="absolute"
+                      className={cn(
+                        // delay-200 matters, not just duration: without it,
+                        // the fade-in starts the instant `measured` flips
+                        // true, at the same moment the node's own width/
+                        // height transition (duration-200, on
+                        // CategoryDropZone) starts correcting from the
+                        // fallback size — so the node would still be
+                        // visibly resizing partway through the fade. The
+                        // delay holds it invisible until that resize has
+                        // actually finished.
+                        "absolute transition-opacity delay-200 duration-150",
+                        !measured && "opacity-0",
+                      )}
                       style={{
-                        left: `calc(50% + ${x.toFixed(2)}%)`,
-                        top: `calc(50% + ${y.toFixed(2)}%)`,
-                        transform: `translate(-50%, -50%) translate(${jitter.x}px, ${jitter.y}px) rotate(${jitter.rotationDeg}deg)`,
+                        left: `calc(50% + ${slot.xPct.toFixed(2)}%)`,
+                        top: `calc(50% + ${slot.yPct.toFixed(2)}%)`,
+                        transform: `translate(-50%, -50%) translate(${slot.jitter.x}px, ${slot.jitter.y}px) rotate(${slot.jitter.rotationDeg}deg)`,
                       }}
                     >
                       {children.length > 0 ? (
                         <CategoryCluster
                           parent={parent}
                           parentSize={size}
-                          // Subcategories fan away from the centre, so they
-                          // never open back over the transaction card.
-                          fanAngle={angle}
+                          satelliteSize={satelliteSize}
+                          orbitRadius={orbitRadius}
+                          // Points away from the card where there's room to
+                          // open, and swings along the edge where there
+                          // isn't, so satellites never hang off-screen.
+                          fanAngle={fanAngle}
                           subcategories={children}
                           colorMap={colorMap}
-                          // Open while the drag is over this cluster, so a
-                          // transaction dragged at a parent reveals the
-                          // subcategories it can actually be dropped into.
-                          dragOver={
-                            overId === parent.id ||
-                            children.some((c) => c.id === overId)
-                          }
+                          // Open while the drag is over this cluster (with
+                          // a short grace period — see stickyClusterId —
+                          // so it survives the gap between the parent's own
+                          // droppable rect and a satellite's while the
+                          // pointer is still travelling between them).
+                          dragOver={stickyClusterId === parent.id}
                           dropPulse={dropPulse}
                         />
                       ) : (
@@ -478,101 +959,6 @@ export function CategorizeScreen({
                     <ChevronRight className="size-4" />
                   </Button>
                 </div>
-              </div>
-
-              {/* Category creation is kept out of the constellation itself —
-                  a permanently-visible form competed with the categories for
-                  attention. It's a popover off one small button instead, so
-                  the form only exists while it's being used and never takes
-                  height away from the ring. The trigger stays put whether or
-                  not the form is open (an earlier version swapped the button
-                  itself for the form, so the thing you'd just clicked moved
-                  out from under the cursor). */}
-              <div className="absolute bottom-2 left-1/2 z-30 -translate-x-1/2">
-                <Popover open={addingCategory} onOpenChange={setAddingCategory}>
-                  <PopoverTrigger
-                    className={cn(
-                      "inline-flex items-center gap-1.5 rounded-full border bg-background/90 px-3 py-1.5 text-xs font-medium shadow-sm backdrop-blur-sm transition-colors",
-                      addingCategory
-                        ? "border-primary text-primary"
-                        : "border-border/60 text-muted-foreground hover:text-foreground",
-                    )}
-                  >
-                    <Plus className="size-4" />
-                    Add category
-                  </PopoverTrigger>
-
-                  <PopoverContent side="top" className="w-80 space-y-3 rounded-2xl">
-                    <p className="font-heading text-sm font-bold">New category ✨</p>
-
-                    {/* Icon and name on one line, in that order: the picker
-                        previews whatever the name would resolve to on its own,
-                        so it reads as "here's your icon, change it if you
-                        like" rather than a separate decision to make. */}
-                    <div className="flex items-center gap-2">
-                      <CategoryIconPicker
-                        value={newCategoryIcon}
-                        name={newCategoryName}
-                        onChange={setNewCategoryIcon}
-                        className="size-9"
-                      />
-                      <Input
-                        autoFocus
-                        placeholder="Category name"
-                        value={newCategoryName}
-                        onChange={(e) => setNewCategoryName(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") void handleCreateCategory();
-                        }}
-                        className="h-9 flex-1"
-                      />
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-xs font-medium text-secondary">
-                        Where does it belong?
-                      </label>
-                      <Select
-                        value={newCategoryParentId}
-                        onValueChange={(value) =>
-                          setNewCategoryParentId(value ?? NO_PARENT_VALUE)
-                        }
-                      >
-                        <SelectTrigger className="h-9 w-full">
-                          <SelectValue placeholder="Parent category">
-                            {newCategoryParentId === NO_PARENT_VALUE
-                              ? "Its own category"
-                              : `Under ${
-                                  topLevelCategories.find(
-                                    (c) => c.id === newCategoryParentId,
-                                  )?.name
-                                }`}
-                          </SelectValue>
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={NO_PARENT_VALUE}>
-                            Its own category
-                          </SelectItem>
-                          {topLevelCategories.map((c) => (
-                            <SelectItem key={c.id} value={c.id}>
-                              Under {c.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <Button
-                      type="button"
-                      className="w-full"
-                      onClick={() => void handleCreateCategory()}
-                      disabled={creatingCategory || !newCategoryName.trim()}
-                    >
-                      <Plus className="size-4" />
-                      Add it
-                    </Button>
-                  </PopoverContent>
-                </Popover>
               </div>
             </>
           ) : (
@@ -798,6 +1184,8 @@ function GameCard({
 function CategoryCluster({
   parent,
   parentSize,
+  satelliteSize,
+  orbitRadius,
   fanAngle,
   subcategories,
   colorMap,
@@ -806,6 +1194,8 @@ function CategoryCluster({
 }: {
   parent: Category;
   parentSize: number;
+  satelliteSize: number;
+  orbitRadius: number;
   fanAngle: number;
   subcategories: Category[];
   colorMap: Map<string, CategorySwatch>;
@@ -815,23 +1205,23 @@ function CategoryCluster({
   const [hovered, setHovered] = useState(false);
   const expanded = hovered || dragOver;
 
-  const satelliteSize = Math.round(
-    parentSize * subcategorySizeRatio(subcategories.length),
-  );
-  const orbitRadius = parentSize / 2 + satelliteSize / 2 + SATELLITE_GAP;
-
-  // The wrapper stays exactly parent-sized; satellites are absolutely
-  // positioned and simply overflow it. Nothing here resizes, so opening a
-  // cluster can't disturb any other node's position.
-  const centre = parentSize / 2;
+  // The wrapper's hover hit-box has to cover the *expanded* footprint
+  // (parent + orbit + satellite), not just the collapsed parent — with it
+  // sized to only the parent, moving the pointer from the parent's centre
+  // toward a satellite exits this box partway there, firing mouseleave and
+  // collapsing the cluster before the pointer ever reaches the satellite it
+  // was headed for. That's true during a drag too: dragOver alone can
+  // flicker as dnd-kit's own collision detection loses the parent target
+  // mid-transit, but `hovered` staying true across the whole box (since
+  // real cursor movement fires mouseenter/mouseleave during a drag same as
+  // otherwise) backstops it. The visible content still renders at exactly
+  // the same on-screen position — enlarging this box only grows the
+  // invisible margin the mouse is tracked against, not anything drawn.
+  const extent = 2 * (orbitRadius + satelliteSize / 2);
+  const centre = extent / 2;
 
   const satelliteOffsets = subcategories.map((c, i) => {
-    const spread =
-      subcategories.length === 1
-        ? 0
-        : -FAN_SPREAD_RAD +
-          (2 * FAN_SPREAD_RAD * i) / (subcategories.length - 1);
-    const angle = fanAngle + spread;
+    const angle = fanAngle + fanOffsets(subcategories.length)[i];
     return {
       category: c,
       x: Math.cos(angle) * orbitRadius,
@@ -842,7 +1232,7 @@ function CategoryCluster({
   return (
     <div
       className="relative"
-      style={{ width: parentSize, height: parentSize }}
+      style={{ width: extent, height: extent }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
@@ -853,8 +1243,8 @@ function CategoryCluster({
       <svg
         aria-hidden
         className="pointer-events-none absolute inset-0 overflow-visible"
-        width={parentSize}
-        height={parentSize}
+        width={extent}
+        height={extent}
       >
         {satelliteOffsets.map(({ category: c, x, y }) => (
           <line
@@ -892,7 +1282,16 @@ function CategoryCluster({
       {satelliteOffsets.map(({ category: c, x, y }) => (
         <div
           key={c.id}
-          className="absolute left-1/2 top-1/2 transition-all duration-300 ease-out"
+          // duration-100, not the ~300ms this used to be: dnd-kit measures
+          // this element's *actual current* geometry while it's still
+          // mid-transition, not its final resting one — a slow reveal means
+          // a fast drag can reach where the satellite is *about to* be
+          // before the droppable rect has caught up there, so the drop
+          // misses. Faster settle shrinks that window; it can't close it
+          // to zero (a still-not-quite-instant transition, if the reveal is
+          // going to animate at all), which is what stickyClusterId's grace
+          // period is for.
+          className="absolute left-1/2 top-1/2 transition-all duration-100 ease-out"
           style={{
             transform: expanded
               ? `translate(-50%, -50%) translate(${x}px, ${y}px)`
@@ -911,7 +1310,10 @@ function CategoryCluster({
           />
         </div>
       ))}
-      <div className="relative z-10">
+      <div
+        className="absolute left-1/2 top-1/2 z-10"
+        style={{ transform: "translate(-50%, -50%)" }}
+      >
         <CategoryDropZone
           id={parent.id}
           name={parent.name}

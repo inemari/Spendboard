@@ -173,52 +173,106 @@ decisions. For work that's planned but not yet implemented, see
     percentages so the ring scales with the viewport rather than needing a
     breakpoint; wider than tall because a circle big enough to space nodes
     horizontally would run off the bottom of a laptop screen). Every other
-    node is pulled slightly inward, which roughly doubles the spacing each
-    node gets without enlarging the ring. Absolute positioning is load-
-    bearing, not incidental: it's why expanding a cluster can't shove its
-    neighbours around, which the earlier flow-layout version couldn't avoid.
-    Subcategories fan out *away* from the centre so they never open back
-    over the card. The whole screen is fixed to the viewport (`h-svh` +
-    `overflow-hidden` on the page wrapper, `min-h-0` on the flex children)
-    — the constellation is meant to be taken in at a glance, so it must
-    never produce a scrollbar. Because it can't scroll, it has to fit: the
-    container is measured (`useElementSize`) and every node scaled by
-    `fitNodeScale` so the outermost node always clears the edge. The ring
-    radius is a percentage and scales for free; the node sizes are pixels
-    and are what would otherwise be clipped. The card shrinks with them,
-    or a narrow window closes the ring in around a full-width card.
-  - **A cluster opens when a drag is over it**, driven by dnd-kit's
-    `onDragOver` rather than the nodes' own `mouseenter`: the drag captures
-    the pointer, so hover events stop reaching the nodes underneath and a
-    cluster would otherwise never open while you drag toward it. This also
-    needs `measuring: { droppable: { strategy: MeasuringStrategy.Always } }`
-    on the `DndContext` — subcategories only occupy space once expanded, so
-    with the default measure-once-at-drag-start they would keep their
-    collapsed zero-size rects and never become droppable.
-  - **Node sizing is pseudo-random but deterministic.** Top-level nodes get
-    a size in `[NODE_MIN_SIZE, NODE_MAX_SIZE]` from `nodeSizeForIndex`, and
-    the scatter stagger comes from `scatterJitter` — both seeded off the
-    category's index, never `Math.random()`. A real random call would pick
-    different values on the server than the client (React reports that as a
-    hydration mismatch) *and* re-roll on every render, so nodes would
-    visibly jump around on each hover/drag/categorize. Whole-pixel/2dp
-    rounding matters for the same reason: unrounded floats serialize to
-    different string lengths on either side of hydration.
+    node is pulled inward by `RING_INNER_REACH` so neighbours interleave
+    instead of sitting shoulder to shoulder on one line. Absolute positioning
+    is load-bearing, not incidental: it's why expanding a cluster can't shove
+    its neighbours around, which the earlier flow-layout version couldn't
+    avoid. The whole screen is fixed to the viewport (`h-svh` +
+    `overflow-hidden` on the page wrapper, `min-h-0` on the flex children) —
+    the constellation is meant to be taken in at a glance, so it must never
+    produce a scrollbar.
+  - **Nodes fade in rather than snapping to their measured size on load.**
+    The page is server-rendered, so the first paint has no client-side
+    container measurement to compute a scale from; `fitNodeScale` falls
+    back to `MIN_NODE_SCALE` (deliberately the *small* end, not 1 — a
+    correction that shrinks reads as less broken than one that grows, if
+    one ever becomes visible) until `useElementSize`'s `useLayoutEffect`
+    measures the real size, which it does synchronously on mount rather
+    than waiting for `ResizeObserver`'s own (inherently async) first
+    callback. Nodes stay at `opacity-0` until `measured`, with the opacity
+    transition's `delay-` matched to the node's own width/height transition
+    duration — so if the size correction does take a moment, it happens
+    invisibly and the node only ever appears already at its final size.
+  - **`RING_RX_PCT`/`RING_RY_PCT` set how much *room* nodes have, not how far
+    apart they look.** Node size is solved from that room, not the other way
+    around — `ringLayout()` resolves every node's centre in container pixels,
+    then `fitNodeScale()` finds the single largest scale at which no node
+    overlaps another node, the card, or the container edge. Nodes are
+    circles at known centres, so each constraint reduces to "this distance
+    must cover both radii"; taking the smallest such bound across every
+    pair is exact, not a heuristic. (An earlier version compared average
+    ring arc length against node width, which says nothing about any
+    *particular* pair and let a parent overlap its own subcategories once
+    the ring got tight.) The result isn't capped at 1 — nodes grow into
+    whatever room is actually there, bounded by `NODE_MIN_GAP`/
+    `CARD_MIN_GAP`, up to `MAX_NODE_SCALE` (stops a sparse constellation
+    inflating into a couple of huge circles) down to `MIN_NODE_SCALE`
+    (stops a crowded one shrinking past readable). Tightening the ring
+    percentages shrinks the categories rather than packing them closer —
+    `NODE_MIN_GAP` is what governs visible spacing.
+  - **A cluster's fan direction is chosen, not fixed.** Subcategories default
+    to fanning *away* from the ring's centre so they don't open back over the
+    card, but two things can make that direction unusable: a node near the
+    container edge has no room out there, and a node near a *sibling* has no
+    room that way either. `chooseFanAngle()` treats both the edge and every
+    other top-level node as obstacles, rotating the fan (smallest rotation
+    first, alternating direction) until every satellite clears all of them,
+    only swinging back toward the card as a last resort. The sibling check
+    is load-bearing, not cosmetic: a satellite whose circle overlaps a
+    neighbour's gives dnd-kit two droppables with genuinely overlapping
+    hit-rects at the same point, and its collision detection doesn't
+    reliably resolve that in the visually-topmost (satellite's) favor — a
+    drag aimed at the satellite could land on the sibling underneath it.
+    Confirmed both ways: `elementFromPoint` said the satellite, dnd-kit said
+    the sibling.
+  - **Node sizing has a random-looking *base* that's actually deterministic.**
+    `nodeSizeForIndex` and `scatterJitter` (the ring stagger) are both seeded
+    off the category's index, never `Math.random()` — a real random call
+    would pick different values on the server than the client (React reports
+    that as a hydration mismatch) *and* re-roll on every render, so nodes
+    would visibly jump around on each hover/drag/categorize. That base size
+    then goes through `fitNodeScale()` (above) before anything renders, so
+    the size on screen is "index-seeded base, scaled to fit" — not the base
+    size itself.
   - **Subcategory nodes are a fixed fraction of their own parent** —
     `subcategorySizeRatio`: a third when there are more than three of them
-    (so a wide fan still fits), otherwise a half. Cluster geometry (orbit
-    radius, expanded footprint) is therefore computed per cluster from the
-    actual sizes rather than from shared constants.
-  - **Subcategories fan out on hover, not on drag-start.** Hovering a parent
-    shrinks it, slides it left, draws thin translucent connector lines, and
-    fans its subcategories out to the right (`CategoryCluster`), with
-    concentric rings marking the expanded node. Hover — *not* "any drag in
-    progress" — drives this deliberately: real cursor movement during a drag
-    still fires `mouseenter`, so a drag reveals subcategories exactly when
-    the cursor reaches them, whereas expanding every cluster the instant any
-    drag started reflowed the whole grid before the cursor had moved and
-    could shift the intended target out from under it, making aimed drops
-    land on empty space.
+    (so a wide fan still fits), otherwise ~0.55. Cluster geometry (orbit
+    radius, fan direction) is resolved once per node in the parent screen,
+    not inside `CategoryCluster`, because choosing a fan direction needs the
+    node's resolved position in the measured container.
+  - **A cluster expands on hover *or* when a drag is over it**, drawing thin
+    translucent connector lines and concentric rings around the expanded
+    node (`CategoryCluster`). The drag-over path is driven by dnd-kit's
+    `onDragOver` rather than the nodes' own `mouseenter`: the drag captures
+    the pointer, so hover events stop reaching the nodes underneath, and a
+    cluster would otherwise never open while you drag toward it — and, for
+    the same reason, `hovered` is *not* a backstop during a drag despite an
+    earlier version of this doc claiming real cursor movement keeps firing
+    it; pointer capture suppresses mouseenter/mouseleave on everything else
+    for the duration. Using hover at all when *not* dragging (rather than
+    "any drag in progress" being the sole trigger) matters too — an earlier
+    version expanded every cluster the instant any drag started, which
+    reflowed the whole ring before the cursor had moved and could shift the
+    intended target out from under it, making aimed drops land on empty
+    space. Drag-over expansion also needs
+    `measuring: { droppable: { strategy: MeasuringStrategy.Always } }` on the
+    `DndContext` — subcategories only occupy space once expanded, so with
+    the default measure-once-at-drag-start they'd keep their collapsed
+    zero-size rects and never become droppable.
+  - **`stickyClusterId` keeps a cluster open through the gap between a
+    parent's droppable rect and a satellite's**, not just while `onDragOver`
+    reports one of them directly. That gap is real screen space neither rect
+    covers, so a straight-line drag from the parent's centre toward a
+    satellite passes through a moment where dnd-kit's `over` is genuinely
+    null; collapsing immediately on that null closed the satellites —
+    which were the actual drop target — before the pointer could reach
+    them. A short grace period (`STICKY_CLUSTER_GRACE_MS`) bridges it,
+    cancelled if the same cluster is re-entered first. The satellite reveal
+    transition is also deliberately fast (100ms, not the ~300ms it used to
+    be): dnd-kit measures a satellite's *current* geometry, not its final
+    resting one, so a slow reveal widens the window where a fast drag can
+    reach a satellite's final position before its droppable rect has
+    caught up there.
   - Category creation is a **popover off a small "Add category" button**
     pinned below the ring — icon picker and name on one line, then "Where does
     it belong?" (its own category, or under an existing one), then Add. Not an
