@@ -295,6 +295,567 @@ $$;
 
 grant execute on function apply_rule_template(uuid, uuid) to authenticated;
 
+-- Shared credit-card settlement (see CLAUDE.md's "Shared Credit Card
+-- Settlement" section). V1 scope: exactly two members per household,
+-- self-serve pairing by invite code (there's no self-serve signup, but
+-- this pairs two *existing* accounts, which is a smaller ask than that).
+--
+-- Privacy shape: every table here except `credit_invoices` and
+-- `settlements` is either fully private (no cross-user select at all) or
+-- reachable only through a SECURITY DEFINER RPC that deliberately returns
+-- less than the full row — the same pattern `list_app_users`/
+-- `apply_rule_template` already establish above. Nothing here ever lets one
+-- member's client query the other member's `transactions` rows directly;
+-- transactions keep their existing `auth.uid() = user_id` policy untouched.
+
+create table if not exists households (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now()
+);
+
+-- unique(user_id): a user belongs to at most one household at a time — V1's
+-- "two household members" scope, not a general multi-household model.
+create table if not exists household_members (
+  household_id uuid references households(id) on delete cascade not null,
+  user_id uuid references auth.users not null,
+  default_contribution numeric not null default 0,
+  joined_at timestamptz not null default now(),
+  primary key (household_id, user_id),
+  unique (user_id)
+);
+
+-- Self-serve pairing: the inviter shares `code` out-of-band (no email
+-- lookup needed against auth.users), the invitee redeems it from their own
+-- account. Both creation and redemption go through RPCs below rather than
+-- direct table access, so the "at most 2 members" invariant and the
+-- not-already-in-a-household check are enforced in one place.
+create table if not exists household_invites (
+  id uuid primary key default gen_random_uuid(),
+  household_id uuid references households(id) on delete cascade not null,
+  invited_by uuid references auth.users not null,
+  code text unique not null,
+  status text not null default 'pending', -- pending | accepted | revoked
+  created_at timestamptz not null default now(),
+  expires_at timestamptz not null default (now() + interval '7 days')
+);
+
+-- A credit-card billing period, distinct from `month_id` (see ROADMAP.md's
+-- "Credit-card invoices, distinct from the calendar month") — shared at the
+-- household level so both members can file transactions under the same
+-- named period ("August 2026") even though a card's billing window rarely
+-- lines up with calendar months. Chosen per-file at upload time.
+create table if not exists credit_invoices (
+  id uuid primary key default gen_random_uuid(),
+  household_id uuid references households(id) on delete cascade not null,
+  label text not null,
+  created_at timestamptz not null default now()
+);
+
+-- Nullable: a transaction has no invoice until the uploader picks one (and
+-- solo users with no household never see the picker at all — see
+-- upload-button.tsx). on delete set null, not cascade: deleting an invoice
+-- (there's no UI for this in V1) must not take transactions with it.
+alter table transactions add column if not exists credit_invoice_id uuid references credit_invoices(id) on delete set null;
+
+-- One row per invoice, written only by `complete_settlement` below at the
+-- moment a settlement is completed — there is no "draft" settlement state;
+-- an invoice with no row here is simply "open," and the settlement screen
+-- computes live totals via `household_invoice_summary` until then. This is
+-- what makes a settlement a frozen snapshot: nothing here is ever updated
+-- after insert, so later edits to the underlying transactions (e.g.
+-- recategorizing after the fact) can never retroactively change a
+-- completed settlement. `per_member` holds each member's
+-- {user_id, personal_total, common_total, contribution, amount_due} at
+-- completion time — it, not a live recomputation, is what the "previous
+-- settlements" list reads back.
+create table if not exists settlements (
+  id uuid primary key default gen_random_uuid(),
+  invoice_id uuid references credit_invoices(id) not null unique,
+  common_total numeric not null,
+  common_share numeric not null,
+  per_member jsonb not null,
+  completed_by uuid references auth.users not null,
+  completed_at timestamptz not null default now()
+);
+
+alter table households enable row level security;
+alter table household_members enable row level security;
+alter table household_invites enable row level security;
+alter table credit_invoices enable row level security;
+alter table settlements enable row level security;
+
+-- SECURITY DEFINER so it can check membership without itself being blocked
+-- by the RLS it's used inside of — the same reason is_admin() above needs
+-- no SECURITY DEFINER (it doesn't query a protected table) while this does.
+create or replace function is_household_member(target_household_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from household_members
+    where household_id = target_household_id and user_id = auth.uid()
+  );
+$$;
+
+drop policy if exists "members can view" on households;
+create policy "members can view" on households
+  for select using (is_household_member(id));
+
+drop policy if exists "members can view" on household_members;
+create policy "members can view" on household_members
+  for select using (is_household_member(household_id));
+
+-- Invites are visible to the inviter (to show a pending code) and to every
+-- existing member of the household being invited into — never to anyone
+-- else, since `code` alone must not be select-able by an uninvolved user.
+drop policy if exists "involved parties can view" on household_invites;
+create policy "involved parties can view" on household_invites
+  for select using (invited_by = auth.uid() or is_household_member(household_id));
+
+drop policy if exists "members can manage" on credit_invoices;
+create policy "members can manage" on credit_invoices
+  for all using (is_household_member(household_id)) with check (is_household_member(household_id));
+
+drop policy if exists "members can view" on settlements;
+create policy "members can view" on settlements
+  for select using (is_household_member((select household_id from credit_invoices where id = invoice_id)));
+
+grant usage on schema public to authenticated;
+grant select on households, household_members, household_invites to authenticated;
+grant select, insert, update, delete on credit_invoices to authenticated;
+grant select on settlements to authenticated;
+
+-- Every other write path here (creating/joining a household, setting your
+-- own contribution default, completing a settlement) goes through one of
+-- the RPCs below instead of a table policy — each enforces an invariant
+-- (at most 2 members, no double-join, need-review must be clear) that a
+-- plain row-level policy can't express.
+
+create or replace function create_household()
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  new_household_id uuid;
+begin
+  if exists (select 1 from household_members where user_id = auth.uid()) then
+    raise exception 'You already belong to a household.';
+  end if;
+
+  insert into households default values returning id into new_household_id;
+  insert into household_members (household_id, user_id) values (new_household_id, auth.uid());
+  return new_household_id;
+end;
+$$;
+
+grant execute on function create_household() to authenticated;
+
+create or replace function create_household_invite()
+returns text
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  caller_household_id uuid;
+  member_count int;
+  new_code text;
+begin
+  select household_id into caller_household_id
+    from household_members where user_id = auth.uid();
+
+  if caller_household_id is null then
+    raise exception 'You must belong to a household to invite someone.';
+  end if;
+
+  select count(*) into member_count from household_members where household_id = caller_household_id;
+  if member_count >= 2 then
+    raise exception 'This household already has two members.';
+  end if;
+
+  update household_invites set status = 'revoked'
+    where household_id = caller_household_id and status = 'pending';
+
+  new_code := encode(gen_random_bytes(6), 'base64');
+  insert into household_invites (household_id, invited_by, code)
+    values (caller_household_id, auth.uid(), new_code);
+  return new_code;
+end;
+$$;
+
+grant execute on function create_household_invite() to authenticated;
+
+create or replace function redeem_household_invite(p_code text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  invite record;
+  member_count int;
+begin
+  if exists (select 1 from household_members where user_id = auth.uid()) then
+    raise exception 'You already belong to a household.';
+  end if;
+
+  select * into invite from household_invites
+    where code = p_code and status = 'pending' and expires_at > now();
+
+  if invite is null then
+    raise exception 'That invite code is invalid or has expired.';
+  end if;
+
+  select count(*) into member_count from household_members where household_id = invite.household_id;
+  if member_count >= 2 then
+    raise exception 'This household already has two members.';
+  end if;
+
+  insert into household_members (household_id, user_id) values (invite.household_id, auth.uid());
+  update household_invites set status = 'accepted' where id = invite.id;
+end;
+$$;
+
+grant execute on function redeem_household_invite(text) to authenticated;
+
+create or replace function set_default_contribution(p_amount numeric)
+returns void
+language sql
+security definer
+set search_path = public
+as $$
+  update household_members set default_contribution = p_amount where user_id = auth.uid();
+$$;
+
+grant execute on function set_default_contribution(numeric) to authenticated;
+
+-- The one place a member ever learns anything about their partner's
+-- spending: `personal_total` and `need_review_count` come back null for
+-- every row that isn't the caller's own, so the client can render "you"
+-- vs. "your partner" from one shared query shape without a second,
+-- narrower one — the masking happens here, not by trusting the client to
+-- discard fields it shouldn't have used.
+create or replace function household_invoice_summary(p_invoice_id uuid)
+returns table (
+  user_id uuid,
+  is_self boolean,
+  personal_total numeric,
+  common_total numeric,
+  need_review_count int
+)
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  caller_household_id uuid;
+  target_household_id uuid;
+begin
+  select household_id into target_household_id from credit_invoices where id = p_invoice_id;
+  select household_id into caller_household_id from household_members where user_id = auth.uid();
+
+  if target_household_id is null or target_household_id is distinct from caller_household_id then
+    raise exception 'Not authorized.';
+  end if;
+
+  return query
+    select
+      hm.user_id,
+      hm.user_id = auth.uid() as is_self,
+      case when hm.user_id = auth.uid() then coalesce(sum(t.amount) filter (where t.type = 'personal'), 0) end,
+      coalesce(sum(t.amount) filter (where t.type = 'common'), 0),
+      case when hm.user_id = auth.uid() then count(*) filter (where t.type = 'need_review')::int end
+    from household_members hm
+    left join transactions t on t.user_id = hm.user_id and t.credit_invoice_id = p_invoice_id
+    where hm.household_id = target_household_id
+    group by hm.user_id;
+end;
+$$;
+
+grant execute on function household_invoice_summary(uuid) to authenticated;
+
+-- Completes a settlement: recomputes both members' totals server-side (the
+-- client never has access to compute this itself, since that would require
+-- reading the partner's transactions), blocks while either member has any
+-- `need_review` transaction on this invoice, and writes one frozen row.
+-- Either member may call this — "mark complete" isn't a two-party
+-- confirmation step (see CLAUDE.md).
+create or replace function complete_settlement(p_invoice_id uuid, p_contribution numeric)
+returns settlements
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  caller_household_id uuid;
+  target_household_id uuid;
+  unresolved_count int;
+  total_common numeric;
+  share numeric;
+  members jsonb;
+  result settlements;
+begin
+  select household_id into target_household_id from credit_invoices where id = p_invoice_id;
+  select household_id into caller_household_id from household_members where user_id = auth.uid();
+
+  if target_household_id is null or target_household_id is distinct from caller_household_id then
+    raise exception 'Not authorized.';
+  end if;
+
+  if exists (select 1 from settlements where invoice_id = p_invoice_id) then
+    raise exception 'This invoice has already been settled.';
+  end if;
+
+  select count(*) into unresolved_count
+    from transactions t
+    join household_members hm on hm.user_id = t.user_id
+    where t.credit_invoice_id = p_invoice_id
+      and hm.household_id = target_household_id
+      and t.type = 'need_review';
+
+  if unresolved_count > 0 then
+    raise exception 'Cannot settle while any need-review transactions remain on this invoice.';
+  end if;
+
+  select coalesce(sum(t.amount) filter (where t.type = 'common'), 0) into total_common
+    from transactions t
+    join household_members hm on hm.user_id = t.user_id
+    where t.credit_invoice_id = p_invoice_id and hm.household_id = target_household_id;
+
+  share := total_common / 2;
+
+  select jsonb_agg(jsonb_build_object(
+    'user_id', hm.user_id,
+    'personal_total', personal.total,
+    'common_total', share,
+    'contribution', case when hm.user_id = auth.uid() then p_contribution else hm.default_contribution end,
+    'amount_due', personal.total + share - (case when hm.user_id = auth.uid() then p_contribution else hm.default_contribution end)
+  )) into members
+  from household_members hm
+  cross join lateral (
+    select coalesce(sum(t.amount) filter (where t.type = 'personal'), 0) as total
+    from transactions t
+    where t.user_id = hm.user_id and t.credit_invoice_id = p_invoice_id
+  ) personal
+  where hm.household_id = target_household_id;
+
+  insert into settlements (invoice_id, common_total, common_share, per_member, completed_by)
+    values (p_invoice_id, total_common, share, members, auth.uid())
+    returning * into result;
+
+  return result;
+end;
+$$;
+
+grant execute on function complete_settlement(uuid, numeric) to authenticated;
+
+-- Lets the settlement screen show "you" vs. the partner's email — auth.users
+-- isn't exposed to the client, and household_members has no email column of
+-- its own (it only ever stores a user_id), so this is the only way to read
+-- it. Same security-definer shape as list_app_users(), scoped to the
+-- caller's own household instead of gated by is_admin().
+create or replace function household_member_emails()
+returns table (user_id uuid, email text)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  caller_household_id uuid;
+begin
+  select household_id into caller_household_id from household_members where user_id = auth.uid();
+
+  if caller_household_id is null then
+    return;
+  end if;
+
+  return query
+    select au.id, au.email::text
+    from household_members hm
+    join auth.users au on au.id = hm.user_id
+    where hm.household_id = caller_household_id;
+end;
+$$;
+
+grant execute on function household_member_emails() to authenticated;
+
+-- Admin-managed seed list for `ensure-default-categories.ts` — replaces the
+-- hardcoded array that used to live only in that file. Every authenticated
+-- user needs read access (their own first page load is what seeds their
+-- categories from this), but only an admin can curate it. Deleting a row
+-- here is safe: it only changes what a *future* brand-new account gets
+-- seeded with, never anything an existing user already has in their own
+-- `categories` table — the two are decoupled the moment the seed runs.
+create table if not exists default_categories (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  icon text,
+  sort_order integer not null default 0,
+  created_at timestamptz not null default now()
+);
+
+-- One level deep only, same as `categories.parent_id` — a seeded
+-- subcategory's parent_id always points at a top-level default category.
+alter table default_categories add column if not exists parent_id uuid references default_categories(id) on delete cascade;
+
+alter table default_categories enable row level security;
+
+drop policy if exists "anyone can view" on default_categories;
+create policy "anyone can view" on default_categories
+  for select using (true);
+
+drop policy if exists "admin can manage" on default_categories;
+create policy "admin can manage" on default_categories
+  for insert with check (is_admin());
+
+drop policy if exists "admin can update" on default_categories;
+create policy "admin can update" on default_categories
+  for update using (is_admin()) with check (is_admin());
+
+grant select, insert, update on default_categories to authenticated;
+
+-- One-time migration of today's hardcoded list into the new table, guarded
+-- so re-running this file doesn't duplicate it once any row exists.
+do $$
+begin
+  if not exists (select 1 from default_categories) then
+    insert into default_categories (name, icon, sort_order) values
+      ('Groceries', 'shopping-cart', 0),
+      ('Dining out', 'utensils', 1),
+      ('Transport', 'car', 2),
+      ('Housing', 'house', 3),
+      ('Utilities', 'zap', 4),
+      ('Shopping', 'shopping-bag', 5),
+      ('Health', 'heart-pulse', 6),
+      ('Entertainment', 'popcorn', 7),
+      ('Subscriptions', 'repeat', 8),
+      ('Other', 'shapes', 9);
+  end if;
+end $$;
+
+-- Lists every household with its members' emails, for the admin households
+-- page — same "auth.users isn't client-readable" reasoning as
+-- household_member_emails() above, just admin-gated instead of scoped to
+-- the caller's own household.
+create or replace function admin_list_households()
+returns table (household_id uuid, user_id uuid, email text)
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not is_admin() then
+    raise exception 'not authorized';
+  end if;
+
+  return query
+    select hm.household_id, au.id, au.email::text
+    from household_members hm
+    join auth.users au on au.id = hm.user_id
+    order by hm.household_id, au.created_at;
+end;
+$$;
+
+grant execute on function admin_list_households() to authenticated;
+
+-- Directly pairs two existing users into a new household, bypassing the
+-- self-serve invite-code flow entirely (the admin already controls both
+-- accounts' provisioning, so there's no need to exchange a code). Same
+-- invariants as the self-serve path: neither user may already belong to a
+-- household, and a household never grows past two members.
+create or replace function admin_create_household(user_a uuid, user_b uuid)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  new_household_id uuid;
+begin
+  if not is_admin() then
+    raise exception 'not authorized';
+  end if;
+
+  if user_a = user_b then
+    raise exception 'Choose two different users.';
+  end if;
+
+  if exists (select 1 from household_members where user_id in (user_a, user_b)) then
+    raise exception 'One of these users already belongs to a household.';
+  end if;
+
+  insert into households default values returning id into new_household_id;
+  insert into household_members (household_id, user_id) values
+    (new_household_id, user_a),
+    (new_household_id, user_b);
+
+  return new_household_id;
+end;
+$$;
+
+grant execute on function admin_create_household(uuid, uuid) to authenticated;
+
+-- Removes one member from a household — "editing" a household is scoped to
+-- this rather than dissolving one outright, so a household's
+-- credit_invoices/settlements are never at risk of being orphaned by an
+-- admin action. The household row (and anything filed under it) is left
+-- untouched even if this empties it out entirely; admin_add_household_member
+-- below is how the remaining member (if any) gets re-paired.
+create or replace function admin_remove_household_member(p_user_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not is_admin() then
+    raise exception 'not authorized';
+  end if;
+
+  delete from household_members where user_id = p_user_id;
+end;
+$$;
+
+grant execute on function admin_remove_household_member(uuid) to authenticated;
+
+-- Adds one user into an *existing* household — the counterpart to removal
+-- above, for re-pairing a household left with only one member. Same
+-- invariants as admin_create_household: the target user mustn't already
+-- belong to a household, and a household never grows past two members.
+create or replace function admin_add_household_member(p_household_id uuid, p_user_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  member_count int;
+begin
+  if not is_admin() then
+    raise exception 'not authorized';
+  end if;
+
+  if exists (select 1 from household_members where user_id = p_user_id) then
+    raise exception 'This user already belongs to a household.';
+  end if;
+
+  select count(*) into member_count from household_members where household_id = p_household_id;
+  if member_count >= 2 then
+    raise exception 'This household already has two members.';
+  end if;
+
+  insert into household_members (household_id, user_id) values (p_household_id, p_user_id);
+end;
+$$;
+
+grant execute on function admin_add_household_member(uuid, uuid) to authenticated;
+
 -- Seed: the starter pack described in CLAUDE.md's default-rules requirement
 -- (Rema/Joker/Coop/Meny/Kiwi -> "Matbutikk"), marked as the default so it's
 -- what `apply_rule_template` should be pointed at for a brand-new user until

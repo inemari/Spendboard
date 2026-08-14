@@ -37,6 +37,8 @@ import { EMPTY_CONDITION, RuleConditionsEditor } from "@/components/rule-conditi
 import { describeRuleConditions } from "@/lib/rule-description";
 import type { AppUser, RuleCondition, RuleTemplate, RuleTemplateItem } from "@/lib/types";
 
+type MyRule = { id: string; categoryName: string; conditions: RuleCondition[] };
+
 type DraftItem = { category_name: string; conditions: RuleCondition[] };
 
 type EditorTarget = { mode: "create" } | { mode: "edit"; template: RuleTemplate };
@@ -51,9 +53,11 @@ function itemsToDraft(items: RuleTemplateItem[]): DraftItem[] {
 export function AdminRulesPanel({
   templates,
   users,
+  myRules,
 }: {
   templates: RuleTemplate[];
   users: AppUser[];
+  myRules: MyRule[];
 }) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
@@ -65,6 +69,28 @@ export function AdminRulesPanel({
   const [applyingId, setApplyingId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [selectedUserByTemplate, setSelectedUserByTemplate] = useState<Record<string, string>>({});
+  const [selectedTemplateByRule, setSelectedTemplateByRule] = useState<Record<string, string>>({});
+  const [copyingRuleId, setCopyingRuleId] = useState<string | null>(null);
+
+  async function handleCopyToTemplate(rule: MyRule) {
+    const templateId = selectedTemplateByRule[rule.id];
+    if (!templateId) return;
+
+    setCopyingRuleId(rule.id);
+    const { error } = await supabase.from("rule_template_items").insert({
+      template_id: templateId,
+      category_name: rule.categoryName,
+      conditions: rule.conditions,
+    });
+    setCopyingRuleId(null);
+
+    if (error) {
+      toast.error("Failed to copy rule into template.");
+      return;
+    }
+    toast.success(`Copied into "${templates.find((t) => t.id === templateId)?.name}".`);
+    router.refresh();
+  }
 
   async function handleDelete() {
     const template = pendingDelete;
@@ -136,6 +162,58 @@ export function AdminRulesPanel({
           New template
         </Button>
       </div>
+
+      {myRules.length > 0 && (
+        <div className="rounded-xl border p-4">
+          <h3 className="font-semibold">Copy from your own rules</h3>
+          <p className="mb-3 text-sm text-muted-foreground">
+            Turn one of your personal categorization rules into a reusable template item.
+          </p>
+          <div className="flex flex-col gap-2">
+            {myRules.map((rule) => (
+              <div
+                key={rule.id}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-muted/40 p-2.5 text-sm"
+              >
+                <p>
+                  <span className="font-medium">{rule.categoryName}</span>
+                  {" — "}
+                  <span className="text-muted-foreground">
+                    {describeRuleConditions(rule.conditions)}
+                  </span>
+                </p>
+                <div className="flex items-center gap-1.5">
+                  <Select
+                    value={selectedTemplateByRule[rule.id]}
+                    onValueChange={(value) =>
+                      value && setSelectedTemplateByRule((prev) => ({ ...prev, [rule.id]: value }))
+                    }
+                  >
+                    <SelectTrigger className="h-8 w-48 text-xs">
+                      <SelectValue placeholder="Into which template…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {templates.map((t) => (
+                        <SelectItem key={t.id} value={t.id}>
+                          {t.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={!selectedTemplateByRule[rule.id] || copyingRuleId === rule.id}
+                    onClick={() => void handleCopyToTemplate(rule)}
+                  >
+                    Copy
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {templates.length === 0 ? (
         <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed p-8 text-center text-muted-foreground">

@@ -15,8 +15,13 @@ visual design system, and [ROADMAP.md](ROADMAP.md) for what's planned next.
   screen with a timeframe and so the only one carrying date state, all of it in
   query params (`?view`/`?date`/`?from`/`?to`; a bare `/` is the current
   month). `src/app/categorize/`, `categories/`, `rules/` — account-wide, no
-  dates. `src/app/admin/rules/` — admin rule-template management.
-  `src/app/api/upload/` — the upload endpoint. `src/app/login/` — sign-in.
+  dates. `src/app/admin/` — the admin area (`users/`, `households/`,
+  `rules/`, `categories/`; see "Admin area" below), gated in one place by
+  `src/app/admin/layout.tsx`. `src/app/settlement/` — the shared credit-card
+  settlement screen, also
+  account/household-wide and dateless (see "Shared credit-card settlement"
+  below). `src/app/api/upload/` — the upload endpoint. `src/app/login/` —
+  sign-in.
   There is deliberately **no `[year]/[month]` path segment**: it made every
   URL claim a month even on screens that have nothing to do with one, and it
   put a second month control (the header's) in competition with the overview's
@@ -443,41 +448,157 @@ decisions. For work that's planned but not yet implemented, see
   same operator set. "Starts with" matches the beginning of the normalized
   name (`normalizeDescription` already lowercases/strips punctuation, so
   this is a prefix check on that normalized string, not the raw text).
-- **Admin rule templates (`/admin/rules`).** Named, reusable rule bundles an
-  admin curates — distinct from a single user's own `rules` rows, since a
-  template targets a category _by name_ (`rule_template_items.category_name`)
-  rather than a `category_id`, making it portable across different users'
-  distinct category sets. `admin-rules-panel.tsx` lists templates (each
-  showing its items' plain-English description via
-  `describeRuleConditions`), lets an admin create/edit/delete them, mark one
-  `is_default` (a DB trigger enforces only one at a time), and apply any
-  template to a chosen existing user on demand (there's no self-serve
-  signup to hook a "new user" flow into yet, so applying is a manual,
-  admin-triggered action for now — see README on how users are provisioned).
-  Applying a template finds-or-creates each item's named category for the
-  target user and inserts the corresponding rule; it never touches anything
-  that user already has.
+- **Admin area (`/admin/*`).** Four tabs under one gate
+  (`src/app/admin/layout.tsx`, tab bar in `admin-tabs.tsx`): Users,
+  Households, Rule templates, Default categories.
   - **Access control is a hardcoded admin email**, not a roles table — matches
-    how this app is already single-owner/friends-and-family provisioned (see
-    "Multi-user / household sharing" below). `is_admin()` in
-    `supabase/schema.sql` is the actual enforcement (RLS on
-    `rule_templates`/`rule_template_items`, plus a check inside both
-    `SECURITY DEFINER` RPCs below); `src/lib/is-admin.ts`'s `isAdminEmail` is
-    only a page-level redirect for a non-admin, not a security boundary by
-    itself. **The email literal must match in both places** — there's no
-    single source of truth between the SQL and the TS constant, since the
-    TS side can't read a Postgres function at build time.
-  - **Two `SECURITY DEFINER` RPCs** exist because the browser's anon-key
+    how this app is already single-owner/friends-and-family provisioned.
+    `is_admin()` in `supabase/schema.sql` is the actual enforcement (RLS on
+    every admin-only table, plus a check inside every `SECURITY DEFINER` RPC
+    below and inside `/api/admin/create-user`); `src/lib/is-admin.ts`'s
+    `isAdminEmail` is only a page-level redirect for a non-admin (checked
+    once, in the shared `/admin` layout, not per-page), not a security
+    boundary by itself. **The email literal must match in both places** —
+    there's no single source of truth between the SQL and the TS constant,
+    since the TS side can't read a Postgres function at build time.
+  - **Users tab** (`admin-users-panel.tsx`) lists every account
+    (`list_app_users()`) and can create a new one directly — the only admin
+    action that needs Supabase's Auth Admin API rather than a plain RPC,
+    since creating an `auth.users` row isn't something any RLS-respecting
+    SQL function can do. `/api/admin/create-user` is a server route that
+    re-checks `is_admin()` under the caller's own session before touching
+    anything, then uses `src/lib/supabase/admin.ts`'s service-role client
+    (`SUPABASE_SERVICE_ROLE_KEY`, server-only, never `NEXT_PUBLIC_`) to call
+    `auth.admin.createUser`. This is the one place in the app that holds a
+    key capable of bypassing RLS entirely — it must never be imported into
+    anything that runs in the browser.
+  - **Households tab** (`admin-households-panel.tsx`) lists every household
+    (`admin_list_households()`) and pairs two chosen users directly via
+    `admin_create_household(user_a, user_b)` — deliberately bypassing the
+    self-serve invite-code flow in `/settlement` (see "Shared credit-card
+    settlement" above), since an admin already controls both accounts'
+    provisioning and a code exchange would just be extra steps. Same
+    invariants as the self-serve path (at most two members, no double-join),
+    enforced inside the RPC. **Editing a household is scoped to removing a
+    member** (`admin_remove_household_member`), not dissolving the household
+    outright — the household row and everything filed under it
+    (`credit_invoices`, `settlements`) stays intact even if this leaves it
+    with one member or zero, so a removal can never orphan settlement
+    history. `admin_add_household_member(household_id, user_id)` is the
+    counterpart, for re-pairing a one-member household with someone new
+    (shown inline on that household's row instead of only through the
+    top "pair two users" form, which only ever creates a *new* household).
+  - There is deliberately no "dissolve a household" action — if that's ever
+    needed, decide first what happens to a household's `credit_invoices`/
+    `settlements` (today `settlements.invoice_id` has no `on delete`
+    clause, so deleting a `credit_invoices` row under a completed settlement
+    would simply fail).
+  - **Rule templates tab** (`admin-rules-panel.tsx`) is unchanged from
+    before, plus one addition: a "Copy from your own rules" section lists
+    the admin's *personal* `rules` rows (from her own account, alongside
+    everyone else's) and can copy any one of them into an existing template
+    as a new `rule_template_items` row — a shortcut for turning a rule she
+    already uses personally into something reusable, without retyping its
+    conditions. Named, reusable rule bundles an admin curates — distinct
+    from a single user's own `rules` rows, since a template targets a
+    category _by name_ (`rule_template_items.category_name`) rather than a
+    `category_id`, making it portable across different users' distinct
+    category sets. Lists templates (each showing its items' plain-English
+    description via `describeRuleConditions`), lets an admin create/edit/
+    delete them, mark one `is_default` (a DB trigger enforces only one at a
+    time), and apply any template to a chosen existing user on demand
+    (there's no self-serve signup to hook a "new user" flow into yet, so
+    applying is a manual, admin-triggered action for now — see README on how
+    users are provisioned). Applying a template finds-or-creates each item's
+    named category for the target user and inserts the corresponding rule;
+    it never touches anything that user already has.
+  - **Default categories tab** (`admin-categories-panel.tsx`) manages the
+    `default_categories` table that `ensure-default-categories.ts` reads
+    from when seeding a brand-new account — replacing what used to be a
+    hardcoded array in that file. An admin can rename, re-icon, or add a
+    default category (including a **subcategory**, one level deep, same
+    shape as `categories.parent_id` — `default_categories.parent_id` mirrors
+    it, and `buildCategoryTree`/`flattenWithDepth` in `category-tree.ts` are
+    generic over both types so this tab reuses the same tree logic as the
+    per-user Categories screen), but **not delete one from this UI**
+    (deliberately omitted — see that tab's own on-screen note). Deleting a
+    row here is actually safe regardless: `default_categories` is a seed
+    template, fully decoupled from every user's own `categories` table the
+    moment the seed runs, so editing it never touches any category a user
+    already has — the omission is about avoiding confusion between "this
+    seed row" and "a category someone's using," not an actual data-safety
+    requirement. Seeding a new account (`ensure-default-categories.ts`)
+    clones parents first, then children, remapping each child's `parent_id`
+    from the seed row's own id to the *new* per-user category id it was
+    cloned into — a fresh `categories` row always gets its own generated id,
+    never the seed row's.
+  - **Several `SECURITY DEFINER` RPCs** exist because the browser's anon-key
     client is _correctly_ blocked by every table's `auth.uid() = user_id`
     RLS policy from ever reading another user's email or writing rows with
     a different `user_id` — that's the whole point of that policy elsewhere
-    in the app. `list_app_users()` (reads `auth.users`, not exposed to the
-    client otherwise) and `apply_rule_template(p_template_id, target_user_id)`
-    (writes categories/rules owned by `target_user_id`) both run with
-    elevated privileges specifically to make this one admin page the
+    in the app. `list_app_users()` / `admin_list_households()` (read
+    `auth.users`, not exposed to the client otherwise),
+    `apply_rule_template(p_template_id, target_user_id)` (writes categories/
+    rules owned by `target_user_id`), and `admin_create_household(user_a,
+    user_b)` (writes `household_members` rows for two other users) all run
+    with elevated privileges specifically to make these admin actions the
     exception, gated by the same `is_admin()` check inside the function body
     rather than by RLS (RLS can't apply to a function's own internal
     queries the way it applies to a client's direct table access).
+
+- **Shared credit-card settlement (`/settlement`).** Two-person households
+  can settle a shared credit-card bill without either person ever seeing the
+  other's individual transactions — only aggregate totals cross the privacy
+  boundary, and only through `SECURITY DEFINER` RPCs that deliberately
+  return less than the full row, the same pattern as `list_app_users`/
+  `apply_rule_template` above. V1 scope: exactly two members, a 50/50 common
+  split, no editing a settlement once completed.
+  - **Pairing is self-serve, by invite code** (`create_household`,
+    `create_household_invite`, `redeem_household_invite`) — there's no
+    self-serve *signup* (see README), but pairing two already-existing
+    accounts is a smaller ask than that. The inviter shares a generated code
+    out-of-band; the invitee redeems it from their own `/settlement` screen.
+    `household_members.user_id` is `unique`, capping V1 at one household per
+    user, and both RPCs enforce the "at most two members" invariant
+    server-side rather than trusting the client.
+  - **`credit_invoices` is a household-shared billing period**, distinct
+    from `month_id` (see ROADMAP.md's original "credit-card invoices"
+    proposal, now implemented) — a card's "August" bill often includes
+    late-July purchases, so credit transactions are optionally filed under
+    a named invoice instead of strictly by transaction date.
+    `transactions.credit_invoice_id` is nullable: a solo user (no household)
+    never sees the invoice picker at all, and it only appears in
+    `upload-button.tsx`'s flow when uploading a **credit** file for a user
+    who has one. Invoices are created inline in that same dialog (existing
+    dropdown or a new named one) — there's no separate "manage invoices" UI.
+  - **`household_invoice_summary(invoice_id)` is the only place a member
+    learns anything about their partner's spending.** It returns one row per
+    household member; `personal_total` and `need_review_count` come back
+    `null` for every row that isn't the caller's own, while `common_total`
+    is always visible for both — masked server-side, not by trusting the
+    client to discard fields it shouldn't have used. `complete_settlement`
+    separately re-checks need-review status for **both** members internally
+    and blocks with a generic error if either has any — the client is never
+    told *whose* side is blocking, only that it's blocked.
+  - **A settlement is a frozen snapshot, written once.** There is no
+    settlement "draft" state stored in the database — an invoice with no
+    row in `settlements` is simply open, and the settlement screen computes
+    live totals via `household_invoice_summary` until `complete_settlement`
+    is called. That RPC recomputes both members' totals server-side (the
+    client can't do this itself without reading the partner's
+    transactions), writes one `settlements` row capturing each member's
+    `personal_total`/`common_total`/`contribution`/`amount_due` at that
+    moment, and is one-way: nothing here is ever updated afterward, so a
+    transaction recategorized later can't retroactively change a completed
+    settlement. Either household member can call it — "mark complete" is
+    not a two-party confirmation step.
+  - **A member's recurring contribution defaults from
+    `household_members.default_contribution`**, editable per-settlement in
+    the open-invoice view before completing (with an optional "save as my
+    default" checkbox that calls `set_default_contribution`). Only your own
+    contribution is ever editable from your own account — a completed
+    settlement's `per_member` entry for your partner always uses *their*
+    stored default, never a value you supplied.
 
 - **Flexible timeframe switcher (day / week / month / custom range), overview
   only.** `timeframe-switcher.tsx` adds Day/Week/Month/Custom tabs above the
@@ -572,6 +693,25 @@ decisions. For work that's planned but not yet implemented, see
   works correctly for the common case (re-uploading a file with transactions
   you already have plus new ones only inserts the new ones, and never touches
   existing categorization) — see `src/app/api/upload/route.ts`.
+- `transactions.credit_invoice_id`: nullable, references `credit_invoices`,
+  `on delete set null` (not `cascade` — there's no invoice-deletion UI, but a
+  transaction must never be deleted as a side effect of one). Set only via
+  the upload route, which validates server-side that the invoice actually
+  belongs to a household the uploader is a member of before writing it —
+  the id arrives from the client, so it can't be trusted at face value.
+- `households` / `household_members` / `household_invites` /
+  `credit_invoices` / `settlements`: see "Shared credit-card settlement"
+  above for the full shape. `household_members.user_id` is `unique` (V1: one
+  household per user). `settlements.per_member` is a frozen jsonb snapshot,
+  never updated after insert — see that section's "frozen snapshot" note.
+- `default_categories`: the admin-managed seed list (see "Admin area"
+  above). Readable by every authenticated user (their own first load is what
+  seeds their `categories` from it); only `is_admin()` can insert/update.
+  No delete policy exists at all, matching the admin UI's own choice not to
+  offer one — belt-and-suspenders, not because deleting a row here would
+  actually be unsafe. `parent_id` (self-referencing, `on delete cascade`,
+  one level deep) supports admin-managed subcategories in the seed list,
+  mirroring `categories.parent_id`.
 
 ## Database changes
 
@@ -605,6 +745,22 @@ Do not change these unless the task explicitly requires it:
 - Re-importing a transaction must not overwrite user categorization/type/card type/notes.
 - `need_review` is neither common nor personal.
 - Uncategorized and Need review are independent concepts.
+- A household member must never be able to read another member's
+  `transactions` rows, `personal_total`, or individual need-review count —
+  only `common_total` (and derived settlement figures) cross that boundary,
+  and only through a `SECURITY DEFINER` RPC that masks the rest server-side.
+- A completed `settlements` row is never updated or deleted; it stays a
+  frozen snapshot regardless of later edits to the transactions it summarized.
+- A settlement cannot complete while either household member has any
+  `need_review` transaction on that invoice — enforced inside
+  `complete_settlement`, not just in the UI.
+- `SUPABASE_SERVICE_ROLE_KEY` (and `src/lib/supabase/admin.ts`, which holds
+  it) must never be imported into client-side code or exposed via
+  `NEXT_PUBLIC_`. It exists solely for `/api/admin/create-user`'s Auth
+  Admin API call.
+- Admin access is enforced by `is_admin()` in Postgres, checked inside every
+  admin-gated RPC and API route — `isAdminEmail` in the TS layer is a
+  redirect only, never itself the security boundary.
 - Admin authorization is enforced server-side/database-side; UI redirects are not security boundaries.
 - Rules never silently overwrite an already categorized transaction.
 - Retroactive rule application only considers uncategorized transactions.

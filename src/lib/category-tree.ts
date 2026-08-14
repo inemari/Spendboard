@@ -1,19 +1,24 @@
 import type { Category } from "@/lib/types";
 
-export type CategoryGroup = {
-  parent: Category;
-  children: Category[];
+type TreeItem = { id: string; parent_id: string | null; sort_order: number; name: string };
+
+export type CategoryGroup<T extends TreeItem = Category> = {
+  parent: T;
+  children: T[];
 };
 
-function bySortOrder(a: Category, b: Category): number {
+function bySortOrder<T extends TreeItem>(a: T, b: T): number {
   return a.sort_order - b.sort_order || a.name.localeCompare(b.name);
 }
 
-/** Groups categories into top-level parents with their subcategories, both ordered by sort_order. */
-export function buildCategoryTree(categories: Category[]): CategoryGroup[] {
+/** Groups categories into top-level parents with their subcategories, both
+ * ordered by sort_order. Generic so both `Category` (per-user) and
+ * `DefaultCategory` (the admin-managed seed list) can share the same
+ * one-level-deep tree logic. */
+export function buildCategoryTree<T extends TreeItem>(categories: T[]): CategoryGroup<T>[] {
   const topLevel = categories.filter((c) => !c.parent_id).sort(bySortOrder);
 
-  const childrenByParent = new Map<string, Category[]>();
+  const childrenByParent = new Map<string, T[]>();
   for (const c of categories) {
     if (!c.parent_id) continue;
     const siblings = childrenByParent.get(c.parent_id) ?? [];
@@ -31,8 +36,10 @@ export function buildCategoryTree(categories: Category[]): CategoryGroup[] {
 }
 
 /** Flattens the tree back into a list, each item paired with its nesting depth (0 or 1). */
-export function flattenWithDepth(categories: Category[]): Array<{ category: Category; depth: number }> {
-  const flat: Array<{ category: Category; depth: number }> = [];
+export function flattenWithDepth<T extends TreeItem>(
+  categories: T[],
+): Array<{ category: T; depth: number }> {
+  const flat: Array<{ category: T; depth: number }> = [];
   for (const { parent, children } of buildCategoryTree(categories)) {
     flat.push({ category: parent, depth: 0 });
     for (const child of children) flat.push({ category: child, depth: 1 });

@@ -25,6 +25,7 @@ export async function POST(request: NextRequest) {
   const formData = await request.formData();
   const file = formData.get("file");
   const cardType = formData.get("cardType");
+  const creditInvoiceId = formData.get("creditInvoiceId");
 
   if (!(file instanceof File)) {
     return NextResponse.json({ error: "No file uploaded." }, { status: 400 });
@@ -32,6 +33,32 @@ export async function POST(request: NextRequest) {
 
   if (typeof cardType !== "string" || !CARD_TYPES.includes(cardType as CardType)) {
     return NextResponse.json({ error: "Invalid or missing card type." }, { status: 400 });
+  }
+
+  // Never trust an invoice id from the client at face value — it must belong
+  // to a household the uploader is actually a member of, otherwise anyone
+  // could tag their own transactions onto another household's invoice and
+  // skew that household's shared common total.
+  let resolvedInvoiceId: string | null = null;
+  if (typeof creditInvoiceId === "string" && creditInvoiceId) {
+    const { data: membership } = await supabase
+      .from("household_members")
+      .select("household_id")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    const { data: invoice } = membership
+      ? await supabase
+          .from("credit_invoices")
+          .select("id, household_id")
+          .eq("id", creditInvoiceId)
+          .maybeSingle()
+      : { data: null };
+
+    if (!membership || !invoice || invoice.household_id !== membership.household_id) {
+      return NextResponse.json({ error: "Invalid invoice." }, { status: 400 });
+    }
+    resolvedInvoiceId = invoice.id;
   }
 
   let parsed;
@@ -88,6 +115,7 @@ export async function POST(request: NextRequest) {
     raw_row: t.rawRow,
     category_id: categoryIdForTransaction(t.description, t.location, (rules ?? []) as Rule[]),
     card_type: cardType as CardType,
+    credit_invoice_id: resolvedInvoiceId,
   }));
 
   // ignoreDuplicates: re-uploading the same file must not clobber transactions
@@ -101,7 +129,9 @@ export async function POST(request: NextRequest) {
   } = await supabase
     .from("transactions")
     .upsert(rows, { onConflict: "month_id,source_hash", ignoreDuplicates: true, count: "exact" })
-    .select("id, month_id, date, description, location, notes, amount, category_id, type, card_type");
+    .select(
+      "id, month_id, date, description, location, notes, amount, category_id, type, card_type, credit_invoice_id",
+    );
 
   if (insertError) {
     return NextResponse.json({ error: insertError.message }, { status: 500 });
