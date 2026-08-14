@@ -1,7 +1,8 @@
 # Spendboard
 
-Monthly expense management app. Upload a bank statement (Excel/CSV), categorize
-transactions, and track common vs. personal spending per month.
+Expense management app. Upload a bank statement (Excel, CSV, or PDF),
+categorize transactions via drag-and-drop board, dropdown, or one-by-one
+review, and track common vs. personal spending across any timeframe.
 
 Stack: Next.js (App Router) + TypeScript + Tailwind + shadcn/ui + Supabase (Postgres, Auth) + dnd-kit.
 
@@ -39,10 +40,6 @@ Stack: Next.js (App Router) + TypeScript + Tailwind + shadcn/ui + Supabase (Post
 - `src/middleware.ts` — redirects unauthenticated requests to `/login`.
 - `supabase/schema.sql` — database schema and RLS policies to run in Supabase.
 
-## Roadmap (post-scaffold)
+## Roadmap
 
-- File upload + parsing (Excel/CSV) into `transactions`.
-- Transaction cards with category dropdown and Common/Personal toggle.
-- Drag-and-drop category columns (desktop) / bottom sheet (mobile).
-- Per-category and monthly totals.
-- Custom category management.
+See [ROADMAP.md](ROADMAP.md) for work that's planned but not yet built.

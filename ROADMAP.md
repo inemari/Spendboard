@@ -15,6 +15,23 @@ why), see the "Product requirements" section of [CLAUDE.md](CLAUDE.md).
 
 ## Could have
 
+- **Credit-card invoices, distinct from the calendar month.** A credit-card
+  statement doesn't align to calendar months the way a debit account does —
+  a card's "August" billing period can include late-July purchases — so
+  grouping credit transactions strictly by transaction `date` (today's
+  `month_id` derivation; see CLAUDE.md's data model notes) can split one real
+  statement across two months' worth of `months` rows. Proposed: an
+  `invoices` table the user names on upload (e.g. "August 2026"), which
+  `card_type = credit` transactions optionally belong to, independent of
+  `month_id` — debit transactions have no invoice concept and keep using
+  `month_id` exactly as they do today. Uploading a new credit-card file would
+  ask which invoice its transactions belong to: an existing one (a dropdown
+  of the user's invoices) or a new one they name. Choosing an existing
+  invoice re-runs the existing `source_hash` dedup (CLAUDE.md's "Known
+  correctness risk" section) scoped to that invoice rather than to a
+  `month_id`, so only transactions genuinely new to that invoice get
+  inserted — already-imported ones are left untouched, the same non-
+  destructive guarantee the month-scoped upload already gives.
 - **Board grid still leaves a trailing-row gap.** The board's cockpit grid
   (`category-board.tsx`, CLAUDE.md) uses `grid-flow-row-dense` so compact
   (empty-category) cells backfill open space next to a taller populated
