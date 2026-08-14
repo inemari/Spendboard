@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { loadWorkspaceDataForRange } from "@/lib/workspace-data";
+import { loadWorkspaceDataForRange, loadHousehold } from "@/lib/workspace-data";
 import { resolveRange, type ViewMode } from "@/lib/date-range";
 import { AppHeader } from "@/components/app-header";
 import { UploadButton } from "@/components/upload-button";
@@ -23,14 +23,17 @@ export default async function OverviewPage({
   const range = resolveRange(view, { date, from, to });
 
   const supabase = await createClient();
-  const { userEmail, categories, categoriesError, transactions, transactionsError } =
-    await loadWorkspaceDataForRange(supabase, range);
+  const [{ userEmail, categories, categoriesError, transactions, transactionsError }, { householdId, invoices, settlements }] =
+    await Promise.all([loadWorkspaceDataForRange(supabase, range), loadHousehold(supabase)]);
+
+  const settledInvoiceIds = new Set(settlements.map((s) => s.invoice_id));
+  const openInvoices = invoices.filter((i) => !settledInvoiceIds.has(i.id));
 
   return (
     <div className="mx-auto flex min-h-svh w-full max-w-[1600px] flex-col">
       <AppHeader
         userEmail={userEmail}
-        actions={<UploadButton categories={categories} />}
+        actions={<UploadButton categories={categories} householdId={householdId} openInvoices={openInvoices} />}
       />
 
       <div className="flex flex-col gap-4 px-4 py-5 sm:px-6">

@@ -23,6 +23,7 @@ export type Transaction = {
   category_id: string | null;
   type: TxType;
   card_type: CardType;
+  credit_invoice_id: string | null;
 };
 
 /** One field+operator with the list of values that satisfy it (OR'd). A rule
@@ -68,4 +69,59 @@ export type RuleTemplateItem = {
 export type AppUser = {
   id: string;
   email: string | null;
+};
+
+/** One row of the admin-managed seed list new accounts are provisioned with
+ * (see ensure-default-categories.ts). Distinct from `Category` — this never
+ * belongs to any one user and has no parent/subcategory concept. */
+export type DefaultCategory = {
+  id: string;
+  name: string;
+  icon: string | null;
+  sort_order: number;
+  parent_id: string | null;
+};
+
+/** A named credit-card billing period, shared at the household level (see
+ * CLAUDE.md's "Shared Credit Card Settlement"). Chosen per-file at upload
+ * time; distinct from `month_id`, which never crosses users. */
+export type CreditInvoice = {
+  id: string;
+  household_id: string;
+  label: string;
+  created_at: string;
+};
+
+/** One row of `household_invoice_summary(invoice_id)`'s result — the only
+ * shape a partner's spending is ever exposed in. `personal_total` and
+ * `need_review_count` come back `null` for every row that isn't the caller's
+ * own; `common_total` is always visible, for both members. */
+export type InvoiceMemberSummary = {
+  user_id: string;
+  is_self: boolean;
+  personal_total: number | null;
+  common_total: number;
+  need_review_count: number | null;
+};
+
+/** One member's frozen breakdown inside a completed `Settlement.per_member`. */
+export type SettlementMember = {
+  user_id: string;
+  personal_total: number;
+  common_total: number;
+  contribution: number;
+  amount_due: number;
+};
+
+/** A completed settlement snapshot — written once by `complete_settlement`
+ * and never updated afterward, so later edits to the underlying transactions
+ * can't retroactively change it. */
+export type Settlement = {
+  id: string;
+  invoice_id: string;
+  common_total: number;
+  common_share: number;
+  per_member: SettlementMember[];
+  completed_by: string;
+  completed_at: string;
 };

@@ -13,7 +13,7 @@ export function AppHeader({
       <div className="flex items-center justify-between px-4 py-2.5 gap-3">
         {/* No month control here: the overview's timeframe switcher owns the
             only timeframe in the app, and the other screens have none. */}
-        <NavMenu />
+        <NavMenu userEmail={userEmail} />
 
         <div className="flex items-center gap-3">
           {actions}

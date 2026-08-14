@@ -8,6 +8,8 @@ import {
   Menu,
   MousePointerClick,
   PiggyBank,
+  Receipt,
+  Shield,
   Tags,
   Wand2,
 } from "lucide-react";
@@ -20,6 +22,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
+import { isAdminEmail } from "@/lib/is-admin";
 import { SignOutButton } from "./sign-out-button";
 
 // Static: no screen but the overview has a timeframe, and the overview's own
@@ -29,11 +32,20 @@ const links = [
   { href: "/categorize", label: "Categorize", Icon: MousePointerClick },
   { href: "/categories", label: "Manage categories", Icon: Tags },
   { href: "/rules", label: "Rules", Icon: Wand2 },
+  { href: "/settlement", label: "Settlement", Icon: Receipt },
 ];
 
-export function NavMenu() {
+const adminLinks = [
+  { href: "/admin/users", label: "Admin: Users", Icon: Shield },
+  { href: "/admin/households", label: "Admin: Households", Icon: Shield },
+  { href: "/admin/rules", label: "Admin: Rule templates", Icon: Shield },
+  { href: "/admin/categories", label: "Admin: Default categories", Icon: Shield },
+];
+
+export function NavMenu({ userEmail }: { userEmail?: string }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const showAdminLinks = isAdminEmail(userEmail);
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
@@ -71,6 +83,26 @@ export function NavMenu() {
             </Link>
           ))}
         </nav>
+
+        {showAdminLinks && (
+          <nav className="mt-2 flex flex-col gap-1 border-t px-2 pt-2">
+            {adminLinks.map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                onClick={() => setOpen(false)}
+                className={cn(
+                  "flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors hover:bg-muted",
+                  pathname === link.href ? "bg-muted text-primary" : "text-foreground",
+                )}
+              >
+                <link.Icon className="size-4" />
+                {link.label}
+              </Link>
+            ))}
+          </nav>
+        )}
+
         <SignOutButton />
       </SheetContent>
     </Sheet>
