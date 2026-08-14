@@ -2,12 +2,12 @@
 
 # Spendboard
 
-Spendboard turns a monthly bank statement into a categorized, at-a-glance view
-of where your money went. Upload an Excel or CSV export, sort transactions by
-drag-and-drop board, dropdown, or one-by-one review, and tag each as Common,
-Personal, or Need review to track shared vs. personal spending side by side.
-See [README.md](README.md) for setup and [DESIGN.md](DESIGN.md) for the
-visual design system.
+Spendboard turns a bank statement into a categorized, at-a-glance view of
+where your money went. Upload an Excel, CSV, or PDF export, sort transactions
+by drag-and-drop board, dropdown, or one-by-one review, and tag each as
+Common, Personal, or Need review to track shared vs. personal spending side
+by side. See [README.md](README.md) for setup, [DESIGN.md](DESIGN.md) for the
+visual design system, and [ROADMAP.md](ROADMAP.md) for what's planned next.
 
 ## Architecture map
 
