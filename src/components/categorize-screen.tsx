@@ -35,19 +35,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { CategoryCreateFields, NO_PARENT_VALUE } from "@/components/category-create-fields";
 import { CategoryDropZone } from "@/components/category-drop-zone";
-import { CategoryIconPicker } from "@/components/category-icon-picker";
 import { ConfettiBurst } from "@/components/confetti-burst";
 import { buildCategoryTree, type CategoryGroup } from "@/lib/category-tree";
 import {
@@ -63,8 +56,6 @@ import {
 } from "@/lib/organic-shapes";
 import { cn } from "@/lib/utils";
 import type { Category, Transaction } from "@/lib/types";
-
-const NO_PARENT_VALUE = "__none__";
 
 // Every top-level node gets its own pseudo-random size (nodeSizeForIndex);
 // subcategories are a fixed fraction of their own parent, so the geometry
@@ -714,62 +705,19 @@ export function CategorizeScreen({
                   New category ✨
                 </p>
 
-                {/* Icon and name on one line, in that order: the picker
-                        previews whatever the name would resolve to on its own,
-                        so it reads as "here's your icon, change it if you
-                        like" rather than a separate decision to make. */}
-                <div className="flex items-center gap-2">
-                  <CategoryIconPicker
-                    value={newCategoryIcon}
-                    name={newCategoryName}
-                    onChange={setNewCategoryIcon}
-                    className="size-9"
-                  />
-                  <Input
-                    autoFocus
-                    placeholder="Category name"
-                    value={newCategoryName}
-                    onChange={(e) => setNewCategoryName(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") void handleCreateCategory();
-                    }}
-                    className="h-9 flex-1"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-secondary">
-                    Where does it belong?
-                  </label>
-                  <Select
-                    value={newCategoryParentId}
-                    onValueChange={(value) =>
-                      setNewCategoryParentId(value ?? NO_PARENT_VALUE)
-                    }
-                  >
-                    <SelectTrigger className="h-9 w-full">
-                      <SelectValue placeholder="Parent category">
-                        {newCategoryParentId === NO_PARENT_VALUE
-                          ? "Its own category"
-                          : `Under ${
-                              topLevelCategories.find(
-                                (c) => c.id === newCategoryParentId,
-                              )?.name
-                            }`}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={NO_PARENT_VALUE}>
-                        Its own category
-                      </SelectItem>
-                      {topLevelCategories.map((c) => (
-                        <SelectItem key={c.id} value={c.id}>
-                          Under {c.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                <CategoryCreateFields
+                  idPrefix="categorize-category"
+                  layout="compact"
+                  icon={newCategoryIcon}
+                  onIconChange={setNewCategoryIcon}
+                  name={newCategoryName}
+                  onNameChange={setNewCategoryName}
+                  onNameEnter={() => void handleCreateCategory()}
+                  autoFocusName
+                  parentId={newCategoryParentId}
+                  onParentIdChange={setNewCategoryParentId}
+                  parentOptions={topLevelCategories}
+                />
 
                 <Button
                   type="button"

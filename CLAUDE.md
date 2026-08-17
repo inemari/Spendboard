@@ -279,8 +279,8 @@ decisions. For work that's planned but not yet implemented, see
     reach a satellite's final position before its droppable rect has
     caught up there.
   - Category creation is a **popover off a small "Add category" button**
-    pinned below the ring — icon picker and name on one line, then "Where does
-    it belong?" (its own category, or under an existing one), then Add. Not an
+    pinned below the ring — the same icon/Name/Parent fields as everywhere
+    else (see "Shared category-creation fields" below), then Add. Not an
     always-visible form, so the constellation isn't competing with a form for
     attention, and not a form that *replaces* the button in place either
     (which moved the thing you'd just clicked out from under the cursor, and
@@ -373,6 +373,17 @@ decisions. For work that's planned but not yet implemented, see
   per-file after the fact. Individual transactions can still be corrected
   afterward via the per-card toggle or the bulk action bar.
 - Custom category create/rename/delete.
+- **Shared category-creation fields.** `category-create-fields.tsx`'s
+  `CategoryCreateFields` (icon picker + labeled Name field + labeled Parent
+  select, plus the shared `NO_PARENT_VALUE` sentinel and "No parent
+  (top-level category)" / plain-name wording) is the one place those fields
+  are defined, used by the Categories screen's panel, the admin default-
+  categories panel, and the Categorize screen's popover — three different
+  screens can create a category, and the fields must read identically on all
+  of them. It renders only the fields, not the submit button or surrounding
+  chrome (card panel vs. popover vs. toggled form) — those legitimately
+  differ per screen, but drifting the *fields* apart (different labels,
+  different "no parent" wording) is what this component prevents.
 - **Category icons.** Every category can carry an icon, shown in the overview's
   "Where it went" sidebar. Picked from a curated, grouped set of lucide glyphs
   (`src/lib/category-icons.ts`) via `category-icon-picker.tsx` — on the

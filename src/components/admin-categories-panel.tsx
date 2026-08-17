@@ -3,32 +3,19 @@
 import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Plus, Tags } from "lucide-react";
+import { ChevronDown, Plus, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { CategoryIconPicker } from "@/components/category-icon-picker";
+import { CategoryCreateFields, NO_PARENT_VALUE } from "@/components/category-create-fields";
 import { buildCategoryTree } from "@/lib/category-tree";
+import { categorySwatch, type CategorySwatch } from "@/lib/category-colors";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import type { DefaultCategory } from "@/lib/types";
 
-const NO_PARENT_VALUE = "__none__";
-
-function DefaultCategoryRow({
-  category,
-  indent = false,
-}: {
-  category: DefaultCategory;
-  indent?: boolean;
-}) {
+function DefaultSubcategoryRow({ category }: { category: DefaultCategory }) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const [name, setName] = useState(category.name);
@@ -65,12 +52,13 @@ function DefaultCategoryRow({
   }
 
   return (
-    <div className={cn("flex items-center gap-2 rounded-lg", indent && "ml-2")}>
+    <div className="flex items-center gap-2 rounded-lg">
       <CategoryIconPicker
         value={category.icon}
         name={name}
         onChange={(icon) => void handleIconChange(icon)}
         disabled={saving}
+        className="size-7"
       />
       <Input
         value={name}
@@ -80,15 +68,140 @@ function DefaultCategoryRow({
           if (e.key === "Enter") e.currentTarget.blur();
         }}
         disabled={saving}
-        className={cn("h-8", indent && "text-sm")}
+        className="h-8 text-sm"
       />
     </div>
   );
 }
 
-export function AdminCategoriesPanel({ categories }: { categories: DefaultCategory[] }) {
+function DefaultCategoryCard({
+  category,
+  subcategories,
+  swatch,
+  onAddSubcategory,
+}: {
+  category: DefaultCategory;
+  subcategories: DefaultCategory[];
+  swatch: CategorySwatch;
+  onAddSubcategory: (parent: DefaultCategory) => void;
+}) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
+  const [name, setName] = useState(category.name);
+  const [saving, setSaving] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+
+  const dirty = name.trim() !== category.name && name.trim().length > 0;
+
+  async function handleRename() {
+    if (!dirty) return;
+    setSaving(true);
+    const { error } = await supabase
+      .from("default_categories")
+      .update({ name: name.trim() })
+      .eq("id", category.id);
+    setSaving(false);
+
+    if (error) {
+      toast.error("Failed to rename category.");
+      return;
+    }
+    router.refresh();
+  }
+
+  async function handleIconChange(icon: string | null) {
+    const { error } = await supabase
+      .from("default_categories")
+      .update({ icon })
+      .eq("id", category.id);
+    if (error) {
+      toast.error("Failed to change the icon.");
+      return;
+    }
+    router.refresh();
+  }
+
+  return (
+    <Card className="gap-3 p-4">
+      <div className="flex items-center gap-3">
+        <CategoryIconPicker
+          value={category.icon}
+          name={name}
+          onChange={(icon) => void handleIconChange(icon)}
+          disabled={saving}
+          className={cn("size-11 rounded-full border-none", swatch.badge)}
+        />
+
+        <div className="min-w-0 flex-1">
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onBlur={handleRename}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") e.currentTarget.blur();
+            }}
+            disabled={saving}
+            className="h-auto border-none bg-transparent p-0 font-heading text-base font-semibold shadow-none focus-visible:ring-0"
+          />
+          <p className="text-sm text-muted-foreground">
+            {subcategories.length > 0
+              ? `${subcategories.length} subcategor${subcategories.length === 1 ? "y" : "ies"}`
+              : "No subcategories"}
+          </p>
+        </div>
+
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          aria-label={
+            expanded ? "Collapse subcategories" : "Expand subcategories"
+          }
+          aria-expanded={expanded}
+          className="shrink-0 rounded-full bg-muted text-muted-foreground hover:bg-muted"
+          onClick={() => setExpanded((v) => !v)}
+        >
+          <ChevronDown
+            className={cn(
+              "size-4 transition-transform",
+              expanded && "rotate-180",
+            )}
+          />
+        </Button>
+      </div>
+
+      {expanded && (
+        <div className="flex flex-col gap-2 border-t border-border pt-3">
+          {subcategories.length > 0 && (
+            <div className="flex flex-col gap-2 border-l-2 border-border pl-3">
+              {subcategories.map((child) => (
+                <DefaultSubcategoryRow key={child.id} category={child} />
+              ))}
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={() => onAddSubcategory(category)}
+            className="flex items-center gap-1 self-start text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+          >
+            <Plus className="size-3.5" />
+            Add subcategory
+          </button>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+export function AdminCategoriesPanel({
+  categories,
+}: {
+  categories: DefaultCategory[];
+}) {
+  const router = useRouter();
+  const supabase = useMemo(() => createClient(), []);
+  const [showAddForm, setShowAddForm] = useState(false);
   const [newName, setNewName] = useState("");
   const [newIcon, setNewIcon] = useState<string | null>(null);
   const [parentId, setParentId] = useState(NO_PARENT_VALUE);
@@ -97,11 +210,34 @@ export function AdminCategoriesPanel({ categories }: { categories: DefaultCatego
 
   const tree = buildCategoryTree(categories);
   const topLevelCategories = tree.map((g) => g.parent);
+  const colorMap = useMemo(() => {
+    const map = new Map<string, CategorySwatch>();
+    tree.forEach(({ parent, children }, index) => {
+      const swatch = categorySwatch(index);
+      map.set(parent.id, swatch);
+      for (const child of children) map.set(child.id, swatch);
+    });
+    return map;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [categories]);
 
-  function handleAddSubcategoryClick(parent: DefaultCategory) {
-    setParentId(parent.id);
-    newNameInputRef.current?.focus();
-    newNameInputRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  function openAddForm(parent?: DefaultCategory) {
+    setParentId(parent ? parent.id : NO_PARENT_VALUE);
+    setShowAddForm(true);
+    requestAnimationFrame(() => {
+      newNameInputRef.current?.focus();
+      newNameInputRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    });
+  }
+
+  function closeAddForm() {
+    setShowAddForm(false);
+    setNewName("");
+    setNewIcon(null);
+    setParentId(NO_PARENT_VALUE);
   }
 
   async function handleCreate() {
@@ -111,7 +247,10 @@ export function AdminCategoriesPanel({ categories }: { categories: DefaultCatego
     const siblings = categories.filter((c) =>
       parentId === NO_PARENT_VALUE ? !c.parent_id : c.parent_id === parentId,
     );
-    const nextSortOrder = siblings.length > 0 ? Math.max(...siblings.map((c) => c.sort_order)) + 1 : 0;
+    const nextSortOrder =
+      siblings.length > 0
+        ? Math.max(...siblings.map((c) => c.sort_order)) + 1
+        : 0;
 
     const { error } = await supabase.from("default_categories").insert({
       name: newName.trim(),
@@ -125,89 +264,88 @@ export function AdminCategoriesPanel({ categories }: { categories: DefaultCatego
       toast.error("Failed to add category.");
       return;
     }
-    setNewName("");
-    setNewIcon(null);
-    setParentId(NO_PARENT_VALUE);
+    closeAddForm();
     router.refresh();
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 p-6">
-      <div>
-        <h2 className="flex items-center gap-2 font-heading text-2xl font-bold">
-          <Tags className="size-6 text-primary" />
-          Default categories
-        </h2>
-        <p className="text-sm text-muted-foreground">
-          What a brand-new account starts with. Renaming or re-iconing one here only affects
-          <em> future</em> new accounts — it never touches categories a user already has.
-          Deleting isn&rsquo;t offered here, to avoid any confusion with removing a category
-          someone&rsquo;s already using.
-        </p>
+    <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 p-6">
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <h2 className="font-heading text-2xl font-bold">
+            Default categories
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            What a brand-new account starts with. Renaming or re-iconing one
+            here only affects
+            <em> future</em> new accounts — it never touches categories a user
+            already has. Deleting isn&rsquo;t offered here, to avoid any
+            confusion with removing a category someone&rsquo;s already using.
+          </p>
+        </div>
+        <Button
+          type="button"
+          onClick={() => openAddForm()}
+          className="shrink-0"
+        >
+          <Plus className="size-4" />
+          New Category
+        </Button>
       </div>
 
-      <div className="flex flex-col gap-3">
-        {tree.map(({ parent, children }) => (
-          <Card key={parent.id} className="p-4">
-            <DefaultCategoryRow category={parent} />
-
-            {children.length > 0 && (
-              <div className="mt-2 flex flex-col gap-2 border-l-2 border-border pl-3">
-                {children.map((child) => (
-                  <DefaultCategoryRow key={child.id} category={child} indent />
-                ))}
-              </div>
-            )}
-
-            <button
+      {showAddForm && (
+        <Card className="flex flex-col gap-3 border-primary/40 p-4 ring-1 ring-primary/20">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold">New Category</h3>
+            <Button
               type="button"
-              onClick={() => handleAddSubcategoryClick(parent)}
-              className="mt-3 flex items-center gap-1 text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Close"
+              onClick={closeAddForm}
             >
-              <Plus className="size-3.5" />
-              Add subcategory
-            </button>
-          </Card>
+              <X className="size-4" />
+            </Button>
+          </div>
+          <CategoryCreateFields
+            idPrefix="default-category"
+            icon={newIcon}
+            onIconChange={setNewIcon}
+            name={newName}
+            onNameChange={setNewName}
+            onNameEnter={() => void handleCreate()}
+            nameInputRef={newNameInputRef}
+            parentId={parentId}
+            onParentIdChange={setParentId}
+            parentOptions={topLevelCategories}
+          />
+          <div className="flex items-center gap-2 self-end">
+            <Button type="button" variant="outline" onClick={closeAddForm}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={() => void handleCreate()}
+              disabled={creating || !newName.trim()}
+            >
+              <Plus className="size-4" />
+              Add
+            </Button>
+          </div>
+        </Card>
+      )}
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        {tree.map(({ parent, children }) => (
+          <DefaultCategoryCard
+            key={parent.id}
+            category={parent}
+            subcategories={children}
+            swatch={colorMap.get(parent.id)!}
+            onAddSubcategory={openAddForm}
+          />
         ))}
       </div>
-
-      <Card className="flex flex-col gap-3 p-4">
-        <h3 className="text-sm font-semibold">Add a default category</h3>
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <CategoryIconPicker value={newIcon} name={newName} onChange={setNewIcon} className="size-9" />
-          <Input
-            ref={newNameInputRef}
-            placeholder="Category name"
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") void handleCreate();
-            }}
-            className="h-9 flex-1"
-          />
-          <Select value={parentId} onValueChange={(value) => setParentId(value ?? NO_PARENT_VALUE)}>
-            <SelectTrigger className="h-9 sm:w-56">
-              <SelectValue placeholder="Parent category">
-                {parentId === NO_PARENT_VALUE
-                  ? "No parent"
-                  : topLevelCategories.find((c) => c.id === parentId)?.name}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={NO_PARENT_VALUE}>No parent (top-level category)</SelectItem>
-              {topLevelCategories.map((c) => (
-                <SelectItem key={c.id} value={c.id}>
-                  Subcategory of {c.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button onClick={() => void handleCreate()} disabled={creating || !newName.trim()}>
-            <Plus className="size-4" />
-            Add
-          </Button>
-        </div>
-      </Card>
     </div>
   );
 }
