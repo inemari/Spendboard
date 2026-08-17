@@ -24,28 +24,32 @@ import {
 import { flattenWithDepth } from "@/lib/category-tree";
 import { describeRule } from "@/lib/rule-description";
 import { findMergeTarget, mergeValuesIntoRule } from "@/lib/rule-merge";
-import { EMPTY_CONDITION, RuleConditionsEditor } from "@/components/rule-conditions-editor";
+import { RuleConditionsEditor } from "@/components/rule-conditions-editor";
 import type { Category, Rule, RuleCondition } from "@/lib/types";
 
-export type RuleEditorTarget = { mode: "create" } | { mode: "edit"; rule: Rule };
-
+/**
+ * Edit-only: creating a rule goes through the quick-add form on the Rules
+ * page (`rule-quick-add-form.tsx`) instead — this dialog is for the cases
+ * that form doesn't cover, multiple AND'd conditions or changing a rule's
+ * field/operator/category after the fact.
+ */
 export function RuleEditor({
-  target,
+  rule,
   categories,
   existingRules,
   onClose,
 }: {
-  target: RuleEditorTarget | null;
+  rule: Rule | null;
   categories: Category[];
   existingRules: Rule[];
   onClose: () => void;
 }) {
   return (
-    <Dialog open={target !== null} onOpenChange={(open) => !open && onClose()}>
-      {target && (
+    <Dialog open={rule !== null} onOpenChange={(open) => !open && onClose()}>
+      {rule && (
         <RuleEditorContent
-          key={target.mode === "edit" ? target.rule.id : "create"}
-          target={target}
+          key={rule.id}
+          rule={rule}
           categories={categories}
           existingRules={existingRules}
           onClose={onClose}
@@ -56,23 +60,22 @@ export function RuleEditor({
 }
 
 function RuleEditorContent({
-  target,
+  rule: existing,
   categories,
   existingRules,
   onClose,
 }: {
-  target: RuleEditorTarget;
+  rule: Rule;
   categories: Category[];
   existingRules: Rule[];
   onClose: () => void;
 }) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
-  const existing = target.mode === "edit" ? target.rule : null;
 
-  const [categoryId, setCategoryId] = useState<string | null>(existing?.category_id ?? null);
+  const [categoryId, setCategoryId] = useState<string | null>(existing.category_id);
   const [conditions, setConditions] = useState<RuleCondition[]>(
-    existing ? existing.conditions.map((c) => ({ ...c, values: [...c.values] })) : [{ ...EMPTY_CONDITION, values: [""] }],
+    existing.conditions.map((c) => ({ ...c, values: [...c.values] })),
   );
   const [saving, setSaving] = useState(false);
 
@@ -106,10 +109,10 @@ function RuleEditorContent({
 
     // Fold into another existing rule with the same category and
     // field/operator instead of leaving two rules for the same condition,
-    // when the saved rule is a single condition. On edit, this also covers
-    // changing a rule's field/operator to match one that already exists —
-    // the edited rule then gets folded in and removed.
-    const otherRules = target.mode === "edit" ? existingRules.filter((r) => r.id !== target.rule.id) : existingRules;
+    // when the saved rule is a single condition — this also covers changing
+    // a rule's field/operator to match one that already exists, in which
+    // case the edited rule gets folded in and removed.
+    const otherRules = existingRules.filter((r) => r.id !== existing.id);
     const mergeTarget =
       cleanedConditions.length === 1
         ? findMergeTarget(otherRules, categoryId, cleanedConditions[0].field, cleanedConditions[0].operator)
@@ -121,28 +124,25 @@ function RuleEditorContent({
         .from("rules")
         .update({ conditions: [mergeValuesIntoRule(mergeTarget, cleanedConditions[0].values)] })
         .eq("id", mergeTarget.id));
-      if (!error && target.mode === "edit") {
-        ({ error } = await supabase.from("rules").delete().eq("id", target.rule.id));
+      if (!error) {
+        ({ error } = await supabase.from("rules").delete().eq("id", existing.id));
       }
-    } else if (target.mode === "edit") {
+    } else {
       ({ error } = await supabase
         .from("rules")
         .update({ category_id: categoryId, conditions: cleanedConditions })
-        .eq("id", target.rule.id));
-    } else {
-      ({ error } = await supabase.from("rules").insert({ category_id: categoryId, conditions: cleanedConditions }));
+        .eq("id", existing.id));
     }
     setSaving(false);
 
     if (error) {
-      toast.error(target.mode === "edit" ? "Failed to update rule." : "Failed to create rule.");
+      toast.error("Failed to update rule.");
       return;
     }
 
-    toast.success(
-      mergeTarget ? "Merged into existing rule" : target.mode === "edit" ? "Rule updated" : "Rule created",
-      { icon: <Wand2 className="size-4" /> },
-    );
+    toast.success(mergeTarget ? "Merged into existing rule" : "Rule updated", {
+      icon: <Wand2 className="size-4" />,
+    });
     router.refresh();
     onClose();
   }
@@ -155,7 +155,7 @@ function RuleEditorContent({
   return (
     <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
       <DialogHeader>
-        <DialogTitle>{target.mode === "edit" ? "Edit rule" : "Add a rule"}</DialogTitle>
+        <DialogTitle>Edit rule</DialogTitle>
         <DialogDescription>{describeRule(previewableConditions, categoryName)}</DialogDescription>
       </DialogHeader>
 
@@ -181,7 +181,7 @@ function RuleEditorContent({
           Cancel
         </Button>
         <Button disabled={saving} onClick={() => void handleSave()}>
-          {target.mode === "edit" ? "Save changes" : "Create rule"}
+          Save changes
         </Button>
       </DialogFooter>
     </DialogContent>

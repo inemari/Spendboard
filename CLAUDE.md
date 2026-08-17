@@ -440,7 +440,24 @@ decisions. For work that's planned but not yet implemented, see
   a trailing "Unknown category" group. A search box filters rules by matching
   against each rule's rendered description text (which already includes the
   category name), so searching a category name works without a separate
-  filter control.
+  filter control. Each group is headed by the category's own icon badge and
+  color (`buildCategoryColorMap`/`categoryIcon`, the same pair the overview
+  sidebar and board use) plus a count pill, and every rule underneath renders
+  as a single full-width row: field/condition/value pills on the left, the
+  category's icon+name repeated on the right. A rule row is read-only at
+  rest — hover reveals its apply/edit/delete icons — so editing always goes
+  through one explicit action rather than always-editable inputs sitting in
+  the row. **Creating** a rule is a separate fast path from **editing** one:
+  the "+ New Rule" button opens `rule-quick-add-form.tsx`, an inline panel
+  (not a dialog) for the common single-condition case, reusing
+  `findMergeTarget`/`mergeValuesIntoRule` from `rule-merge.ts` to fold into an
+  existing rule with the same category/field/operator instead of creating a
+  duplicate. `rule-editor.tsx`'s dialog is edit-only now — multiple AND'd
+  conditions, or changing a rule's field/operator/category after the fact,
+  go through it via each row's pencil icon. Field/operator display labels
+  (`src/lib/rule-labels.ts`) read "Description"/"Location" rather than the
+  raw `name`/`subtitle` column keys, matching the product's own terminology
+  for those transaction columns (see the upload notes above).
 - **Re-apply rules retroactively.** Each rule card on the Rules page has an
   "apply to existing" action that re-scans _uncategorized_ transactions across
   all months (`ruleMatchesTransaction` in `src/lib/apply-rules.ts`). Already

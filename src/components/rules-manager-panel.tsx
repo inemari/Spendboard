@@ -4,42 +4,35 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
-  GripVertical,
+  CircleDashed,
   Pencil,
   Plus,
   Search,
   SearchX,
   Trash2,
   Wand2,
+  type LucideIcon,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { RuleEditor, type RuleEditorTarget } from "@/components/rule-editor";
+import { RuleEditor } from "@/components/rule-editor";
+import { RuleQuickAddForm } from "@/components/rule-quick-add-form";
 import {
   ResolveRuleConflictsDialog,
   type PendingRuleConflicts,
   type RuleConflictItem,
 } from "@/components/resolve-rule-conflicts-dialog";
 import { describeRuleConditions } from "@/lib/rule-description";
+import { FIELD_LABELS, OPERATOR_LABELS } from "@/lib/rule-labels";
 import { monthAnchorFor } from "@/lib/date-range";
 import { flattenWithDepth } from "@/lib/category-tree";
 import { ruleMatchesTransaction } from "@/lib/apply-rules";
+import { buildCategoryColorMap, NEUTRAL_SWATCH, type CategorySwatch } from "@/lib/category-colors";
+import { categoryIcon } from "@/lib/category-icons";
 import { cn } from "@/lib/utils";
-import type { Category, Rule, RuleCondition } from "@/lib/types";
-
-// Fixed, non-cycled-by-taste hue order for category column headers — picked
-// once and assigned by position so a given category keeps its color as
-// sibling categories come and go.
-const CATEGORY_GRADIENTS = [
-  "from-rose-200 to-pink-300",
-  "from-fuchsia-200 to-purple-300",
-  "from-violet-200 to-indigo-300",
-  "from-sky-200 to-blue-300",
-  "from-teal-200 to-emerald-300",
-  "from-amber-200 to-orange-300",
-];
+import type { Category, Rule } from "@/lib/types";
 
 /**
  * Deep-link to the overview showing the month the first affected transaction
@@ -51,19 +44,9 @@ function highlightHref(date: string, ids: string[]): string {
   return `/?date=${monthAnchorFor(date)}&highlight=${ids.join(",")}`;
 }
 
-const OPERATOR_LABELS: Record<string, string> = {
-  contains: "Contains",
-  equals: "Equals",
-  not_contains: "Doesn't contain",
-  starts_with: "Starts with",
-};
-const FIELD_LABELS: Record<string, string> = {
-  name: "Name",
-  subtitle: "Subtitle",
-};
-
 type CategorySection = {
   key: string;
+  categoryId: string | null;
   categoryName: string;
   depth: number;
   unknown: boolean;
@@ -79,12 +62,13 @@ export function RulesManagerPanel({
 }) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
-  const [editorTarget, setEditorTarget] = useState<RuleEditorTarget | null>(
-    null,
-  );
+  const [showQuickAdd, setShowQuickAdd] = useState(false);
+  const [editingRule, setEditingRule] = useState<Rule | null>(null);
   const [query, setQuery] = useState("");
   const [pendingConflicts, setPendingConflicts] =
     useState<PendingRuleConflicts | null>(null);
+
+  const colorMap = useMemo(() => buildCategoryColorMap(categories), [categories]);
 
   async function deleteRule(id: string) {
     const { error } = await supabase.from("rules").delete().eq("id", id);
@@ -212,85 +196,6 @@ export function RulesManagerPanel({
     router.refresh();
   }
 
-  async function updateRuleConditions(
-    rule: Rule,
-    newConditions: RuleCondition[],
-  ) {
-    if (newConditions.length === 0) {
-      await deleteRule(rule.id);
-      return;
-    }
-
-    const { error } = await supabase
-      .from("rules")
-      .update({ conditions: newConditions })
-      .eq("id", rule.id);
-
-    if (error) {
-      toast.error("Failed to update rule.");
-      return;
-    }
-    router.refresh();
-  }
-
-  function removeWord(rule: Rule, conditionIndex: number, valueIndex: number) {
-    const newConditions = rule.conditions
-      .map((condition, ci) =>
-        ci !== conditionIndex
-          ? condition
-          : {
-              ...condition,
-              values: condition.values.filter((_, vi) => vi !== valueIndex),
-            },
-      )
-      .filter((condition) => condition.values.length > 0);
-    void updateRuleConditions(rule, newConditions);
-  }
-
-  function updateWordValue(
-    rule: Rule,
-    conditionIndex: number,
-    valueIndex: number,
-    value: string,
-  ): boolean {
-    const isDuplicate = rule.conditions[conditionIndex].values.some(
-      (v, vi) => vi !== valueIndex && v === value,
-    );
-    if (isDuplicate) {
-      toast.error("That value is already in this condition.");
-      return false;
-    }
-    const newConditions = rule.conditions.map((condition, ci) =>
-      ci !== conditionIndex
-        ? condition
-        : {
-            ...condition,
-            values: condition.values.map((v, vi) =>
-              vi !== valueIndex ? v : value,
-            ),
-          },
-    );
-    void updateRuleConditions(rule, newConditions);
-    return true;
-  }
-
-  function addWord(rule: Rule, conditionIndex: number, value: string): boolean {
-    const isDuplicate = rule.conditions[conditionIndex].values.some(
-      (v) => v === value,
-    );
-    if (isDuplicate) {
-      toast.error("That value is already in this condition.");
-      return false;
-    }
-    const newConditions = rule.conditions.map((condition, ci) =>
-      ci !== conditionIndex
-        ? condition
-        : { ...condition, values: [...condition.values, value] },
-    );
-    void updateRuleConditions(rule, newConditions);
-    return true;
-  }
-
   const searchText = useMemo(() => {
     const map = new Map<string, string>();
     for (const rule of rules) {
@@ -325,6 +230,7 @@ export function RulesManagerPanel({
       if (categoryRules?.length) {
         result.push({
           key: category.id,
+          categoryId: category.id,
           categoryName: category.name,
           depth,
           unknown: false,
@@ -337,6 +243,7 @@ export function RulesManagerPanel({
     for (const orphanedRules of rulesByCategory.values()) {
       result.push({
         key: `unknown-${orphanedRules[0].id}`,
+        categoryId: null,
         categoryName: "Unknown category",
         depth: 0,
         unknown: true,
@@ -355,21 +262,32 @@ export function RulesManagerPanel({
             Rules
           </h2>
           <p className="text-sm text-muted-foreground">
-            Rules auto-categorize matching transactions as soon as they&rsquo;re
-            uploaded.
+            {rules.length} auto-categorization rule{rules.length === 1 ? "" : "s"}
+            {rules.length > 0 && " · hover a rule to edit or re-apply"}
           </p>
         </div>
-        <Button onClick={() => setEditorTarget({ mode: "create" })}>
-          <Plus className="size-4" />
-          Add rule
-        </Button>
+        {!showQuickAdd && (
+          <Button onClick={() => setShowQuickAdd(true)}>
+            <Plus className="size-4" />
+            New Rule
+          </Button>
+        )}
       </div>
 
+      {showQuickAdd && (
+        <RuleQuickAddForm
+          categories={categories}
+          existingRules={rules}
+          onDone={() => setShowQuickAdd(false)}
+          onCancel={() => setShowQuickAdd(false)}
+        />
+      )}
+
       <RuleEditor
-        target={editorTarget}
+        rule={editingRule}
         categories={categories}
         existingRules={rules}
-        onClose={() => setEditorTarget(null)}
+        onClose={() => setEditingRule(null)}
       />
 
       <ResolveRuleConflictsDialog
@@ -403,219 +321,133 @@ export function RulesManagerPanel({
           No rules match your search.
         </div>
       ) : (
-        <div className="flex gap-4 overflow-x-auto pb-2">
-          {sections.map((section, index) => (
-            <div
-              key={section.key}
-              className="flex w-44 shrink-0 flex-col gap-3"
-            >
-              <div
-                className={cn(
-                  "rounded-md bg-linear-to-r px-3 py-2.5",
-                  CATEGORY_GRADIENTS[index % CATEGORY_GRADIENTS.length],
-                  section.unknown && "from-destructive/20 to-destructive/30",
-                )}
-              >
-                <h3
-                  className="truncate font-semibold text-foreground/90"
-                  title={section.categoryName}
-                >
-                  {section.depth > 0 && "↳ "}
-                  {section.categoryName}
-                </h3>
-              </div>
+        <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
+          {sections.map((section) => {
+            const swatch = section.categoryId
+              ? colorMap.get(section.categoryId) ?? NEUTRAL_SWATCH
+              : NEUTRAL_SWATCH;
+            const Icon = section.unknown
+              ? CircleDashed
+              : categoryIcon(
+                  categories.find((c) => c.id === section.categoryId)?.icon,
+                  section.categoryName,
+                );
 
-              <div className="flex flex-col gap-2">
-                {section.rules.map((rule) => (
-                  <RuleCard
-                    key={rule.id}
-                    rule={rule}
-                    onEdit={() => setEditorTarget({ mode: "edit", rule })}
-                    onDelete={() => void deleteRule(rule.id)}
-                    onApplyToExisting={() => void applyRuleToExisting(rule)}
-                    onValueChange={(conditionIndex, valueIndex, value) =>
-                      updateWordValue(rule, conditionIndex, valueIndex, value)
-                    }
-                    onRemoveWord={(conditionIndex, valueIndex) =>
-                      removeWord(rule, conditionIndex, valueIndex)
-                    }
-                    onAddWord={(conditionIndex, value) =>
-                      addWord(rule, conditionIndex, value)
-                    }
-                  />
-                ))}
+            return (
+              <div key={section.key} className="flex flex-col gap-3">
+                <div className="flex items-center gap-2 px-1">
+                  <span
+                    className={cn(
+                      "grid size-8 shrink-0 place-items-center rounded-full",
+                      swatch.badge,
+                    )}
+                  >
+                    <Icon className="size-4" strokeWidth={2} />
+                  </span>
+                  <h3 className="font-heading text-lg font-bold">
+                    {section.depth > 0 && "↳ "}
+                    {section.categoryName}
+                  </h3>
+                  <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-semibold text-muted-foreground">
+                    {section.rules.length}
+                  </span>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  {section.rules.map((rule) => (
+                    <RuleRow
+                      key={rule.id}
+                      rule={rule}
+                      categoryName={section.categoryName}
+                      icon={Icon}
+                      swatch={swatch}
+                      onEdit={() => setEditingRule(rule)}
+                      onDelete={() => void deleteRule(rule.id)}
+                      onApplyToExisting={() => void applyRuleToExisting(rule)}
+                    />
+                  ))}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
   );
 }
 
-function RuleCard({
+function RuleRow({
   rule,
+  categoryName,
+  icon: Icon,
+  swatch,
   onEdit,
   onDelete,
   onApplyToExisting,
-  onValueChange,
-  onRemoveWord,
-  onAddWord,
 }: {
   rule: Rule;
+  categoryName: string;
+  icon: LucideIcon;
+  swatch: CategorySwatch;
   onEdit: () => void;
   onDelete: () => void;
   onApplyToExisting: () => void;
-  onValueChange: (
-    conditionIndex: number,
-    valueIndex: number,
-    value: string,
-  ) => boolean;
-  onRemoveWord: (conditionIndex: number, valueIndex: number) => void;
-  onAddWord: (conditionIndex: number, value: string) => boolean;
 }) {
   return (
-    <div className="group relative flex flex-col gap-2 rounded-lg border border-border/60 bg-card p-3 text-sm">
-      <div className="absolute top-2 right-2 flex items-center gap-0.5">
+    <div className="group flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-border/60 bg-card px-4 py-3 text-sm">
+      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+        {rule.conditions.map((condition, conditionIndex) => (
+          <div key={conditionIndex} className="flex flex-wrap items-center gap-2">
+            {conditionIndex > 0 && (
+              <span className="text-[11px] font-semibold tracking-wide text-muted-foreground">
+                AND
+              </span>
+            )}
+            <Badge className="bg-sky-100 font-medium text-sky-700">
+              {FIELD_LABELS[condition.field] ?? condition.field}
+            </Badge>
+            <Badge className="bg-rose-100 font-medium text-rose-700">
+              {OPERATOR_LABELS[condition.operator] ?? condition.operator}
+            </Badge>
+            <div className="flex flex-wrap gap-1.5">
+              {condition.values.map((value, valueIndex) => (
+                <Badge
+                  key={`${conditionIndex}-${valueIndex}-${value}`}
+                  variant="secondary"
+                  className="bg-primary/10 font-normal text-primary"
+                >
+                  {value}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
         <Button
           variant="ghost"
           size="icon-sm"
           onClick={onApplyToExisting}
           aria-label="Apply rule to existing uncategorized transactions"
           title="Apply to existing uncategorized transactions"
-          className="opacity-0 transition-opacity group-hover:opacity-100"
         >
           <Wand2 className="size-3.5" />
         </Button>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={onEdit}
-          aria-label="Edit rule"
-          className="opacity-0 transition-opacity group-hover:opacity-100"
-        >
+        <Button variant="ghost" size="icon-sm" onClick={onEdit} aria-label="Edit rule">
           <Pencil className="size-3.5" />
         </Button>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={onDelete}
-          aria-label="Delete rule"
-          className="opacity-0 transition-opacity group-hover:opacity-100"
-        >
+        <Button variant="ghost" size="icon-sm" onClick={onDelete} aria-label="Delete rule">
           <Trash2 className="size-3.5" />
         </Button>
-        <GripVertical className="size-4 text-muted-foreground/50" />
       </div>
 
-      {rule.conditions.map((condition, conditionIndex) => (
-        <div key={conditionIndex} className="flex flex-col gap-1.5 pr-8">
-          {conditionIndex > 0 && (
-            <p className="text-center text-[11px] font-semibold tracking-wide text-muted-foreground">
-              AND
-            </p>
-          )}
-          <div className="flex items-center gap-1.5">
-            <span className="font-semibold">
-              {FIELD_LABELS[condition.field] ?? condition.field}
-            </span>
-            <Badge variant="secondary" className="font-normal">
-              {OPERATOR_LABELS[condition.operator] ?? condition.operator}
-            </Badge>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            {condition.values.map((value, valueIndex) => (
-              <WordRow
-                key={`${rule.id}-${conditionIndex}-${valueIndex}-${value}`}
-                value={value}
-                onValueCommit={(newValue) =>
-                  onValueChange(conditionIndex, valueIndex, newValue)
-                }
-                onRemove={() => onRemoveWord(conditionIndex, valueIndex)}
-              />
-            ))}
-            <AddWordRow onAdd={(value) => onAddWord(conditionIndex, value)} />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function WordRow({
-  value: initialValue,
-  onValueCommit,
-  onRemove,
-}: {
-  value: string;
-  onValueCommit: (value: string) => boolean;
-  onRemove: () => void;
-}) {
-  const [value, setValue] = useState(initialValue);
-
-  return (
-    <div className="flex items-center gap-1.5">
-      <Input
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        onBlur={() => {
-          const trimmed = value.trim();
-          if (!trimmed || trimmed === initialValue) {
-            setValue(initialValue);
-            return;
-          }
-          if (!onValueCommit(trimmed)) setValue(initialValue);
-        }}
-        className="h-8 flex-1 text-xs"
-      />
-
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        onClick={onRemove}
-        aria-label="Remove word"
-      >
-        <Trash2 className="size-3.5" />
-      </Button>
-    </div>
-  );
-}
-
-function AddWordRow({ onAdd }: { onAdd: (value: string) => boolean }) {
-  const [value, setValue] = useState("");
-
-  function commit() {
-    const trimmed = value.trim();
-    if (!trimmed) return;
-    if (onAdd(trimmed)) setValue("");
-  }
-
-  return (
-    <div className="flex items-center gap-1.5">
-      <Input
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key !== "Enter") return;
-          e.preventDefault();
-          commit();
-        }}
-        onBlur={commit}
-        placeholder="Add value…"
-        className="h-8 flex-1 text-xs"
-      />
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        // Keep focus on the input so the button's own click isn't preceded by a
-        // blur-commit, which would then re-add the same value as a duplicate.
-        onMouseDown={(e) => e.preventDefault()}
-        onClick={commit}
-        disabled={!value.trim()}
-        aria-label="Add word"
-      >
-        <Plus className="size-3.5" />
-      </Button>
+      <div className="flex shrink-0 items-center gap-2">
+        <span className={cn("grid size-7 place-items-center rounded-full", swatch.badge)}>
+          <Icon className="size-3.5" strokeWidth={2} />
+        </span>
+        <span className="font-semibold">{categoryName}</span>
+      </div>
     </div>
   );
 }

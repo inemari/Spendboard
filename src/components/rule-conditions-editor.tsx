@@ -10,6 +10,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  FIELD_LABELS,
+  OPERATOR_LABELS,
+  OPERATORS_FOR_FIELD,
+  defaultOperatorForField,
+} from "@/lib/rule-labels";
 import type { RuleCondition } from "@/lib/types";
 
 export const EMPTY_CONDITION: RuleCondition = { field: "name", operator: "equals", values: [""] };
@@ -28,9 +34,7 @@ export function RuleConditionsEditor({
     onChange(
       conditions.map((c, i) => {
         if (i !== index) return c;
-        return field === "name"
-          ? { field: "name", operator: "equals", values: c.values }
-          : { field: "subtitle", operator: "contains", values: c.values };
+        return { field, operator: defaultOperatorForField(field), values: c.values } as RuleCondition;
       }),
     );
   }
@@ -79,11 +83,14 @@ export function RuleConditionsEditor({
                 onValueChange={(value) => value && setConditionField(index, value as RuleCondition["field"])}
               >
                 <SelectTrigger className="h-8 w-28 text-xs">
-                  <SelectValue />
+                  <SelectValue>{FIELD_LABELS[condition.field]}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="name">Name</SelectItem>
-                  <SelectItem value="subtitle">Subtitle</SelectItem>
+                  {Object.entries(FIELD_LABELS).map(([value, label]) => (
+                    <SelectItem key={value} value={value}>
+                      {label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
 
@@ -92,21 +99,14 @@ export function RuleConditionsEditor({
                 onValueChange={(value) => value && setConditionOperator(index, value)}
               >
                 <SelectTrigger className="h-8 w-40 text-xs">
-                  <SelectValue />
+                  <SelectValue>{OPERATOR_LABELS[condition.operator]}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  {condition.field === "name" ? (
-                    <>
-                      <SelectItem value="equals">Equals exactly</SelectItem>
-                      <SelectItem value="contains">Contains</SelectItem>
-                      <SelectItem value="starts_with">Starts with</SelectItem>
-                    </>
-                  ) : (
-                    <>
-                      <SelectItem value="contains">Contains</SelectItem>
-                      <SelectItem value="not_contains">Doesn&rsquo;t contain</SelectItem>
-                    </>
-                  )}
+                  {OPERATORS_FOR_FIELD[condition.field].map((op) => (
+                    <SelectItem key={op} value={op}>
+                      {OPERATOR_LABELS[op]}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
 
