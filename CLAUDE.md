@@ -727,15 +727,24 @@ decisions. For work that's planned but not yet implemented, see
   category's name, so this column needs no backfill.
 - **A user can't have two categories with the same name under the same
   parent** — `categories_user_parent_name_key` (`supabase/schema.sql`), a
-  unique index on `(user_id, coalesce(parent_id, <sentinel>), name)`. This
-  exists to close a real race: `ensureDefaultCategories`
-  (`src/lib/ensure-default-categories.ts`) does a plain "count categories,
-  seed if zero" check with no lock, so two concurrent requests for the same
-  brand-new account (e.g. Next.js prefetching several routes at once) could
-  both see zero categories and both insert the full default set, producing
-  N copies of every default category. The loser of the race now gets a
-  `23505` on each insert, which `ensureDefaultCategories` treats as "already
-  seeded" and looks up the existing row instead of erroring.
+  unique index on `(user_id, coalesce(parent_id, <sentinel>), lower(trim(name)))`.
+  The `lower(trim(...))` matters as much as the index itself: it's what makes
+  "Groceries", "groceries", and " Groceries " collide as the same name,
+  matching the case/whitespace-insensitive lookup `apply_rule_template`/
+  `apply_default_rule_template` already use when finding a category by name —
+  a plain `name` index let those variants coexist as visually indistinguishable
+  duplicate categories. This also exists to close a real race:
+  `ensureDefaultCategories` (`src/lib/ensure-default-categories.ts`) does a
+  plain "count categories, seed if zero" check with no lock, so two concurrent
+  requests for the same brand-new account (e.g. Next.js prefetching several
+  routes at once) could both see zero categories and both insert the full
+  default set, producing N copies of every default category. The loser of the
+  race now gets a `23505` on each insert, which `ensureDefaultCategories`
+  treats as "already seeded" and looks up the existing row instead of
+  erroring. `createCategory` (`src/lib/create-category.ts`) and the rename
+  handlers in `category-manager-panel.tsx` pre-check case/whitespace-
+  insensitively and translate a `23505` into "A category with that name
+  already exists here." rather than surfacing the raw Postgres error.
 - **`transactions.month_id` is derived from the transaction's own `date`,** by
   the upload route (`monthOf` + a `months` upsert per distinct month in the
   file). A statement spanning a boundary therefore splits correctly: its June
@@ -846,11 +855,13 @@ Do not change these unless the task explicitly requires it:
 - Category colors must remain stable across views and months.
 - `categories.icon` stores our own slug, never a lucide component name, and
   stays nullable — don't backfill it or make it required.
-- A user can't have two categories with the same name under the same
-  parent — enforced by `categories_user_parent_name_key` in Postgres, not
+- A user can't have two categories with the same name (case/whitespace-
+  insensitive) under the same parent — enforced by
+  `categories_user_parent_name_key` in Postgres on `lower(trim(name))`, not
   just app-level checks. Don't remove it to "fix" a uniqueness error; that
   index is what stops concurrent default-category seeding from duplicating
-  every row.
+  every row, and the `lower(trim(...))` is what stops near-duplicate names
+  (different case or stray whitespace) from slipping past it.
 - Transaction reads are scoped by `date`, never by `month_id`.
 - No route carries a date in its path. The overview is the only screen with a
   timeframe, and it keeps it in query params.

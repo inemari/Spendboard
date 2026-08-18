@@ -45,9 +45,15 @@ alter table categories add column if not exists sort_order integer not null defa
 -- list, producing N copies of every default category). `coalesce` folds
 -- every top-level category's null parent_id onto one sentinel value so
 -- NULL actually collides with NULL here, unlike a plain unique index (where
--- every NULL is treated as distinct).
+-- every NULL is treated as distinct). Keyed on `lower(trim(name))`, not the
+-- raw column, so "Groceries", "groceries", and " Groceries " are treated as
+-- the same name — matching how rule-template category lookup already
+-- normalizes names (see `apply_rule_template`/`apply_default_rule_template`
+-- below). A plain `name` index let those variants coexist as visually
+-- indistinguishable duplicate categories.
+drop index if exists categories_user_parent_name_key;
 create unique index if not exists categories_user_parent_name_key
-  on categories (user_id, coalesce(parent_id, '00000000-0000-0000-0000-000000000000'::uuid), name);
+  on categories (user_id, coalesce(parent_id, '00000000-0000-0000-0000-000000000000'::uuid), lower(trim(name)));
 
 create table if not exists months (
   id uuid primary key default gen_random_uuid(),

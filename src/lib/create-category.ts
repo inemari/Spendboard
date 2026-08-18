@@ -13,14 +13,22 @@ export async function createCategory(
   const trimmed = name.trim();
   if (!trimmed) return { error: "Name is required." };
 
-  const siblingCount = categories.filter((c) => c.parent_id === parentId).length;
+  const siblings = categories.filter((c) => c.parent_id === parentId);
+  const normalized = trimmed.toLowerCase();
+  if (siblings.some((c) => c.name.trim().toLowerCase() === normalized)) {
+    return { error: "A category with that name already exists here." };
+  }
 
   const { error } = await supabase.from("categories").insert({
     name: trimmed,
     parent_id: parentId,
     icon,
-    sort_order: siblingCount,
+    sort_order: siblings.length,
   });
+
+  if (error?.code === "23505") {
+    return { error: "A category with that name already exists here." };
+  }
 
   return { error: error?.message ?? null };
 }

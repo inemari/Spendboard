@@ -72,7 +72,10 @@ function SubcategoryRow({
     setSaving(false);
 
     if (error) {
-      toast.error("Failed to rename category.");
+      toast.error(
+        error.code === "23505" ? "A category with that name already exists here." : "Failed to rename category.",
+      );
+      setName(category.name);
       return;
     }
     router.refresh();
@@ -168,7 +171,10 @@ function CategoryCard({
     setSaving(false);
 
     if (error) {
-      toast.error("Failed to rename category.");
+      toast.error(
+        error.code === "23505" ? "A category with that name already exists here." : "Failed to rename category.",
+      );
+      setName(category.name);
       return;
     }
     router.refresh();
