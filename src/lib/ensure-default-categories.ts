@@ -37,14 +37,34 @@ export async function ensureDefaultCategories(supabase: SupabaseClient) {
   // needed to resolve each subcategory's own parent_id below, since a fresh
   // `categories` row gets its own generated id, distinct from the
   // `default_categories` row it was seeded from.
+  //
+  // The count check above is a plain read with no lock, so two concurrent
+  // calls for the same brand-new user (e.g. Next.js prefetching several
+  // routes at once) can both see zero categories and both reach this loop.
+  // `categories_user_parent_name_key` (schema.sql) is what actually prevents
+  // duplicates: the loser of the race gets a 23505 unique-violation on each
+  // insert, which is treated as "someone already seeded this one" rather
+  // than an error — its existing row is looked up instead so subcategory
+  // remapping below still works.
   const idByDefaultId = new Map<string, string>();
   for (const parent of parents) {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("categories")
       .insert({ name: parent.name, icon: parent.icon, is_default: true, sort_order: parent.sort_order })
       .select("id")
       .single();
-    if (data) idByDefaultId.set(parent.id, data.id);
+
+    if (data) {
+      idByDefaultId.set(parent.id, data.id);
+    } else if (error?.code === "23505") {
+      const { data: existing } = await supabase
+        .from("categories")
+        .select("id")
+        .is("parent_id", null)
+        .eq("name", parent.name)
+        .maybeSingle();
+      if (existing) idByDefaultId.set(parent.id, existing.id);
+    }
   }
 
   const childRows = children
@@ -57,7 +77,8 @@ export async function ensureDefaultCategories(supabase: SupabaseClient) {
     }))
     .filter((c) => c.parent_id);
 
-  if (childRows.length > 0) {
-    await supabase.from("categories").insert(childRows);
+  for (const child of childRows) {
+    const { error } = await supabase.from("categories").insert(child);
+    if (error && error.code !== "23505") throw error;
   }
 }
