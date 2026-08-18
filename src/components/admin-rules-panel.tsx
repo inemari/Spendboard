@@ -35,29 +35,67 @@ import {
 } from "@/components/ui/alert-dialog";
 import { EMPTY_CONDITION, RuleConditionsEditor } from "@/components/rule-conditions-editor";
 import { describeRuleConditions } from "@/lib/rule-description";
-import type { AppUser, RuleCondition, RuleTemplate, RuleTemplateItem } from "@/lib/types";
+import { buildCategoryTree } from "@/lib/category-tree";
+import type { AppUser, DefaultCategory, RuleCondition, RuleTemplate, RuleTemplateItem } from "@/lib/types";
 
 type MyRule = { id: string; categoryName: string; conditions: RuleCondition[] };
 
-type DraftItem = { category_name: string; conditions: RuleCondition[] };
+/** category_name is the persisted value (see rule_template_items — a
+ *  template targets a category by name, not id, so it stays portable across
+ *  users' distinct category sets). categoryTopId/categorySubId are
+ *  editor-only state resolving that name against the admin-managed
+ *  default_categories list, for the cascading dropdowns below. */
+type DraftItem = {
+  category_name: string;
+  categoryTopId: string;
+  categorySubId: string;
+  conditions: RuleCondition[];
+};
 
 type EditorTarget = { mode: "create" } | { mode: "edit"; template: RuleTemplate };
 
-function itemsToDraft(items: RuleTemplateItem[]): DraftItem[] {
-  return items.map((i) => ({
-    category_name: i.category_name,
-    conditions: i.conditions.map((c) => ({ ...c, values: [...c.values] })),
-  }));
+/** No subcategory selected — stay at the top-level category. Distinct from
+ *  categoryTopId/categorySubId both being "" (nothing chosen yet at all). */
+const NO_SUBCATEGORY_VALUE = "__none__";
+
+/** Resolves a stored category_name back to its default_categories ids, so
+ *  editing an existing template item pre-selects the matching dropdowns.
+ *  A name that doesn't match anything in the current default list (e.g. a
+ *  category since renamed/removed there) leaves both ids blank, requiring
+ *  the admin to re-pick — same as a brand-new item. */
+function matchDefaultCategoryIds(
+  defaults: DefaultCategory[],
+  name: string,
+): { topId: string; subId: string } {
+  const top = defaults.find((d) => !d.parent_id && d.name === name);
+  if (top) return { topId: top.id, subId: "" };
+  const child = defaults.find((d) => d.parent_id && d.name === name);
+  if (child) return { topId: child.parent_id!, subId: child.id };
+  return { topId: "", subId: "" };
+}
+
+function itemsToDraft(items: RuleTemplateItem[], defaultCategories: DefaultCategory[]): DraftItem[] {
+  return items.map((i) => {
+    const { topId, subId } = matchDefaultCategoryIds(defaultCategories, i.category_name);
+    return {
+      category_name: i.category_name,
+      categoryTopId: topId,
+      categorySubId: subId,
+      conditions: i.conditions.map((c) => ({ ...c, values: [...c.values] })),
+    };
+  });
 }
 
 export function AdminRulesPanel({
   templates,
   users,
   myRules,
+  defaultCategories,
 }: {
   templates: RuleTemplate[];
   users: AppUser[];
   myRules: MyRule[];
+  defaultCategories: DefaultCategory[];
 }) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
@@ -318,7 +356,11 @@ export function AdminRulesPanel({
         </div>
       )}
 
-      <TemplateEditor target={editorTarget} onClose={() => setEditorTarget(null)} />
+      <TemplateEditor
+        target={editorTarget}
+        defaultCategories={defaultCategories}
+        onClose={() => setEditorTarget(null)}
+      />
 
       <AlertDialog open={pendingDelete !== null} onOpenChange={(open) => !open && setPendingDelete(null)}>
         {pendingDelete && (
@@ -365,15 +407,22 @@ export function AdminRulesPanel({
 
 function TemplateEditor({
   target,
+  defaultCategories,
   onClose,
 }: {
   target: EditorTarget | null;
+  defaultCategories: DefaultCategory[];
   onClose: () => void;
 }) {
   return (
     <Dialog open={target !== null} onOpenChange={(open) => !open && onClose()}>
       {target && (
-        <TemplateEditorContent key={target.mode === "edit" ? target.template.id : "create"} target={target} onClose={onClose} />
+        <TemplateEditorContent
+          key={target.mode === "edit" ? target.template.id : "create"}
+          target={target}
+          defaultCategories={defaultCategories}
+          onClose={onClose}
+        />
       )}
     </Dialog>
   );
@@ -381,9 +430,11 @@ function TemplateEditor({
 
 function TemplateEditorContent({
   target,
+  defaultCategories,
   onClose,
 }: {
   target: EditorTarget;
+  defaultCategories: DefaultCategory[];
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -394,12 +445,46 @@ function TemplateEditorContent({
   const [description, setDescription] = useState(existing?.description ?? "");
   const [isDefault, setIsDefault] = useState(existing?.is_default ?? false);
   const [items, setItems] = useState<DraftItem[]>(
-    existing ? itemsToDraft(existing.items) : [{ category_name: "", conditions: [{ ...EMPTY_CONDITION, values: [""] }] }],
+    existing
+      ? itemsToDraft(existing.items, defaultCategories)
+      : [
+          {
+            category_name: "",
+            categoryTopId: "",
+            categorySubId: "",
+            conditions: [{ ...EMPTY_CONDITION, values: [""] }],
+          },
+        ],
   );
   const [saving, setSaving] = useState(false);
 
-  function setItemCategoryName(index: number, categoryName: string) {
-    setItems((prev) => prev.map((it, i) => (i !== index ? it : { ...it, category_name: categoryName })));
+  const categoryTree = useMemo(() => buildCategoryTree(defaultCategories), [defaultCategories]);
+  const childrenByTopId = useMemo(
+    () => new Map(categoryTree.map((g) => [g.parent.id, g.children])),
+    [categoryTree],
+  );
+
+  function setItemTopCategory(index: number, topId: string) {
+    const topName = defaultCategories.find((d) => d.id === topId)?.name ?? "";
+    setItems((prev) =>
+      prev.map((it, i) =>
+        i !== index ? it : { ...it, categoryTopId: topId, categorySubId: "", category_name: topName },
+      ),
+    );
+  }
+
+  function setItemSubCategory(index: number, subId: string) {
+    const resolvedSubId = subId === NO_SUBCATEGORY_VALUE ? "" : subId;
+    setItems((prev) =>
+      prev.map((it, i) => {
+        if (i !== index) return it;
+        const topName = defaultCategories.find((d) => d.id === it.categoryTopId)?.name ?? "";
+        const subName = resolvedSubId
+          ? (defaultCategories.find((d) => d.id === resolvedSubId)?.name ?? topName)
+          : topName;
+        return { ...it, categorySubId: resolvedSubId, category_name: subName };
+      }),
+    );
   }
 
   function setItemConditions(index: number, conditions: RuleCondition[]) {
@@ -407,7 +492,15 @@ function TemplateEditorContent({
   }
 
   function addItem() {
-    setItems((prev) => [...prev, { category_name: "", conditions: [{ ...EMPTY_CONDITION, values: [""] }] }]);
+    setItems((prev) => [
+      ...prev,
+      {
+        category_name: "",
+        categoryTopId: "",
+        categorySubId: "",
+        conditions: [{ ...EMPTY_CONDITION, values: [""] }],
+      },
+    ]);
   }
 
   function removeItem(index: number) {
@@ -516,33 +609,73 @@ function TemplateEditorContent({
           Default template for new users
         </label>
 
-        {items.map((item, index) => (
-          <div key={index} className="flex flex-col gap-2 rounded-lg border p-3">
-            <div className="flex items-center gap-2">
-              <Input
-                placeholder="Category name (e.g. Matbutikk)"
-                value={item.category_name}
-                onChange={(e) => setItemCategoryName(index, e.target.value)}
-                className="h-8 text-xs"
-              />
-              {items.length > 1 && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={() => removeItem(index)}
-                  aria-label="Remove rule"
+        {items.map((item, index) => {
+          const subcategories = childrenByTopId.get(item.categoryTopId) ?? [];
+          return (
+            <div key={index} className="flex flex-col gap-2 rounded-lg border p-3">
+              <div className="flex items-center gap-2">
+                <Select
+                  value={item.categoryTopId || undefined}
+                  onValueChange={(value) => value && setItemTopCategory(index, value)}
                 >
-                  <Trash2 className="size-3.5" />
-                </Button>
-              )}
+                  <SelectTrigger className="h-8 flex-1 text-xs">
+                    <SelectValue placeholder="Choose a category…">
+                      {item.categoryTopId
+                        ? defaultCategories.find((d) => d.id === item.categoryTopId)?.name
+                        : undefined}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {categoryTree.map(({ parent }) => (
+                      <SelectItem key={parent.id} value={parent.id}>
+                        {parent.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                {subcategories.length > 0 && (
+                  <Select
+                    value={item.categorySubId || NO_SUBCATEGORY_VALUE}
+                    onValueChange={(value) => value && setItemSubCategory(index, value)}
+                  >
+                    <SelectTrigger className="h-8 w-44 text-xs">
+                      <SelectValue placeholder="Subcategory">
+                        {item.categorySubId
+                          ? defaultCategories.find((d) => d.id === item.categorySubId)?.name
+                          : "General"}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NO_SUBCATEGORY_VALUE}>General (no subcategory)</SelectItem>
+                      {subcategories.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+
+                {items.length > 1 && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={() => removeItem(index)}
+                    aria-label="Remove rule"
+                  >
+                    <Trash2 className="size-3.5" />
+                  </Button>
+                )}
+              </div>
+              <RuleConditionsEditor
+                conditions={item.conditions}
+                onChange={(next) => setItemConditions(index, next)}
+              />
             </div>
-            <RuleConditionsEditor
-              conditions={item.conditions}
-              onChange={(next) => setItemConditions(index, next)}
-            />
-          </div>
-        ))}
+          );
+        })}
 
         <Button type="button" variant="outline" size="sm" className="self-start" onClick={addItem}>
           <Plus className="size-3.5" />

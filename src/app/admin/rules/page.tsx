@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { loadCategoriesAndRules } from "@/lib/workspace-data";
 import { AdminRulesPanel } from "@/components/admin-rules-panel";
-import type { AppUser, Rule, RuleTemplate, RuleTemplateItem } from "@/lib/types";
+import type { AppUser, DefaultCategory, Rule, RuleTemplate, RuleTemplateItem } from "@/lib/types";
 
 export default async function AdminRulesPage() {
   const supabase = await createClient();
@@ -10,6 +10,7 @@ export default async function AdminRulesPage() {
     { data: templates, error: templatesError },
     { data: users, error: usersError },
     { categories, rules },
+    { data: defaultCategories, error: defaultCategoriesError },
   ] = await Promise.all([
     supabase
       .from("rule_templates")
@@ -17,6 +18,7 @@ export default async function AdminRulesPage() {
       .order("created_at"),
     supabase.rpc("list_app_users"),
     loadCategoriesAndRules(supabase),
+    supabase.from("default_categories").select("id, name, icon, sort_order, parent_id").order("sort_order"),
   ]);
 
   const normalizedTemplates: RuleTemplate[] = (templates ?? []).map((t) => ({
@@ -39,9 +41,10 @@ export default async function AdminRulesPage() {
 
   return (
     <>
-      {(templatesError || usersError) && (
+      {(templatesError || usersError || defaultCategoriesError) && (
         <p className="m-6 rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
-          Failed to load admin data: {templatesError?.message ?? usersError?.message}
+          Failed to load admin data:{" "}
+          {templatesError?.message ?? usersError?.message ?? defaultCategoriesError?.message}
         </p>
       )}
 
@@ -49,6 +52,7 @@ export default async function AdminRulesPage() {
         templates={normalizedTemplates}
         users={(users ?? []) as AppUser[]}
         myRules={myRules}
+        defaultCategories={(defaultCategories ?? []) as DefaultCategory[]}
       />
     </>
   );
