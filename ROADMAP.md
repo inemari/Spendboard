@@ -27,17 +27,6 @@ correct parent before the item's own category and match names via
 `lower(trim(...))`, and `admin-rules-panel.tsx` shows a warning banner when
 no template is marked default. Remaining gaps:
 
-- **Manual category creation still allows case/whitespace duplicates.**
-  `categories_user_parent_name_key` (the DB uniqueness constraint backing
-  "a user can't have two categories with the same name under the same
-  parent") compares raw `name`, which Postgres treats byte-for-byte — so a
-  user can still create "Groceries" and "groceries" side by side via the
-  normal Categories screen, even though `apply_rule_template`/
-  `apply_default_rule_template` now match names case/whitespace-
-  insensitively when applying a template. Fix: change the index to compare
-  on `lower(trim(name))` instead — but first check for and resolve any
-  existing case-variant duplicates per user/parent, since the migration
-  would fail outright if any already exist.
 - **No admin path to sync updated defaults to existing users.**
   `ensureDefaultCategories` only seeds a brand-new account (zero categories)
   or runs via a user's own destructive "Reset to Defaults." An admin who
@@ -46,12 +35,6 @@ no template is marked default. Remaining gaps:
   non-destructive admin RPC (e.g. `admin_sync_default_categories
   (target_user_id)`) that inserts only the default categories missing by
   name, never touching or removing what the user already has.
-- **Applying a template is not idempotent.** Both `apply_rule_template` and
-  `apply_default_rule_template` unconditionally insert a new `rules` row per
-  item with no check for an existing identical rule, so re-running "apply to
-  user" (or a user hitting "Reset to Defaults" twice, e.g. after the partial-
-  failure case below) produces duplicate rules. Fix: skip the insert when a
-  rule with the same `user_id`/`category_id`/`conditions` already exists.
 - **"Reset to Defaults" (rules) can fail into a worse state than before.**
   `rules-manager-panel.tsx`'s reset deletes all of the user's rules and only
   then calls `apply_default_rule_template()`; if that call fails, the rules
