@@ -521,8 +521,8 @@ decisions. For work that's planned but not yet implemented, see
     `settlements` (today `settlements.invoice_id` has no `on delete`
     clause, so deleting a `credit_invoices` row under a completed settlement
     would simply fail).
-  - **Rule templates tab** (`admin-rules-panel.tsx`) is unchanged from
-    before, plus one addition: a "Copy from your own rules" section lists
+  - **Rule templates tab** (`admin-rules-panel.tsx`): a "Copy from your own
+    rules" section lists
     the admin's *personal* `rules` rows (from her own account, alongside
     everyone else's) and can copy any one of them into an existing template
     as a new `rule_template_items` row — a shortcut for turning a rule she
@@ -540,6 +540,21 @@ decisions. For work that's planned but not yet implemented, see
     users are provisioned). Applying a template finds-or-creates each item's
     named category for the target user and inserts the corresponding rule;
     it never touches anything that user already has.
+    - **Each template item's category is picked from a cascading dropdown
+      pair, not typed freehand.** The top-level `Select` lists
+      `default_categories`' top-level rows; picking one that has children
+      reveals a second `Select` for its subcategories (plus a "General (no
+      subcategory)" option to stay at the parent). Both dropdowns are
+      sourced from `default_categories`, not any one user's own
+      `categories` — the persisted value is still just the picked name
+      (`rule_template_items.category_name`), so the portability described
+      above is unchanged; this only replaces how that name gets entered,
+      cutting typos and category-name mismatches an admin would otherwise
+      have to get exactly right by hand. Editing an existing item resolves
+      its stored name back to the matching dropdown selection
+      (`matchDefaultCategoryIds`); a name that no longer matches anything in
+      the current default list (e.g. renamed/removed since) leaves both
+      dropdowns unset, same as a brand-new item.
   - **Default categories tab** (`admin-categories-panel.tsx`) manages the
     `default_categories` table that `ensure-default-categories.ts` reads
     from when seeding a brand-new account — replacing what used to be a
