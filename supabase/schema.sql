@@ -860,7 +860,11 @@ drop policy if exists "admin can update" on default_categories;
 create policy "admin can update" on default_categories
   for update using (is_admin()) with check (is_admin());
 
-grant select, insert, update on default_categories to authenticated;
+drop policy if exists "admin can delete" on default_categories;
+create policy "admin can delete" on default_categories
+  for delete using (is_admin());
+
+grant select, insert, update, delete on default_categories to authenticated;
 
 -- One-time migration of today's hardcoded list into the new table, guarded
 -- so re-running this file doesn't duplicate it once any row exists.

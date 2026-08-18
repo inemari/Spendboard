@@ -583,23 +583,30 @@ decisions. For work that's planned but not yet implemented, see
   - **Default categories tab** (`admin-categories-panel.tsx`) manages the
     `default_categories` table that `ensure-default-categories.ts` reads
     from when seeding a brand-new account — replacing what used to be a
-    hardcoded array in that file. An admin can rename, re-icon, or add a
-    default category (including a **subcategory**, one level deep, same
-    shape as `categories.parent_id` — `default_categories.parent_id` mirrors
-    it, and `buildCategoryTree`/`flattenWithDepth` in `category-tree.ts` are
-    generic over both types so this tab reuses the same tree logic as the
-    per-user Categories screen), but **not delete one from this UI**
-    (deliberately omitted — see that tab's own on-screen note). Deleting a
-    row here is actually safe regardless: `default_categories` is a seed
-    template, fully decoupled from every user's own `categories` table the
-    moment the seed runs, so editing it never touches any category a user
-    already has — the omission is about avoiding confusion between "this
-    seed row" and "a category someone's using," not an actual data-safety
-    requirement. Seeding a new account (`ensure-default-categories.ts`)
-    clones parents first, then children, remapping each child's `parent_id`
-    from the seed row's own id to the *new* per-user category id it was
-    cloned into — a fresh `categories` row always gets its own generated id,
-    never the seed row's.
+    hardcoded array in that file. An admin can rename, re-icon, add, or
+    delete a default category (including a **subcategory**, one level deep,
+    same shape as `categories.parent_id` — `default_categories.parent_id`
+    mirrors it, and `buildCategoryTree`/`flattenWithDepth` in
+    `category-tree.ts` are generic over both types so this tab reuses the
+    same tree logic as the per-user Categories screen). Deleting a row here
+    is safe regardless of which action triggers it: `default_categories` is
+    a seed template, fully decoupled from every user's own `categories`
+    table the moment the seed runs, so it never touches any category a user
+    already has — a deleted parent's subcategories go with it
+    (`default_categories.parent_id on delete cascade`, same as the
+    per-user table). **Deleting requires two sequential confirmations**
+    (`pendingDelete`/`deleteConfirmStep` in that component) rather than the
+    single `AlertDialog` used everywhere else a category is deleted — an
+    admin's delete here is scoped to the shared seed template, not their own
+    data, so the extra step is deliberate friction against a slip on shared
+    state, not a data-safety requirement (see above: the delete itself can't
+    corrupt anything already seeded). The delete RLS policy
+    (`"admin can delete" on default_categories`) mirrors the existing
+    insert/update policies, gated by `is_admin()`. Seeding a new account
+    (`ensure-default-categories.ts`) clones parents first, then children,
+    remapping each child's `parent_id` from the seed row's own id to the
+    *new* per-user category id it was cloned into — a fresh `categories` row
+    always gets its own generated id, never the seed row's.
   - **Several `SECURITY DEFINER` RPCs** exist because the browser's anon-key
     client is _correctly_ blocked by every table's `auth.uid() = user_id`
     RLS policy from ever reading another user's email or writing rows with

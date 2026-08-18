@@ -3,7 +3,7 @@
 import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ChevronDown, Plus, X } from "lucide-react";
+import { ChevronDown, Plus, Trash2, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { CategoryIconPicker } from "@/components/category-icon-picker";
 import { CategoryCreateFields, NO_PARENT_VALUE } from "@/components/category-create-fields";
@@ -12,10 +12,26 @@ import { categorySwatch, type CategorySwatch } from "@/lib/category-colors";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 import type { DefaultCategory } from "@/lib/types";
 
-function DefaultSubcategoryRow({ category }: { category: DefaultCategory }) {
+function DefaultSubcategoryRow({
+  category,
+  onRequestDelete,
+}: {
+  category: DefaultCategory;
+  onRequestDelete: (category: DefaultCategory) => void;
+}) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const [name, setName] = useState(category.name);
@@ -70,6 +86,16 @@ function DefaultSubcategoryRow({ category }: { category: DefaultCategory }) {
         disabled={saving}
         className="h-8 text-sm"
       />
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        aria-label="Delete category"
+        className="shrink-0 text-muted-foreground hover:text-destructive"
+        onClick={() => onRequestDelete(category)}
+      >
+        <Trash2 className="size-4" />
+      </Button>
     </div>
   );
 }
@@ -79,11 +105,13 @@ function DefaultCategoryCard({
   subcategories,
   swatch,
   onAddSubcategory,
+  onRequestDelete,
 }: {
   category: DefaultCategory;
   subcategories: DefaultCategory[];
   swatch: CategorySwatch;
   onAddSubcategory: (parent: DefaultCategory) => void;
+  onRequestDelete: (category: DefaultCategory) => void;
 }) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
@@ -168,6 +196,16 @@ function DefaultCategoryCard({
             )}
           />
         </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          aria-label="Delete category"
+          className="shrink-0 rounded-full bg-muted text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+          onClick={() => onRequestDelete(category)}
+        >
+          <Trash2 className="size-4" />
+        </Button>
       </div>
 
       {expanded && (
@@ -175,7 +213,11 @@ function DefaultCategoryCard({
           {subcategories.length > 0 && (
             <div className="flex flex-col gap-2 border-l-2 border-border pl-3">
               {subcategories.map((child) => (
-                <DefaultSubcategoryRow key={child.id} category={child} />
+                <DefaultSubcategoryRow
+                  key={child.id}
+                  category={child}
+                  onRequestDelete={onRequestDelete}
+                />
               ))}
             </div>
           )}
@@ -207,6 +249,9 @@ export function AdminCategoriesPanel({
   const [parentId, setParentId] = useState(NO_PARENT_VALUE);
   const [creating, setCreating] = useState(false);
   const newNameInputRef = useRef<HTMLInputElement>(null);
+  const [pendingDelete, setPendingDelete] = useState<DefaultCategory | null>(null);
+  const [deleteConfirmStep, setDeleteConfirmStep] = useState<1 | 2>(1);
+  const [deleting, setDeleting] = useState(false);
 
   const tree = buildCategoryTree(categories);
   const topLevelCategories = tree.map((g) => g.parent);
@@ -238,6 +283,39 @@ export function AdminCategoriesPanel({
     setNewName("");
     setNewIcon(null);
     setParentId(NO_PARENT_VALUE);
+  }
+
+  function requestDelete(category: DefaultCategory) {
+    setPendingDelete(category);
+    setDeleteConfirmStep(1);
+  }
+
+  function dismissDelete() {
+    setPendingDelete(null);
+    setDeleteConfirmStep(1);
+  }
+
+  async function confirmDelete() {
+    if (!pendingDelete) return;
+    if (deleteConfirmStep === 1) {
+      setDeleteConfirmStep(2);
+      return;
+    }
+
+    setDeleting(true);
+    const { error } = await supabase
+      .from("default_categories")
+      .delete()
+      .eq("id", pendingDelete.id);
+    setDeleting(false);
+
+    if (error) {
+      toast.error("Failed to delete category.");
+      return;
+    }
+    toast.success(`Deleted "${pendingDelete.name}" from the default set.`);
+    dismissDelete();
+    router.refresh();
   }
 
   async function handleCreate() {
@@ -276,11 +354,10 @@ export function AdminCategoriesPanel({
             Default categories
           </h2>
           <p className="text-sm text-muted-foreground">
-            What a brand-new account starts with. Renaming or re-iconing one
-            here only affects
-            <em> future</em> new accounts — it never touches categories a user
-            already has. Deleting isn&rsquo;t offered here, to avoid any
-            confusion with removing a category someone&rsquo;s already using.
+            What a brand-new account starts with. Renaming, re-iconing, or
+            deleting one here only affects
+            <em> future</em> new accounts — it never touches a category a
+            user already has.
           </p>
         </div>
         <Button
@@ -343,9 +420,61 @@ export function AdminCategoriesPanel({
             subcategories={children}
             swatch={colorMap.get(parent.id)!}
             onAddSubcategory={openAddForm}
+            onRequestDelete={requestDelete}
           />
         ))}
       </div>
+
+      <AlertDialog open={pendingDelete !== null} onOpenChange={(open) => !open && dismissDelete()}>
+        {pendingDelete && (
+          <AlertDialogContent>
+            {deleteConfirmStep === 1 ? (
+              <>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>
+                    Delete &ldquo;{pendingDelete.name}&rdquo; from the default set?
+                  </AlertDialogTitle>
+                  <AlertDialogDescription>
+                    {pendingDelete.parent_id
+                      ? "New accounts will no longer be seeded with this subcategory."
+                      : "New accounts will no longer be seeded with this category" +
+                        (categories.some((c) => c.parent_id === pendingDelete.id)
+                          ? ", and its subcategories will be removed from the default set too."
+                          : ".")}
+                    {" "}This never touches a category any existing user already has.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel onClick={dismissDelete}>Cancel</AlertDialogCancel>
+                  <AlertDialogAction variant="destructive" onClick={() => void confirmDelete()}>
+                    Continue
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </>
+            ) : (
+              <>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This is your second confirmation. Deleting &ldquo;{pendingDelete.name}&rdquo;
+                    from the default set can&rsquo;t be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel onClick={dismissDelete}>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    variant="destructive"
+                    disabled={deleting}
+                    onClick={() => void confirmDelete()}
+                  >
+                    {deleting ? "Deleting..." : "Yes, delete it"}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </>
+            )}
+          </AlertDialogContent>
+        )}
+      </AlertDialog>
     </div>
   );
 }
