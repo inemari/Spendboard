@@ -685,6 +685,17 @@ decisions. For work that's planned but not yet implemented, see
   `src/lib/category-icons.ts` (not a lucide export name — see "Category icons"
   above). Null means "no icon chosen", which renders one guessed from the
   category's name, so this column needs no backfill.
+- **A user can't have two categories with the same name under the same
+  parent** — `categories_user_parent_name_key` (`supabase/schema.sql`), a
+  unique index on `(user_id, coalesce(parent_id, <sentinel>), name)`. This
+  exists to close a real race: `ensureDefaultCategories`
+  (`src/lib/ensure-default-categories.ts`) does a plain "count categories,
+  seed if zero" check with no lock, so two concurrent requests for the same
+  brand-new account (e.g. Next.js prefetching several routes at once) could
+  both see zero categories and both insert the full default set, producing
+  N copies of every default category. The loser of the race now gets a
+  `23505` on each insert, which `ensureDefaultCategories` treats as "already
+  seeded" and looks up the existing row instead of erroring.
 - **`transactions.month_id` is derived from the transaction's own `date`,** by
   the upload route (`monthOf` + a `months` upsert per distinct month in the
   file). A statement spanning a boundary therefore splits correctly: its June
@@ -795,6 +806,11 @@ Do not change these unless the task explicitly requires it:
 - Category colors must remain stable across views and months.
 - `categories.icon` stores our own slug, never a lucide component name, and
   stays nullable — don't backfill it or make it required.
+- A user can't have two categories with the same name under the same
+  parent — enforced by `categories_user_parent_name_key` in Postgres, not
+  just app-level checks. Don't remove it to "fix" a uniqueness error; that
+  index is what stops concurrent default-category seeding from duplicating
+  every row.
 - Transaction reads are scoped by `date`, never by `month_id`.
 - No route carries a date in its path. The overview is the only screen with a
   timeframe, and it keeps it in query params.
