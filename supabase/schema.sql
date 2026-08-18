@@ -295,6 +295,61 @@ $$;
 
 grant execute on function apply_rule_template(uuid, uuid) to authenticated;
 
+-- Self-service counterpart to apply_rule_template above, used by the Rules
+-- page's "Reset to defaults" action (src/components/rules-manager-panel.tsx).
+-- Unlike that function, this needs no is_admin() check — it only ever
+-- reads/writes auth.uid()'s own rows, the same thing RLS's
+-- `auth.uid() = user_id` policy on categories/rules already lets a user do
+-- directly. It's security definer purely to read rule_templates/
+-- rule_template_items, which carry an "admin only" RLS policy otherwise.
+-- No-ops (returns 0) if no template is currently marked is_default.
+create or replace function apply_default_rule_template()
+returns int
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  item record;
+  cat_id uuid;
+  default_template_id uuid;
+  uid uuid := auth.uid();
+  inserted_count int := 0;
+begin
+  if uid is null then
+    raise exception 'not authenticated';
+  end if;
+
+  select id into default_template_id from rule_templates where is_default limit 1;
+  if default_template_id is null then
+    return 0;
+  end if;
+
+  for item in
+    select category_name, conditions from rule_template_items where template_id = default_template_id
+  loop
+    select id into cat_id
+      from categories
+      where user_id = uid and parent_id is null and name = item.category_name
+      limit 1;
+
+    if cat_id is null then
+      insert into categories (user_id, name)
+        values (uid, item.category_name)
+        returning id into cat_id;
+    end if;
+
+    insert into rules (user_id, category_id, conditions)
+      values (uid, cat_id, item.conditions);
+    inserted_count := inserted_count + 1;
+  end loop;
+
+  return inserted_count;
+end;
+$$;
+
+grant execute on function apply_default_rule_template() to authenticated;
+
 -- Shared credit-card settlement (see CLAUDE.md's "Shared Credit Card
 -- Settlement" section). V1 scope: exactly two members per household,
 -- self-serve pairing by invite code (there's no self-serve signup, but

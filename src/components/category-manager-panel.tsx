@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ChevronDown, GripVertical, Plus, Trash2, X } from "lucide-react";
+import { ChevronDown, GripVertical, Plus, RotateCcw, Trash2, X } from "lucide-react";
 import {
   DndContext,
   PointerSensor,
@@ -26,6 +26,7 @@ import { CategoryCreateFields, NO_PARENT_VALUE } from "@/components/category-cre
 import { buildCategoryTree } from "@/lib/category-tree";
 import { buildCategoryColorMap, type CategorySwatch } from "@/lib/category-colors";
 import { createCategory } from "@/lib/create-category";
+import { ensureDefaultCategories } from "@/lib/ensure-default-categories";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -292,6 +293,8 @@ export function CategoryManagerPanel({ categories }: { categories: Category[] })
   const [pendingDelete, setPendingDelete] = useState<{ category: Category; indent: boolean } | null>(
     null,
   );
+  const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const supabase = useMemo(() => createClient(), []);
   const newNameInputRef = useRef<HTMLInputElement>(null);
 
@@ -355,6 +358,31 @@ export function CategoryManagerPanel({ categories }: { categories: Category[] })
     router.refresh();
   }
 
+  async function handleReset() {
+    setResetting(true);
+    // RLS's `auth.uid() = user_id` policy already scopes this to only the
+    // signed-in user's own categories. Deleting them cascades: subcategories
+    // go with their parent, transactions filed under a deleted category fall
+    // back to uncategorized (`on delete set null`), and any rule pointing at
+    // one is deleted with it (`on delete cascade`).
+    const { error: deleteError } = await supabase.from("categories").delete().not("id", "is", null);
+    if (deleteError) {
+      setResetting(false);
+      setResetConfirmOpen(false);
+      toast.error("Failed to reset categories.");
+      return;
+    }
+
+    // ensureDefaultCategories only seeds when the account has zero
+    // categories — true here since we just deleted them all.
+    await ensureDefaultCategories(supabase);
+
+    setResetting(false);
+    setResetConfirmOpen(false);
+    toast.success("Categories reset to defaults.");
+    router.refresh();
+  }
+
   function openAddForm(parent?: Category) {
     setParentId(parent ? parent.id : NO_PARENT_VALUE);
     setShowAddForm(true);
@@ -402,10 +430,16 @@ export function CategoryManagerPanel({ categories }: { categories: Category[] })
             {items.length} categor{items.length === 1 ? "y" : "ies"}
           </p>
         </div>
-        <Button type="button" onClick={() => openAddForm()}>
-          <Plus className="size-4" />
-          New Category
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button type="button" variant="outline" onClick={() => setResetConfirmOpen(true)}>
+            <RotateCcw className="size-4" />
+            Reset to Defaults
+          </Button>
+          <Button type="button" onClick={() => openAddForm()}>
+            <Plus className="size-4" />
+            New Category
+          </Button>
+        </div>
       </div>
 
       {showAddForm && (
@@ -485,6 +519,29 @@ export function CategoryManagerPanel({ categories }: { categories: Category[] })
             </AlertDialogFooter>
           </AlertDialogContent>
         )}
+      </AlertDialog>
+
+      <AlertDialog open={resetConfirmOpen} onOpenChange={setResetConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reset to default categories?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This deletes all your current categories and subcategories, then restores the
+              default set. Transactions filed under a deleted category become uncategorized, and
+              any rules pointing at one are deleted too. This can&rsquo;t be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={resetting}
+              onClick={() => void handleReset()}
+            >
+              {resetting ? "Resetting..." : "Reset"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
       </AlertDialog>
     </div>
   );
