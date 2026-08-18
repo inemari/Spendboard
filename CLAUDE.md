@@ -373,6 +373,17 @@ decisions. For work that's planned but not yet implemented, see
   per-file after the fact. Individual transactions can still be corrected
   afterward via the per-card toggle or the bulk action bar.
 - Custom category create/rename/delete.
+- **Reset to default categories** (`category-manager-panel.tsx`'s "Reset to
+  Defaults" button, an `AlertDialog`-confirmed destructive action). Deletes
+  every one of the user's categories — default and custom alike — then calls
+  `ensureDefaultCategories` again to reseed from `default_categories`, which
+  it can do unconditionally since the account now has zero categories.
+  Deleting cascades: subcategories go with their parent
+  (`parent_id on delete cascade`), transactions filed under a deleted
+  category become uncategorized (`category_id on delete set null`), and any
+  rule pointing at one is deleted with it (`category_id on delete cascade`).
+  There is no partial/selective reset — it's all-or-nothing, matching what
+  the confirmation dialog says.
 - **Shared category-creation fields.** `category-create-fields.tsx`'s
   `CategoryCreateFields` (icon picker + labeled Name field + labeled Parent
   select, plus the shared `NO_PARENT_VALUE` sentinel and "No parent
@@ -468,6 +479,20 @@ decisions. For work that's planned but not yet implemented, see
   (`highlightHref` in `rules-manager-panel.tsx`, via `monthAnchorFor`), which
   scrolls to and briefly ring-highlights those cards, then clears the
   `highlight` param after a few seconds.
+- **Reset to default rules** (`rules-manager-panel.tsx`'s "Reset to
+  Defaults" button, an `AlertDialog`-confirmed destructive action). Deletes
+  every one of the user's rules, then calls the `apply_default_rule_template`
+  RPC to reapply whichever rule template is currently marked `is_default`
+  (find-or-creating that template's categories by name, same as
+  `apply_rule_template`). This is a **self-service counterpart** to
+  `apply_rule_template` — that one is admin-only (an admin applying a
+  template to someone else's account), while this one only ever touches the
+  caller's own rows, so it skips the `is_admin()` check entirely and is
+  `security definer` purely to read `rule_templates`/`rule_template_items`,
+  which otherwise carry an "admin only" RLS policy. Already-categorized
+  transactions are untouched — only the `rules` rows themselves are
+  replaced. No-ops (deletes rules, applies nothing) if no template is
+  currently `is_default`.
 - **Rule matching conditions: equals, contains, starts with (name);
   contains, doesn't contain (subtitle).** `RuleCondition`
   (`src/lib/types.ts`), `apply-rules.ts`'s matcher, and the operator dropdown

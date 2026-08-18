@@ -7,6 +7,7 @@ import {
   CircleDashed,
   Pencil,
   Plus,
+  RotateCcw,
   Search,
   SearchX,
   Trash2,
@@ -17,6 +18,16 @@ import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { RuleEditor } from "@/components/rule-editor";
 import { RuleQuickAddForm } from "@/components/rule-quick-add-form";
 import {
@@ -67,8 +78,44 @@ export function RulesManagerPanel({
   const [query, setQuery] = useState("");
   const [pendingConflicts, setPendingConflicts] =
     useState<PendingRuleConflicts | null>(null);
+  const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
+  const [resetting, setResetting] = useState(false);
 
   const colorMap = useMemo(() => buildCategoryColorMap(categories), [categories]);
+
+  async function handleReset() {
+    setResetting(true);
+    // RLS's `auth.uid() = user_id` policy scopes this to only the
+    // signed-in user's own rules.
+    const { error: deleteError } = await supabase.from("rules").delete().not("id", "is", null);
+    if (deleteError) {
+      setResetting(false);
+      setResetConfirmOpen(false);
+      toast.error("Failed to reset rules.");
+      return;
+    }
+
+    const { data: insertedCount, error: applyError } = await supabase.rpc(
+      "apply_default_rule_template",
+    );
+    setResetting(false);
+    setResetConfirmOpen(false);
+
+    if (applyError) {
+      toast.error("Rules cleared, but restoring the defaults failed.");
+      router.refresh();
+      return;
+    }
+
+    if (!insertedCount) {
+      toast.info("Rules cleared. No default rule template is set up yet.");
+    } else {
+      toast.success(
+        `Rules reset to defaults (${insertedCount} rule${insertedCount === 1 ? "" : "s"}).`,
+      );
+    }
+    router.refresh();
+  }
 
   async function deleteRule(id: string) {
     const { error } = await supabase.from("rules").delete().eq("id", id);
@@ -266,12 +313,18 @@ export function RulesManagerPanel({
             {rules.length > 0 && " · hover a rule to edit or re-apply"}
           </p>
         </div>
-        {!showQuickAdd && (
-          <Button onClick={() => setShowQuickAdd(true)}>
-            <Plus className="size-4" />
-            New Rule
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => setResetConfirmOpen(true)}>
+            <RotateCcw className="size-4" />
+            Reset to Defaults
           </Button>
-        )}
+          {!showQuickAdd && (
+            <Button onClick={() => setShowQuickAdd(true)}>
+              <Plus className="size-4" />
+              New Rule
+            </Button>
+          )}
+        </div>
       </div>
 
       {showQuickAdd && (
@@ -372,6 +425,29 @@ export function RulesManagerPanel({
           })}
         </div>
       )}
+
+      <AlertDialog open={resetConfirmOpen} onOpenChange={setResetConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reset to default rules?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This deletes all your current rules, then restores whichever rule template is set
+              as the default (creating any of its categories you don&rsquo;t already have).
+              Already-categorized transactions are untouched. This can&rsquo;t be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={resetting}
+              onClick={() => void handleReset()}
+            >
+              {resetting ? "Resetting..." : "Reset"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
