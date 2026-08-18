@@ -208,6 +208,14 @@ create table if not exists rule_template_items (
   created_at timestamptz not null default now()
 );
 
+-- Names the item's parent category, one level deep (same shape as
+-- categories.parent_id) — null means "top-level category". Needed because
+-- category_name alone can't distinguish a subcategory from a top-level
+-- category of the same name, and apply_rule_template/apply_default_rule_template
+-- below must resolve/create the correct parent, not just any category with
+-- that name.
+alter table rule_template_items add column if not exists category_parent_name text;
+
 -- Only one template can be the default at a time — setting one clears any
 -- other, rather than leaving the app to guess which of several to use.
 create or replace function enforce_single_default_template()
@@ -265,11 +273,15 @@ $$;
 grant execute on function list_app_users() to authenticated;
 
 -- Copies one template's items into `target_user_id`'s own categories/rules —
--- finding-or-creating a top-level category by name, then inserting a rule
--- pointing at it. security definer + the is_admin() check is what lets this
--- write rows owned by someone other than the caller; without it, RLS's
--- `auth.uid() = user_id` policy on categories/rules would block it outright,
--- as intended for every other write path in the app.
+-- finding-or-creating the item's category by name (and, if the item names a
+-- parent, finding-or-creating that parent first and nesting under it), then
+-- inserting a rule pointing at it. Name matching is case/whitespace-
+-- insensitive (lower(trim(...))) so e.g. "Matbutikk" and "matbutikk " reuse
+-- the same category instead of creating a visual duplicate. security
+-- definer + the is_admin() check is what lets this write rows owned by
+-- someone other than the caller; without it, RLS's `auth.uid() = user_id`
+-- policy on categories/rules would block it outright, as intended for every
+-- other write path in the app.
 create or replace function apply_rule_template(p_template_id uuid, target_user_id uuid)
 returns void
 language plpgsql
@@ -278,6 +290,7 @@ set search_path = public
 as $$
 declare
   item record;
+  resolved_parent_id uuid;
   cat_id uuid;
 begin
   if not is_admin() then
@@ -285,16 +298,36 @@ begin
   end if;
 
   for item in
-    select category_name, conditions from rule_template_items where template_id = p_template_id
+    select category_name, category_parent_name, conditions
+    from rule_template_items where template_id = p_template_id
   loop
+    resolved_parent_id := null;
+
+    if item.category_parent_name is not null then
+      select id into resolved_parent_id
+        from categories
+        where user_id = target_user_id
+          and parent_id is null
+          and lower(trim(name)) = lower(trim(item.category_parent_name))
+        limit 1;
+
+      if resolved_parent_id is null then
+        insert into categories (user_id, name)
+          values (target_user_id, item.category_parent_name)
+          returning id into resolved_parent_id;
+      end if;
+    end if;
+
     select id into cat_id
       from categories
-      where user_id = target_user_id and parent_id is null and name = item.category_name
+      where user_id = target_user_id
+        and parent_id is not distinct from resolved_parent_id
+        and lower(trim(name)) = lower(trim(item.category_name))
       limit 1;
 
     if cat_id is null then
-      insert into categories (user_id, name)
-        values (target_user_id, item.category_name)
+      insert into categories (user_id, parent_id, name)
+        values (target_user_id, resolved_parent_id, item.category_name)
         returning id into cat_id;
     end if;
 
@@ -322,6 +355,7 @@ set search_path = public
 as $$
 declare
   item record;
+  resolved_parent_id uuid;
   cat_id uuid;
   default_template_id uuid;
   uid uuid := auth.uid();
@@ -337,16 +371,36 @@ begin
   end if;
 
   for item in
-    select category_name, conditions from rule_template_items where template_id = default_template_id
+    select category_name, category_parent_name, conditions
+    from rule_template_items where template_id = default_template_id
   loop
+    resolved_parent_id := null;
+
+    if item.category_parent_name is not null then
+      select id into resolved_parent_id
+        from categories
+        where user_id = uid
+          and parent_id is null
+          and lower(trim(name)) = lower(trim(item.category_parent_name))
+        limit 1;
+
+      if resolved_parent_id is null then
+        insert into categories (user_id, name)
+          values (uid, item.category_parent_name)
+          returning id into resolved_parent_id;
+      end if;
+    end if;
+
     select id into cat_id
       from categories
-      where user_id = uid and parent_id is null and name = item.category_name
+      where user_id = uid
+        and parent_id is not distinct from resolved_parent_id
+        and lower(trim(name)) = lower(trim(item.category_name))
       limit 1;
 
     if cat_id is null then
-      insert into categories (user_id, name)
-        values (uid, item.category_name)
+      insert into categories (user_id, parent_id, name)
+        values (uid, resolved_parent_id, item.category_name)
         returning id into cat_id;
     end if;
 

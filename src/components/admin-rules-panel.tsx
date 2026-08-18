@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Plus, Shield, Star, Trash2, Wand2 } from "lucide-react";
+import { Plus, Shield, Star, TriangleAlert, Trash2, Wand2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,15 +38,22 @@ import { describeRuleConditions } from "@/lib/rule-description";
 import { buildCategoryTree } from "@/lib/category-tree";
 import type { AppUser, DefaultCategory, RuleCondition, RuleTemplate, RuleTemplateItem } from "@/lib/types";
 
-type MyRule = { id: string; categoryName: string; conditions: RuleCondition[] };
+type MyRule = {
+  id: string;
+  categoryName: string;
+  categoryParentName: string | null;
+  conditions: RuleCondition[];
+};
 
-/** category_name is the persisted value (see rule_template_items — a
- *  template targets a category by name, not id, so it stays portable across
- *  users' distinct category sets). categoryTopId/categorySubId are
- *  editor-only state resolving that name against the admin-managed
- *  default_categories list, for the cascading dropdowns below. */
+/** category_name/category_parent_name are the persisted values (see
+ *  rule_template_items — a template targets a category by name, not id, so
+ *  it stays portable across users' distinct category sets).
+ *  categoryTopId/categorySubId are editor-only state resolving those names
+ *  against the admin-managed default_categories list, for the cascading
+ *  dropdowns below. */
 type DraftItem = {
   category_name: string;
+  category_parent_name: string | null;
   categoryTopId: string;
   categorySubId: string;
   conditions: RuleCondition[];
@@ -58,15 +65,28 @@ type EditorTarget = { mode: "create" } | { mode: "edit"; template: RuleTemplate 
  *  categoryTopId/categorySubId both being "" (nothing chosen yet at all). */
 const NO_SUBCATEGORY_VALUE = "__none__";
 
-/** Resolves a stored category_name back to its default_categories ids, so
- *  editing an existing template item pre-selects the matching dropdowns.
- *  A name that doesn't match anything in the current default list (e.g. a
- *  category since renamed/removed there) leaves both ids blank, requiring
- *  the admin to re-pick — same as a brand-new item. */
+/** Resolves a stored category_name (+ optional category_parent_name) back to
+ *  its default_categories ids, so editing an existing template item
+ *  pre-selects the matching dropdowns. When a parent name is stored, it's
+ *  matched first — more reliable than inferring the parent purely from
+ *  which default category happens to have a same-named child, since two
+ *  different parents could each have a child called the same thing. A name
+ *  that doesn't match anything in the current default list (e.g. a category
+ *  since renamed/removed there) leaves both ids blank, requiring the admin
+ *  to re-pick — same as a brand-new item. */
 function matchDefaultCategoryIds(
   defaults: DefaultCategory[],
   name: string,
+  parentName: string | null,
 ): { topId: string; subId: string } {
+  if (parentName) {
+    const top = defaults.find((d) => !d.parent_id && d.name === parentName);
+    if (top) {
+      const child = defaults.find((d) => d.parent_id === top.id && d.name === name);
+      return { topId: top.id, subId: child?.id ?? "" };
+    }
+    return { topId: "", subId: "" };
+  }
   const top = defaults.find((d) => !d.parent_id && d.name === name);
   if (top) return { topId: top.id, subId: "" };
   const child = defaults.find((d) => d.parent_id && d.name === name);
@@ -76,9 +96,14 @@ function matchDefaultCategoryIds(
 
 function itemsToDraft(items: RuleTemplateItem[], defaultCategories: DefaultCategory[]): DraftItem[] {
   return items.map((i) => {
-    const { topId, subId } = matchDefaultCategoryIds(defaultCategories, i.category_name);
+    const { topId, subId } = matchDefaultCategoryIds(
+      defaultCategories,
+      i.category_name,
+      i.category_parent_name,
+    );
     return {
       category_name: i.category_name,
+      category_parent_name: i.category_parent_name,
       categoryTopId: topId,
       categorySubId: subId,
       conditions: i.conditions.map((c) => ({ ...c, values: [...c.values] })),
@@ -118,6 +143,7 @@ export function AdminRulesPanel({
     const { error } = await supabase.from("rule_template_items").insert({
       template_id: templateId,
       category_name: rule.categoryName,
+      category_parent_name: rule.categoryParentName,
       conditions: rule.conditions,
     });
     setCopyingRuleId(null);
@@ -200,6 +226,14 @@ export function AdminRulesPanel({
           New template
         </Button>
       </div>
+
+      {templates.length > 0 && templates.every((t) => !t.is_default) && (
+        <div className="flex items-center gap-2 rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400">
+          <TriangleAlert className="size-4 shrink-0" />
+          No default template is set — new accounts and &ldquo;Reset to Defaults&rdquo; won&rsquo;t
+          receive any starter rules until one is marked default.
+        </div>
+      )}
 
       {myRules.length > 0 && (
         <div className="rounded-xl border p-4">
@@ -311,7 +345,11 @@ export function AdminRulesPanel({
                 ) : (
                   template.items.map((item) => (
                     <p key={item.id}>
-                      <span className="font-medium">{item.category_name}</span>
+                      <span className="font-medium">
+                        {item.category_parent_name
+                          ? `${item.category_parent_name} → ${item.category_name}`
+                          : item.category_name}
+                      </span>
                       {" — "}
                       <span className="text-muted-foreground">
                         {describeRuleConditions(item.conditions)}
@@ -450,6 +488,7 @@ function TemplateEditorContent({
       : [
           {
             category_name: "",
+            category_parent_name: null,
             categoryTopId: "",
             categorySubId: "",
             conditions: [{ ...EMPTY_CONDITION, values: [""] }],
@@ -468,7 +507,15 @@ function TemplateEditorContent({
     const topName = defaultCategories.find((d) => d.id === topId)?.name ?? "";
     setItems((prev) =>
       prev.map((it, i) =>
-        i !== index ? it : { ...it, categoryTopId: topId, categorySubId: "", category_name: topName },
+        i !== index
+          ? it
+          : {
+              ...it,
+              categoryTopId: topId,
+              categorySubId: "",
+              category_name: topName,
+              category_parent_name: null,
+            },
       ),
     );
   }
@@ -482,7 +529,12 @@ function TemplateEditorContent({
         const subName = resolvedSubId
           ? (defaultCategories.find((d) => d.id === resolvedSubId)?.name ?? topName)
           : topName;
-        return { ...it, categorySubId: resolvedSubId, category_name: subName };
+        return {
+          ...it,
+          categorySubId: resolvedSubId,
+          category_name: subName,
+          category_parent_name: resolvedSubId ? topName : null,
+        };
       }),
     );
   }
@@ -496,6 +548,7 @@ function TemplateEditorContent({
       ...prev,
       {
         category_name: "",
+        category_parent_name: null,
         categoryTopId: "",
         categorySubId: "",
         conditions: [{ ...EMPTY_CONDITION, values: [""] }],
@@ -516,6 +569,7 @@ function TemplateEditorContent({
     const cleanedItems = items
       .map((it) => ({
         category_name: it.category_name.trim(),
+        category_parent_name: it.category_parent_name?.trim() || null,
         conditions: it.conditions
           .map((c) => ({ ...c, values: c.values.map((v) => v.trim()).filter(Boolean) }))
           .filter((c) => c.values.length > 0),
@@ -561,6 +615,7 @@ function TemplateEditorContent({
         cleanedItems.map((it) => ({
           template_id: resolvedTemplateId,
           category_name: it.category_name,
+          category_parent_name: it.category_parent_name,
           conditions: it.conditions,
         })),
       );
