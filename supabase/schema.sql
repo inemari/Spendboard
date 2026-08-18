@@ -287,7 +287,9 @@ grant execute on function list_app_users() to authenticated;
 -- definer + the is_admin() check is what lets this write rows owned by
 -- someone other than the caller; without it, RLS's `auth.uid() = user_id`
 -- policy on categories/rules would block it outright, as intended for every
--- other write path in the app.
+-- other write path in the app. Idempotent per rule: skips the insert when a
+-- rule with the same user_id/category_id/conditions already exists, so
+-- re-applying the same template twice doesn't create duplicate rules.
 create or replace function apply_rule_template(p_template_id uuid, target_user_id uuid)
 returns void
 language plpgsql
@@ -337,8 +339,15 @@ begin
         returning id into cat_id;
     end if;
 
-    insert into rules (user_id, category_id, conditions)
-      values (target_user_id, cat_id, item.conditions);
+    if not exists (
+      select 1 from rules
+      where user_id = target_user_id
+        and category_id = cat_id
+        and conditions = item.conditions
+    ) then
+      insert into rules (user_id, category_id, conditions)
+        values (target_user_id, cat_id, item.conditions);
+    end if;
   end loop;
 end;
 $$;
@@ -410,9 +419,16 @@ begin
         returning id into cat_id;
     end if;
 
-    insert into rules (user_id, category_id, conditions)
-      values (uid, cat_id, item.conditions);
-    inserted_count := inserted_count + 1;
+    if not exists (
+      select 1 from rules
+      where user_id = uid
+        and category_id = cat_id
+        and conditions = item.conditions
+    ) then
+      insert into rules (user_id, category_id, conditions)
+        values (uid, cat_id, item.conditions);
+      inserted_count := inserted_count + 1;
+    end if;
   end loop;
 
   return inserted_count;
