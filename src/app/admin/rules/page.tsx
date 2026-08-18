@@ -33,11 +33,15 @@ export default async function AdminRulesPage() {
   const categoryNameById = new Map(categories.map((c) => [c.id, c.name]));
   const myRules = (rules as Rule[])
     .filter((r) => categoryNameById.has(r.category_id))
-    .map((r) => ({
-      id: r.id,
-      categoryName: categoryNameById.get(r.category_id)!,
-      conditions: r.conditions,
-    }));
+    .map((r) => {
+      const category = categories.find((c) => c.id === r.category_id)!;
+      return {
+        id: r.id,
+        categoryName: categoryNameById.get(r.category_id)!,
+        categoryParentName: category.parent_id ? (categoryNameById.get(category.parent_id) ?? null) : null,
+        conditions: r.conditions,
+      };
+    });
 
   return (
     <>

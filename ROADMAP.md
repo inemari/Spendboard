@@ -13,6 +13,69 @@ why), see the "Product requirements" section of [CLAUDE.md](CLAUDE.md).
   provisioning), so this is still a manual step after creating a user in the
   Supabase dashboard.
 
+## Admin default categories & rule templates
+
+Found via a code-level audit of `default_categories`, `rule_templates`/
+`rule_template_items`, `apply_rule_template`, `apply_default_rule_template`,
+and the admin panels that manage them (see CLAUDE.md's "Admin area" section
+for how this is documented today). Two of the original findings — template
+items targeting a subcategory silently creating a duplicate top-level
+category, and case/whitespace-sensitive category-name matching — plus the
+silent "no default template" state are now fixed: `rule_template_items`
+carries a `category_parent_name` column, both RPCs resolve/create the
+correct parent before the item's own category and match names via
+`lower(trim(...))`, and `admin-rules-panel.tsx` shows a warning banner when
+no template is marked default. Remaining gaps:
+
+- **Manual category creation still allows case/whitespace duplicates.**
+  `categories_user_parent_name_key` (the DB uniqueness constraint backing
+  "a user can't have two categories with the same name under the same
+  parent") compares raw `name`, which Postgres treats byte-for-byte — so a
+  user can still create "Groceries" and "groceries" side by side via the
+  normal Categories screen, even though `apply_rule_template`/
+  `apply_default_rule_template` now match names case/whitespace-
+  insensitively when applying a template. Fix: change the index to compare
+  on `lower(trim(name))` instead — but first check for and resolve any
+  existing case-variant duplicates per user/parent, since the migration
+  would fail outright if any already exist.
+- **No admin path to sync updated defaults to existing users.**
+  `ensureDefaultCategories` only seeds a brand-new account (zero categories)
+  or runs via a user's own destructive "Reset to Defaults." An admin who
+  fixes or adds a default category today has no way to push it to existing
+  accounts short of each user destructively resetting. Fix: add an additive,
+  non-destructive admin RPC (e.g. `admin_sync_default_categories
+  (target_user_id)`) that inserts only the default categories missing by
+  name, never touching or removing what the user already has.
+- **Applying a template is not idempotent.** Both `apply_rule_template` and
+  `apply_default_rule_template` unconditionally insert a new `rules` row per
+  item with no check for an existing identical rule, so re-running "apply to
+  user" (or a user hitting "Reset to Defaults" twice, e.g. after the partial-
+  failure case below) produces duplicate rules. Fix: skip the insert when a
+  rule with the same `user_id`/`category_id`/`conditions` already exists.
+- **"Reset to Defaults" (rules) can fail into a worse state than before.**
+  `rules-manager-panel.tsx`'s reset deletes all of the user's rules and only
+  then calls `apply_default_rule_template()`; if that call fails, the rules
+  are already gone and nothing is restored, with no recovery but retrying.
+  Fix: combine delete-then-reapply into one `security definer` RPC so both
+  steps run in a single transaction and a failure rolls back the delete too.
+- **Copied template items have no live link back to the source rule.** The
+  rule-templates panel's "Copy from your own rules" does a one-time string
+  copy of `category_name` into a new `rule_template_items` row — editing or
+  deleting the admin's original personal rule afterward has no effect on the
+  copy. Likely fine as designed, but worth a one-line UI note so it isn't
+  mistaken for a live link.
+- **Stale template-item category references go silently blank on edit.** If
+  an admin renames or removes a `default_categories` row a template item
+  still references by name, `matchDefaultCategoryIds` can't resolve it and
+  both cascading dropdowns render empty with no indication it's an orphaned
+  reference rather than a new, unset item. Fix: fall back to showing the raw
+  stored `category_name` as a placeholder/label when it can't be matched.
+- **No reordering for default categories in the admin panel.** The per-user
+  Categories screen supports drag-reordering; the admin default-categories
+  panel only appends new entries at the end via `sort_order`, with no way to
+  reposition existing ones short of raw SQL. Fix: reuse the reorder mechanism
+  already built for `category-manager-panel.tsx`.
+
 ## Could have
 
 - **Household settlement beyond V1's two-member 50/50 split.** The shared

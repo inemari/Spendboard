@@ -63,6 +63,11 @@ export type RuleTemplateItem = {
   id: string;
   template_id: string;
   category_name: string;
+  /** Parent category name, one level deep, or null for a top-level
+   *  category — lets apply_rule_template/apply_default_rule_template nest
+   *  this item under the right parent instead of always matching top-level
+   *  categories only. */
+  category_parent_name: string | null;
   conditions: RuleCondition[];
 };
 
