@@ -14,17 +14,21 @@ import {
 } from "@/components/ui/select";
 import { formatAmount, formatDate, formatTxType } from "@/lib/format";
 import { flattenWithDepth } from "@/lib/category-tree";
+import { SettlementTagControl } from "@/components/settlement-tag-control";
 import { cn } from "@/lib/utils";
-import type { Category, Transaction } from "@/lib/types";
+import type { Category, CreditInvoice, Transaction } from "@/lib/types";
 
 const UNCATEGORIZED_VALUE = "__uncategorized__";
 
 export function TransactionCard({
   transaction,
   categories,
+  invoices = [],
+  openInvoiceIds = new Set(),
   onCategoryChange,
   onTypeToggle,
   onCardTypeToggle,
+  onInvoiceChange,
   onNotesChange,
   onDelete,
   selected = false,
@@ -36,9 +40,14 @@ export function TransactionCard({
 }: {
   transaction: Transaction;
   categories: Category[];
+  /** Every invoice the household has, for the settlement tag control.
+   *  Omitted (and the control hidden) by callers that don't offer it. */
+  invoices?: CreditInvoice[];
+  openInvoiceIds?: Set<string>;
   onCategoryChange: (categoryId: string | null) => void;
   onTypeToggle: () => void;
   onCardTypeToggle: () => void;
+  onInvoiceChange?: (invoiceId: string | null) => void;
   onNotesChange: (notes: string | null) => void;
   onDelete: () => void;
   selected?: boolean;
@@ -211,6 +220,18 @@ export function TransactionCard({
               <CreditCard className="size-2.5" />
               {transaction.card_type}
             </button>
+            {onInvoiceChange && (
+              <SettlementTagControl
+                transaction={transaction}
+                invoices={invoices}
+                openInvoiceIds={openInvoiceIds}
+                onChange={onInvoiceChange}
+                className={cn(
+                  "h-auto w-auto shrink-0 rounded-full border font-medium",
+                  compact ? "px-1.5 py-px text-[10px]" : "px-2 py-0.5 text-[11px]",
+                )}
+              />
+            )}
           </div>
           {/* Notes stay available even in compact (board) cards — unlike category/type,
               which are one click away in the overview list, there's no other surface

@@ -12,26 +12,33 @@ import {
 } from "@/components/ui/select";
 import { flattenWithDepth } from "@/lib/category-tree";
 import { formatTxType } from "@/lib/format";
-import type { Category, CardType, TxType } from "@/lib/types";
+import type { Category, CardType, CreditInvoice, TxType } from "@/lib/types";
 
 const UNCATEGORIZED_VALUE = "__uncategorized__";
+const NO_INVOICE_VALUE = "__no_invoice__";
 const TYPES: TxType[] = ["personal", "common", "need_review"];
 const CARD_TYPES: CardType[] = ["credit", "debit"];
 
 export function BulkActionBar({
   count,
   categories,
+  openInvoices = [],
   onCategoryChange,
   onTypeChange,
   onCardTypeChange,
+  onInvoiceChange,
   onDelete,
   onClear,
 }: {
   count: number;
   categories: Category[];
+  /** Invoices still eligible for a settlement tag — empty (and the control
+   *  hidden) for a solo user with no household. */
+  openInvoices?: CreditInvoice[];
   onCategoryChange: (categoryId: string | null) => void;
   onTypeChange: (type: TxType) => void;
   onCardTypeChange: (cardType: CardType) => void;
+  onInvoiceChange?: (invoiceId: string | null) => void;
   onDelete: () => void;
   onClear: () => void;
 }) {
@@ -113,6 +120,26 @@ export function BulkActionBar({
             ))}
           </SelectContent>
         </Select>
+
+        {onInvoiceChange && openInvoices.length > 0 && (
+          <Select
+            onValueChange={(value: string | null) =>
+              value && onInvoiceChange(value === NO_INVOICE_VALUE ? null : value)
+            }
+          >
+            <SelectTrigger className="h-8 w-40 rounded-full text-xs">
+              <SelectValue placeholder="Set settlement" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={NO_INVOICE_VALUE}>Remove settlement</SelectItem>
+              {openInvoices.map((invoice) => (
+                <SelectItem key={invoice.id} value={invoice.id}>
+                  {invoice.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
 
         <Separator orientation="vertical" className="h-6" />
 

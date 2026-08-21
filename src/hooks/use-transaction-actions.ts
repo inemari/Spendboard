@@ -9,7 +9,7 @@ import { computeTotals } from "@/lib/totals";
 import { formatTxType } from "@/lib/format";
 import { findSimilarTransactions, normalizeDescription } from "@/lib/similar-transactions";
 import { findMergeTarget, mergeValuesIntoRule } from "@/lib/rule-merge";
-import type { Category, Transaction, TxType, CardType, Rule } from "@/lib/types";
+import type { Category, CreditInvoice, Transaction, TxType, CardType, Rule } from "@/lib/types";
 
 export type PendingSimilarMove = {
   target: Transaction;
@@ -29,6 +29,13 @@ export type PendingDelete = { ids: string[] };
 export function useTransactionActions(
   initialTransactions: Transaction[],
   categories: Category[],
+  invoices: CreditInvoice[] = [],
+  /** Invoices still eligible for retroactive (re)assignment — the same
+   *  eligibility rule as the upload dialog's invoice picker. A transaction
+   *  already tagged to an invoice outside this set (mid-settlement or
+   *  completed) is left alone by the bulk handler rather than desynced from
+   *  a settlement that's already in flight or frozen. */
+  openInvoiceIds: Set<string> = new Set(),
 ) {
   const [transactions, setTransactions] = useState(initialTransactions);
   useEffect(() => setTransactions(initialTransactions), [initialTransactions]);
@@ -172,7 +179,7 @@ export function useTransactionActions(
     // creating a second rule for the same condition, if one already exists.
     const { data: existingRows, error: fetchError } = await supabase
       .from("rules")
-      .select("id, category_id, conditions, is_default")
+      .select("id, category_id, conditions, type, is_default")
       .eq("category_id", categoryId);
 
     if (fetchError) {
@@ -181,7 +188,10 @@ export function useTransactionActions(
     }
 
     const existingRules = (existingRows ?? []) as unknown as Rule[];
-    const mergeTarget = findMergeTarget(existingRules, categoryId, "name", "equals");
+    // This flow never sets a type itself, so it only ever merges into
+    // another plain (type-less) rule for the same condition — not into one
+    // that also sets Common/Personal/Need review.
+    const mergeTarget = findMergeTarget(existingRules, categoryId, "name", "equals", null);
 
     const error = mergeTarget
       ? (await supabase.from("rules").update({
@@ -242,6 +252,50 @@ export function useTransactionActions(
 
   function handleCardTypeChangeMulti(ids: string[], cardType: CardType) {
     void bulkUpdate(ids, { card_type: cardType }, `Set ${ids.length} transactions to ${cardType}`);
+    clearSelection();
+  }
+
+  function handleInvoiceChange(id: string, invoiceId: string | null) {
+    const target = transactions.find((t) => t.id === id);
+    const previousInvoiceId = target?.credit_invoice_id ?? null;
+    if (previousInvoiceId === invoiceId) return;
+
+    void updateTransaction(id, { credit_invoice_id: invoiceId });
+
+    const label = invoiceId ? (invoices.find((i) => i.id === invoiceId)?.label ?? "settlement") : null;
+    toast.success(label ? `Tagged to ${label}` : "Removed settlement tag", {
+      action: {
+        label: "Undo",
+        onClick: () => void updateTransaction(id, { credit_invoice_id: previousInvoiceId }),
+      },
+    });
+  }
+
+  function handleInvoiceChangeMulti(ids: string[], invoiceId: string | null) {
+    // Skip any transaction already tagged to an invoice that's mid-settlement
+    // or completed — same eligibility rule as the single-transaction editor,
+    // just applied per-row across the selection.
+    const eligibleIds = ids.filter((id) => {
+      const current = transactions.find((t) => t.id === id)?.credit_invoice_id ?? null;
+      return !current || openInvoiceIds.has(current);
+    });
+    const skipped = ids.length - eligibleIds.length;
+
+    if (eligibleIds.length === 0) {
+      toast.error("Those transactions already belong to a settlement in progress.");
+      clearSelection();
+      return;
+    }
+
+    const label = invoiceId ? (invoices.find((i) => i.id === invoiceId)?.label ?? "settlement") : null;
+    const skippedSuffix = skipped > 0 ? ` (${skipped} skipped — already in a settlement)` : "";
+    void bulkUpdate(
+      eligibleIds,
+      { credit_invoice_id: invoiceId },
+      (label
+        ? `Tagged ${eligibleIds.length} transactions to ${label}`
+        : `Removed settlement tag from ${eligibleIds.length} transactions`) + skippedSuffix,
+    );
     clearSelection();
   }
 
@@ -318,6 +372,8 @@ export function useTransactionActions(
     handleTypeChangeMulti,
     handleCardTypeToggle,
     handleCardTypeChangeMulti,
+    handleInvoiceChange,
+    handleInvoiceChangeMulti,
     handleNotesChange,
     handleDeleteTransaction,
     handleDeleteMulti,

@@ -32,6 +32,7 @@ import { flattenWithDepth } from "@/lib/category-tree";
 import { ruleMatchesTransaction } from "@/lib/apply-rules";
 import { buildCategoryColorMap, NEUTRAL_SWATCH, type CategorySwatch } from "@/lib/category-colors";
 import { categoryIcon } from "@/lib/category-icons";
+import { formatTxType } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { Category, Rule } from "@/lib/types";
 
@@ -143,9 +144,13 @@ export function RulesManagerPanel({
 
     if (cleanTx.length > 0) {
       const cleanIds = cleanTx.map((t) => t.id);
+      // These transactions are all still uncategorized, so setting the
+      // rule's type here (when it has one) can't clobber a categorized
+      // transaction's type — consistent with "rules never overwrite an
+      // already-categorized transaction."
       const { error: updateError } = await supabase
         .from("transactions")
-        .update({ category_id: rule.category_id })
+        .update({ category_id: rule.category_id, ...(rule.type ? { type: rule.type } : {}) })
         .in("id", cleanIds);
 
       if (updateError) {
@@ -486,6 +491,11 @@ function RuleRow({
           <Icon className="size-3.5" strokeWidth={2} />
         </span>
         <span className="font-semibold">{categoryName}</span>
+        {rule.type && (
+          <Badge variant="secondary" className="bg-amber-100 font-medium text-amber-700">
+            {formatTxType(rule.type)}
+          </Badge>
+        )}
       </div>
     </div>
   );

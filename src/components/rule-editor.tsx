@@ -25,7 +25,8 @@ import { flattenWithDepth } from "@/lib/category-tree";
 import { describeRule } from "@/lib/rule-description";
 import { findMergeTarget, mergeValuesIntoRule } from "@/lib/rule-merge";
 import { RuleConditionsEditor } from "@/components/rule-conditions-editor";
-import type { Category, Rule, RuleCondition } from "@/lib/types";
+import { RuleTypeSelect } from "@/components/rule-type-select";
+import type { Category, Rule, RuleCondition, TxType } from "@/lib/types";
 
 /**
  * Edit-only: creating a rule goes through the quick-add form on the Rules
@@ -77,6 +78,7 @@ function RuleEditorContent({
   const [conditions, setConditions] = useState<RuleCondition[]>(
     existing.conditions.map((c) => ({ ...c, values: [...c.values] })),
   );
+  const [type, setType] = useState<TxType | null>(existing.type);
   const [saving, setSaving] = useState(false);
 
   async function handleSave() {
@@ -115,7 +117,13 @@ function RuleEditorContent({
     const otherRules = existingRules.filter((r) => r.id !== existing.id);
     const mergeTarget =
       cleanedConditions.length === 1
-        ? findMergeTarget(otherRules, categoryId, cleanedConditions[0].field, cleanedConditions[0].operator)
+        ? findMergeTarget(
+            otherRules,
+            categoryId,
+            cleanedConditions[0].field,
+            cleanedConditions[0].operator,
+            type,
+          )
         : undefined;
 
     let error;
@@ -133,7 +141,7 @@ function RuleEditorContent({
     } else {
       ({ error } = await supabase
         .from("rules")
-        .update({ category_id: categoryId, conditions: cleanedConditions, is_default: false })
+        .update({ category_id: categoryId, conditions: cleanedConditions, type, is_default: false })
         .eq("id", existing.id));
     }
     setSaving(false);
@@ -159,7 +167,7 @@ function RuleEditorContent({
     <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
       <DialogHeader>
         <DialogTitle>Edit rule</DialogTitle>
-        <DialogDescription>{describeRule(previewableConditions, categoryName)}</DialogDescription>
+        <DialogDescription>{describeRule(previewableConditions, categoryName, type)}</DialogDescription>
       </DialogHeader>
 
       <div className="flex flex-col gap-3">
@@ -177,6 +185,8 @@ function RuleEditorContent({
         </Select>
 
         <RuleConditionsEditor conditions={conditions} onChange={setConditions} />
+
+        <RuleTypeSelect value={type} onChange={setType} />
       </div>
 
       <DialogFooter>

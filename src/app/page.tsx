@@ -49,7 +49,12 @@ export default async function OverviewPage({
           </p>
         )}
 
-        <TransactionBoard initialTransactions={transactions} categories={categories} />
+        <TransactionBoard
+          initialTransactions={transactions}
+          categories={categories}
+          invoices={invoices}
+          openInvoices={openInvoices}
+        />
       </div>
     </div>
   );

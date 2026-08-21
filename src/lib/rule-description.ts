@@ -1,4 +1,5 @@
-import type { RuleCondition } from "@/lib/types";
+import { formatTxType } from "@/lib/format";
+import type { RuleCondition, TxType } from "@/lib/types";
 
 /** One condition with its field/operator spelled out, e.g. `named exactly
  * "foo" or "bar"` — the values within a condition are OR'd. */
@@ -23,8 +24,13 @@ export function describeRuleConditions(conditions: RuleCondition[]): string {
 
 /** Full sentence describing what a rule does, e.g. `Transactions named
  * exactly "vitusapotek" or "Apotek 1" are automatically moved to
- * "Apotek".` — used in the rule editor's live preview. */
-export function describeRule(conditions: RuleCondition[], categoryName: string): string {
+ * "Apotek" and marked Personal.` — used in the rule editor's live preview. */
+export function describeRule(
+  conditions: RuleCondition[],
+  categoryName: string,
+  type?: TxType | null,
+): string {
   if (conditions.length === 0) return "This rule has no conditions yet.";
-  return `Transactions ${describeRuleConditions(conditions)} are automatically moved to "${categoryName}".`;
+  const typeSuffix = type ? ` and marked ${formatTxType(type)}` : "";
+  return `Transactions ${describeRuleConditions(conditions)} are automatically moved to "${categoryName}"${typeSuffix}.`;
 }

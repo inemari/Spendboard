@@ -40,6 +40,7 @@ export default async function AdminRulesPage() {
         categoryName: categoryNameById.get(r.category_id)!,
         categoryParentName: category.parent_id ? (categoryNameById.get(category.parent_id) ?? null) : null,
         conditions: r.conditions,
+        type: r.type,
       };
     });
 

@@ -40,6 +40,9 @@ export type Rule = {
   category_id: string;
   /** Conditions are AND'd together. */
   conditions: RuleCondition[];
+  /** Optional second effect: also set the matched transaction's type, not
+   *  just its category. Null means this rule doesn't touch type. */
+  type: TxType | null;
   /** True when this rule is managed by the active admin template. User
    * edits convert it to a personal rule so a later refresh preserves it. */
   is_default: boolean;
@@ -73,6 +76,9 @@ export type RuleTemplateItem = {
    *  categories only. */
   category_parent_name: string | null;
   conditions: RuleCondition[];
+  /** Mirrors Rule.type — carries the same optional "also set type" effect
+   *  through a template, so copying/syncing a rule can't silently drop it. */
+  type: TxType | null;
 };
 
 export type AppUser = {

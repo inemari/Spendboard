@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { parseTransactionFile } from "@/lib/parse-transactions";
-import { categoryIdForTransaction } from "@/lib/apply-rules";
+import { matchingRuleFor } from "@/lib/apply-rules";
 import type { CardType, Rule } from "@/lib/types";
 
 const CARD_TYPES: CardType[] = ["credit", "debit"];
@@ -103,20 +103,27 @@ export async function POST(request: NextRequest) {
 
   const { data: rules } = await supabase
     .from("rules")
-    .select("id, category_id, created_at, conditions, is_default");
+    .select("id, category_id, created_at, conditions, type, is_default");
 
-  const rows = parsed.map((t) => ({
-    month_id: monthIdByKey.get(t.date.slice(0, 7))!,
-    date: t.date,
-    description: t.description,
-    location: t.location,
-    amount: t.amount,
-    source_hash: t.sourceHash,
-    raw_row: t.rawRow,
-    category_id: categoryIdForTransaction(t.description, t.location, (rules ?? []) as Rule[]),
-    card_type: cardType as CardType,
-    credit_invoice_id: resolvedInvoiceId,
-  }));
+  const rows = parsed.map((t) => {
+    const matchedRule = matchingRuleFor(t.description, t.location, (rules ?? []) as Rule[]);
+    return {
+      month_id: monthIdByKey.get(t.date.slice(0, 7))!,
+      date: t.date,
+      description: t.description,
+      location: t.location,
+      amount: t.amount,
+      source_hash: t.sourceHash,
+      raw_row: t.rawRow,
+      category_id: matchedRule?.category_id ?? null,
+      // Omitted entirely (rather than passed as null) when no rule sets a
+      // type, so the column's own `default 'personal'` applies exactly as
+      // it did before this field existed on a rule.
+      ...(matchedRule?.type ? { type: matchedRule.type } : {}),
+      card_type: cardType as CardType,
+      credit_invoice_id: resolvedInvoiceId,
+    };
+  });
 
   // ignoreDuplicates: re-uploading the same file must not clobber transactions
   // the user has already categorized (matched by month_id + source_hash).
