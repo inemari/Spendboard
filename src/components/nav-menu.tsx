@@ -32,7 +32,7 @@ const links = [
   { href: "/categorize", label: "Categorize", Icon: MousePointerClick },
   { href: "/categories", label: "Manage categories", Icon: Tags },
   { href: "/rules", label: "Rules", Icon: Wand2 },
-  { href: "/settlement", label: "Settlement", Icon: Receipt },
+  { href: "/settlement", label: "Settlements", Icon: Receipt },
 ];
 
 const adminLinks = [
@@ -73,7 +73,8 @@ export function NavMenu({ userEmail }: { userEmail?: string }) {
               onClick={() => setOpen(false)}
               className={cn(
                 "flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors hover:bg-muted",
-                pathname === link.href
+                pathname === link.href ||
+                (link.href !== "/" && pathname.startsWith(`${link.href}/`))
                   ? "bg-muted text-primary"
                   : "text-foreground",
               )}
