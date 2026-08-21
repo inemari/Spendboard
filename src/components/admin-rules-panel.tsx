@@ -3,11 +3,10 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Plus, Shield, Star, TriangleAlert, Trash2, Wand2 } from "lucide-react";
+import { Plus, Shield, Trash2, Wand2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -195,19 +194,6 @@ export function AdminRulesPanel({
     router.refresh();
   }
 
-  async function handleSetDefault(template: RuleTemplate) {
-    const { error } = await supabase
-      .from("rule_templates")
-      .update({ is_default: !template.is_default })
-      .eq("id", template.id);
-
-    if (error) {
-      toast.error("Failed to update default template.");
-      return;
-    }
-    router.refresh();
-  }
-
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 p-6">
       <div className="flex items-start justify-between gap-4">
@@ -217,9 +203,9 @@ export function AdminRulesPanel({
             Rule templates
           </h2>
           <p className="text-sm text-muted-foreground">
-            Named, reusable rule bundles. The default one is what a brand-new user should
-            receive; any template can also be applied to an existing user on demand. Applied
-            template rules are managed defaults, while users keep their personal rules.
+            Named, reusable rule bundles. Every rule in every template is included when users
+            update their admin rules, while personal rules are kept. A template can also be
+            applied to an existing user on demand.
           </p>
         </div>
         <Button onClick={() => setEditorTarget({ mode: "create" })}>
@@ -227,14 +213,6 @@ export function AdminRulesPanel({
           New template
         </Button>
       </div>
-
-      {templates.length > 0 && templates.every((t) => !t.is_default) && (
-        <div className="flex items-center gap-2 rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400">
-          <TriangleAlert className="size-4 shrink-0" />
-          No default template is set — new accounts and &ldquo;Update Rules&rdquo; won&rsquo;t
-          receive any starter rules until one is marked default.
-        </div>
-      )}
 
       {myRules.length > 0 && (
         <div className="rounded-xl border p-4">
@@ -299,28 +277,12 @@ export function AdminRulesPanel({
             <div key={template.id} className="flex flex-col gap-3 rounded-xl border p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-semibold">{template.name}</h3>
-                    {template.is_default && (
-                      <Badge className="gap-1">
-                        <Star className="size-3" />
-                        Default
-                      </Badge>
-                    )}
-                  </div>
+                  <h3 className="font-semibold">{template.name}</h3>
                   {template.description && (
                     <p className="text-sm text-muted-foreground">{template.description}</p>
                   )}
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => void handleSetDefault(template)}
-                  >
-                    <Star className="size-3.5" />
-                    {template.is_default ? "Unset default" : "Set as default"}
-                  </Button>
                   <Button
                     variant="outline"
                     size="sm"
@@ -482,7 +444,6 @@ function TemplateEditorContent({
 
   const [name, setName] = useState(existing?.name ?? "");
   const [description, setDescription] = useState(existing?.description ?? "");
-  const [isDefault, setIsDefault] = useState(existing?.is_default ?? false);
   const [items, setItems] = useState<DraftItem[]>(
     existing
       ? itemsToDraft(existing.items, defaultCategories)
@@ -590,7 +551,7 @@ function TemplateEditorContent({
     if (resolvedTemplateId) {
       const { error: updateError } = await supabase
         .from("rule_templates")
-        .update({ name: name.trim(), description: description.trim() || null, is_default: isDefault })
+        .update({ name: name.trim(), description: description.trim() || null })
         .eq("id", resolvedTemplateId);
       error = updateError?.message ?? null;
 
@@ -604,7 +565,7 @@ function TemplateEditorContent({
     } else {
       const { data, error: insertError } = await supabase
         .from("rule_templates")
-        .insert({ name: name.trim(), description: description.trim() || null, is_default: isDefault })
+        .insert({ name: name.trim(), description: description.trim() || null })
         .select("id")
         .single();
       error = insertError?.message ?? null;
@@ -654,16 +615,6 @@ function TemplateEditorContent({
           value={description}
           onChange={(e) => setDescription(e.target.value)}
         />
-
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={isDefault}
-            onChange={(e) => setIsDefault(e.target.checked)}
-            className="size-4 accent-primary"
-          />
-          Default template for new users
-        </label>
 
         {items.map((item, index) => {
           const subcategories = childrenByTopId.get(item.categoryTopId) ?? [];

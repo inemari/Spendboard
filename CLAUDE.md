@@ -480,14 +480,14 @@ decisions. For work that's planned but not yet implemented, see
   an admin template carry `rules.is_default = true`; rules users create are
   personal (`false`), and manually editing or merging into a default rule
   turns that customized copy personal. `rules-manager-panel.tsx`'s "Update
-  Rules" button calls `apply_default_rule_template()`, which finds the active
-  admin template, deletes only the caller's managed default rules, and
-  recreates that set from the template while leaving every personal rule
-  untouched. The lookup/delete/reapply sequence is one database transaction,
+  Rules" button calls `apply_default_rule_template()`, which deletes only the
+  caller's managed default rules and recreates that set from every admin
+  template item while leaving every personal rule
+  untouched. The delete/reapply sequence is one database transaction,
   so any failure rolls the whole refresh back. It also find-or-creates named
   categories just like `apply_rule_template`; already-categorized
-  transactions are untouched. The RPC returns `-1` and changes nothing when
-  no template is marked default.
+  transactions are untouched. If there are no templates, the synchronized
+  managed set is simply empty.
 - **Rule matching conditions: equals, contains, starts with (name);
   contains, doesn't contain (subtitle).** `RuleCondition`
   (`src/lib/types.ts`), `apply-rules.ts`'s matcher, and the operator dropdown
@@ -553,15 +553,17 @@ decisions. For work that's planned but not yet implemented, see
     `category_id`, making it portable across different users' distinct
     category sets. Lists templates (each showing its items' plain-English
     description via `describeRuleConditions`), lets an admin create/edit/
-    delete them, mark one `is_default` (a DB trigger enforces only one at a
-    time), and apply any template to a chosen existing user on demand
+    delete them, and apply any template to a chosen existing user on demand
     (there's no self-serve signup to hook a "new user" flow into yet, so
     applying is a manual, admin-triggered action for now — see README on how
-    users are provisioned). Applying a template finds-or-creates each item's
+    users are provisioned). Every item from every template is included when a
+    user clicks "Update Rules," and newly provisioned users receive every
+    template as well. Applying one template manually finds-or-creates each
+    item's
     named category for the target user and inserts the corresponding rule as
     a managed default (`rules.is_default = true`); it never removes any rule
     that user already has. The user's "Update Rules" action later replaces
-    this managed set with the current default template while preserving all
+    this managed set with all current admin templates while preserving all
     personal rules.
     - **Each template item's category is picked from a cascading dropdown
       pair, not typed freehand.** The top-level `Select` lists

@@ -18,14 +18,13 @@ why), see the "Product requirements" section of [CLAUDE.md](CLAUDE.md).
 Found via a code-level audit of `default_categories`, `rule_templates`/
 `rule_template_items`, `apply_rule_template`, `apply_default_rule_template`,
 and the admin panels that manage them (see CLAUDE.md's "Admin area" section
-for how this is documented today). Two of the original findings — template
+for how this is documented today). Three of the original findings — template
 items targeting a subcategory silently creating a duplicate top-level
-category, and case/whitespace-sensitive category-name matching — plus the
-silent "no default template" state are now fixed: `rule_template_items`
-carries a `category_parent_name` column, both RPCs resolve/create the
-correct parent before the item's own category and match names via
-`lower(trim(...))`, and `admin-rules-panel.tsx` shows a warning banner when
-no template is marked default. A third — no admin path to sync updated
+category, case/whitespace-sensitive category-name matching, and syncing only
+one selected template — are now fixed: `rule_template_items` carries a
+`category_parent_name` column, both RPCs resolve/create the correct parent
+before the item's own category and match names via `lower(trim(...))`, and
+"Update Rules" synchronizes every admin template. A fourth — no admin path to sync updated
 defaults to existing users — is also fixed: `admin_sync_default_categories
 (target_user_id)` (`supabase/schema.sql`) inserts only the default
 categories a user doesn't already have by name (parents first, same

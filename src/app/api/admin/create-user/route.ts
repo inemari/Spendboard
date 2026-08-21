@@ -41,23 +41,20 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  // Best-effort: seed the new account with whichever rule template is
-  // currently marked is_default, mirroring what an admin would otherwise
-  // have to apply by hand from /admin/rules right after creating the user.
-  // A missing/failed default template must never block account creation
-  // itself, so this runs under the caller's own (already admin-checked)
-  // session and swallows its own errors.
+  // Best-effort: seed the new account with every admin rule template. A
+  // failed template must never block account creation itself, so these run
+  // under the caller's own (already admin-checked) session and swallow their
+  // own errors.
   if (data.user?.id) {
-    const { data: defaultTemplate } = await supabase
-      .from("rule_templates")
-      .select("id")
-      .eq("is_default", true)
-      .maybeSingle();
+    const targetUserId = data.user.id;
+    const { data: templates } = await supabase.from("rule_templates").select("id");
 
-    if (defaultTemplate) {
+    // Apply sequentially so two templates that target the same new category
+    // cannot race each other while find-or-creating it.
+    for (const template of templates ?? []) {
       await supabase.rpc("apply_rule_template", {
-        p_template_id: defaultTemplate.id,
-        target_user_id: data.user.id,
+        p_template_id: template.id,
+        target_user_id: targetUserId,
       });
     }
   }

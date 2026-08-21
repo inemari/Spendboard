@@ -181,9 +181,9 @@ grant select, insert, update, delete on categories, months, transactions, rules 
 
 -- Admin rule templates (src/app/admin/rules/, src/components/admin-rules-panel.tsx).
 -- Global, not scoped to any one user — templates are named, reusable rule
--- bundles an admin curates, one of which can be marked `is_default` to mark
--- what a brand-new user should receive. `category_name` on each item (not a
--- category_id) is what makes a template portable across users, since every
+-- bundles an admin curates. Every template item is part of the managed
+-- default-rule set users receive when they update. `category_name` on each
+-- item (not a category_id) is what makes a template portable across users, since every
 -- user has their own distinct set of categories; applying a template
 -- finds-or-creates a category by that name for whichever user it's applied
 -- to (see `apply_rule_template` below).
@@ -260,8 +260,9 @@ end $$;
 create index if not exists rules_user_id_is_default_idx
   on rules (user_id, is_default);
 
--- Only one template can be the default at a time — setting one clears any
--- other, rather than leaving the app to guess which of several to use.
+-- Legacy compatibility for databases/UI versions that exposed one selected
+-- template. Current synchronization includes every template regardless of
+-- this flag, but retaining the trigger keeps old clients deterministic.
 create or replace function enforce_single_default_template()
 returns trigger
 language plpgsql
@@ -540,12 +541,11 @@ $$;
 grant execute on function sync_default_categories() to authenticated;
 
 -- Self-service template refresh used by the Rules page's "Update Rules"
--- action. It replaces only rules marked is_default and preserves every
--- personal rule. Looking up the active template happens before the delete,
--- and the whole function is one transaction, so a missing template or any
--- insertion error can never leave the user with a partially refreshed set.
--- Returns -1 when no template is marked default; otherwise returns the number
--- of managed default rules active after synchronization.
+-- action. It replaces only rules marked is_default, preserves every personal
+-- rule, and rebuilds the managed set from every admin template item. The
+-- delete/reapply sequence is one transaction, so any insertion error can
+-- never leave the user with a partially refreshed set. Returns the number of
+-- managed default rules active after synchronization.
 create or replace function apply_default_rule_template()
 returns int
 language plpgsql
@@ -556,7 +556,6 @@ declare
   item record;
   resolved_parent_id uuid;
   cat_id uuid;
-  default_template_id uuid;
   existing_rule_id uuid;
   uid uuid := auth.uid();
   synced_count int := 0;
@@ -565,16 +564,12 @@ begin
     raise exception 'not authenticated';
   end if;
 
-  select id into default_template_id from rule_templates where is_default limit 1;
-  if default_template_id is null then
-    return -1;
-  end if;
-
   delete from rules where user_id = uid and is_default;
 
   for item in
     select category_name, category_parent_name, conditions
-    from rule_template_items where template_id = default_template_id
+    from rule_template_items
+    order by created_at
   loop
     resolved_parent_id := null;
 

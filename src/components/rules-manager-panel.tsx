@@ -84,13 +84,9 @@ export function RulesManagerPanel({
       return;
     }
 
-    if (syncedCount === -1) {
-      toast.info("No default rule template is set up yet.");
-    } else {
-      toast.success(
-        `Default rules updated (${syncedCount ?? 0} rule${syncedCount === 1 ? "" : "s"}). Your personal rules were kept.`,
-      );
-    }
+    toast.success(
+      `Admin rules updated (${syncedCount ?? 0} rule${syncedCount === 1 ? "" : "s"}). Your personal rules were kept.`,
+    );
     router.refresh();
   }
 
