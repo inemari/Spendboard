@@ -44,3 +44,17 @@ export function formatDayHeading(isoDate: string): string {
 export function formatSpend(amount: number): string {
   return currencyFormatter.format(Math.abs(amount));
 }
+
+/**
+ * A settlement transfer figure (Personal + Common share − contribution) can
+ * go negative when a contribution overshoots what's actually owed. Showing
+ * that as a bare "-500 kr" under a "Total to transfer" label reads like an
+ * error; flipping the label to make it a credit is clearer than any amount
+ * of minus-sign styling.
+ */
+export function formatTransfer(amount: number): { label: string; value: string } {
+  if (amount < 0) {
+    return { label: "You're owed back", value: formatSpend(amount) };
+  }
+  return { label: "Total to transfer", value: formatSpend(amount) };
+}

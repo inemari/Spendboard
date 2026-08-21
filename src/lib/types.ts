@@ -101,36 +101,64 @@ export type CreditInvoice = {
   created_at: string;
 };
 
-/** One row of `household_invoice_summary(invoice_id)`'s result — the only
- * shape a partner's spending is ever exposed in. `personal_total` and
- * `need_review_count` come back `null` for every row that isn't the caller's
- * own; `common_total` is always visible, for both members. */
+/** One row of `household_invoice_summary(invoice_id)`'s result — live,
+ * sign-normalized totals for one household member on one invoice. Personal
+ * totals are visible for both members (see CLAUDE.md's settlement privacy
+ * notes) — only the underlying transaction rows stay private. Used only
+ * while a settlement is still open; once completed, the frozen numbers come
+ * from `SettlementMember` instead. */
 export type InvoiceMemberSummary = {
   user_id: string;
   is_self: boolean;
-  personal_total: number | null;
-  common_total: number;
-  need_review_count: number | null;
-};
-
-/** One member's frozen breakdown inside a completed `Settlement.per_member`. */
-export type SettlementMember = {
-  user_id: string;
   personal_total: number;
   common_total: number;
-  contribution: number;
-  amount_due: number;
+  need_review_count: number;
 };
 
-/** A completed settlement snapshot — written once by `complete_settlement`
- * and never updated afterward, so later edits to the underlying transactions
- * can't retroactively change it. */
+/** One `household_partner_common_transactions(...)` row — the only shape a
+ * partner's individual transactions are ever exposed in: hard-filtered to
+ * Common, with the owner's own category name/icon already resolved
+ * server-side (a bare category_id would be unresolvable by the caller). */
+export type PartnerCommonTransaction = {
+  id: string;
+  date: string;
+  description: string;
+  location: string | null;
+  amount: number;
+  category_name: string | null;
+  category_icon: string | null;
+};
+
+export type PaymentStatus = "to_pay" | "paid";
+
+/** One member's row in `settlement_members`. `personal_total`/`common_share`/
+ * `transfer_total` stay null until the whole settlement completes (see
+ * `mark_settlement_paid`); `payment_status`/`paid_at`/`contribution` are
+ * mutable up until then. */
+export type SettlementMember = {
+  settlement_id: string;
+  user_id: string;
+  payment_status: PaymentStatus;
+  paid_at: string | null;
+  contribution: number | null;
+  personal_total: number | null;
+  common_share: number | null;
+  transfer_total: number | null;
+};
+
+/** A settlement header for one invoice. `status` starts `'open'` the first
+ * time either member marks their own transfer paid, and flips to
+ * `'completed'` — once, permanently — when every member has. A completed
+ * row's `common_total`/`common_share` (and every member's frozen figures in
+ * `settlement_members`) are a frozen snapshot: later edits to the underlying
+ * transactions never change them. */
 export type Settlement = {
   id: string;
   invoice_id: string;
-  common_total: number;
-  common_share: number;
-  per_member: SettlementMember[];
-  completed_by: string;
-  completed_at: string;
+  status: "open" | "completed";
+  common_total: number | null;
+  common_share: number | null;
+  completed_by: string | null;
+  completed_at: string | null;
+  settlement_members: SettlementMember[];
 };

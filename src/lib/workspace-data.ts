@@ -74,6 +74,7 @@ export type HouseholdMember = { user_id: string; default_contribution: number; e
  * uses to show the invite/join flow instead of any of this.
  */
 export async function loadHousehold(supabase: SupabaseClient) {
+  const shared = await loadCategoriesAndRules(supabase);
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -86,11 +87,10 @@ export async function loadHousehold(supabase: SupabaseClient) {
 
   if (!membership) {
     return {
-      userEmail: user?.email ?? null,
+      ...shared,
       userId: user?.id ?? null,
       householdId: null as string | null,
       members: [] as HouseholdMember[],
-      myContribution: 0,
       invoices: [] as CreditInvoice[],
       settlements: [] as Settlement[],
       pendingInviteCode: null as string | null,
@@ -132,17 +132,17 @@ export async function loadHousehold(supabase: SupabaseClient) {
     invoiceIds.length > 0
       ? await supabase
           .from("settlements")
-          .select("id, invoice_id, common_total, common_share, per_member, completed_by, completed_at")
+          .select(
+            "id, invoice_id, status, common_total, common_share, completed_by, completed_at, settlement_members(*)",
+          )
           .in("invoice_id", invoiceIds)
-          .order("completed_at", { ascending: false })
       : { data: [] };
 
   return {
-    userEmail: user?.email ?? null,
+    ...shared,
     userId: user?.id ?? null,
     householdId: membership.household_id as string,
     members,
-    myContribution: membership.default_contribution as number,
     invoices: (invoices ?? []) as CreditInvoice[],
     settlements: (settlements ?? []) as Settlement[],
     pendingInviteCode: pendingInvite?.code ?? null,

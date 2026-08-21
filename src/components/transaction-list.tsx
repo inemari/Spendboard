@@ -32,6 +32,8 @@ export function TransactionList({
   highlightedIds,
   filterChip,
   query = "",
+  hideSelection = false,
+  bare = false,
   onToggleSelect,
   onCategoryChange,
   onTypeToggle,
@@ -48,6 +50,13 @@ export function TransactionList({
   /** Search text — owned by the shared toolbar above this list, so it stays
    *  in the same bar as the date-range switcher and view toggle. */
   query?: string;
+  /** Hides the select checkbox entirely — for contexts with no bulk-action
+   *  bar to act on a selection (e.g. the settlement review step). */
+  hideSelection?: boolean;
+  /** Drops the outer bordered card and "Transactions N" heading, for
+   *  embedding inside a caller's own card (e.g. the settlement review
+   *  step's Personal/Common sections). */
+  bare?: boolean;
   onToggleSelect: (id: string) => void;
   onCategoryChange: (id: string, categoryId: string | null) => void;
   onTypeToggle: (id: string, currentType: Transaction["type"]) => void;
@@ -85,24 +94,34 @@ export function TransactionList({
     }));
   }, [visible]);
 
+  const Wrapper = bare ? "div" : "section";
+
   return (
-    <section className="flex flex-col gap-4 rounded-2xl border border-border/60 bg-card p-5 sm:p-6">
-      <h2 className="flex items-center gap-2 font-heading text-base font-bold">
-        Transactions
-        {filterChip && (
-          <span
-            className={cn(
-              "rounded-full px-2.5 py-0.5 text-xs font-medium",
-              filterChip.className,
-            )}
-          >
-            {filterChip.label}
+    <Wrapper
+      className={
+        bare
+          ? "flex flex-col gap-4"
+          : "flex flex-col gap-4 rounded-2xl border border-border/60 bg-card p-5 sm:p-6"
+      }
+    >
+      {!bare && (
+        <h2 className="flex items-center gap-2 font-heading text-base font-bold">
+          Transactions
+          {filterChip && (
+            <span
+              className={cn(
+                "rounded-full px-2.5 py-0.5 text-xs font-medium",
+                filterChip.className,
+              )}
+            >
+              {filterChip.label}
+            </span>
+          )}
+          <span className="text-sm font-normal text-muted-foreground">
+            {visible.length}
           </span>
-        )}
-        <span className="text-sm font-normal text-muted-foreground">
-          {visible.length}
-        </span>
-      </h2>
+        </h2>
+      )}
 
       {days.length === 0 ? (
         <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
@@ -139,6 +158,7 @@ export function TransactionList({
                     categories={categories}
                     selected={selectedIds.has(t.id)}
                     highlighted={highlightedIds.has(t.id)}
+                    hideSelection={hideSelection}
                     expanded={expandedId === t.id}
                     onToggleExpanded={() =>
                       setExpandedId((prev) => (prev === t.id ? null : t.id))
@@ -158,7 +178,7 @@ export function TransactionList({
           ))}
         </div>
       )}
-    </section>
+    </Wrapper>
   );
 }
 
@@ -167,6 +187,7 @@ function TransactionRow({
   categories,
   selected,
   highlighted,
+  hideSelection = false,
   expanded,
   onToggleExpanded,
   onToggleSelect,
@@ -180,6 +201,7 @@ function TransactionRow({
   categories: Category[];
   selected: boolean;
   highlighted: boolean;
+  hideSelection?: boolean;
   expanded: boolean;
   onToggleExpanded: () => void;
   onToggleSelect: () => void;
@@ -207,16 +229,18 @@ function TransactionRow({
       )}
     >
       <div className="flex items-center gap-3 px-2 py-2.5">
-        <Checkbox
-          checked={selected}
-          onCheckedChange={onToggleSelect}
-          aria-label={`Select ${t.description}`}
-          className={cn(
-            "size-3.5 shrink-0 cursor-pointer transition-opacity",
-            !selected &&
-              "opacity-0 group-hover:opacity-100 focus-visible:opacity-100",
-          )}
-        />
+        {!hideSelection && (
+          <Checkbox
+            checked={selected}
+            onCheckedChange={onToggleSelect}
+            aria-label={`Select ${t.description}`}
+            className={cn(
+              "size-3.5 shrink-0 cursor-pointer transition-opacity",
+              !selected &&
+                "opacity-0 group-hover:opacity-100 focus-visible:opacity-100",
+            )}
+          />
+        )}
 
         <button
           type="button"
