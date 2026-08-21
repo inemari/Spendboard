@@ -130,10 +130,44 @@ function parseDate(raw: unknown): string | null {
   return null;
 }
 
-function computeSourceHash(date: string, description: string, amount: number): string {
+function sourceHashBase(date: string, description: string, amount: number): string {
+  return `${date}|${description.trim().toLowerCase()}|${amount.toFixed(2)}`;
+}
+
+// A hash of just date+description+amount can't tell two genuinely distinct
+// transactions apart from one bank row repeated (same place, same amount,
+// minutes apart — the date column has no time-of-day, so they're otherwise
+// indistinguishable). Suffixing with an occurrence index — this row's rank
+// among every other row in *this file* with the same base key — gives each
+// one its own hash instead of the second one colliding with (and being
+// silently dropped as a "duplicate" of) the first, while still deduping
+// correctly against a previous import: re-uploading the same file reproduces
+// the same occurrence indices in the same top-to-bottom order, so each row
+// lands on the same hash as before and the existing rows block re-insertion
+// via `unique (month_id, source_hash)`. Occurrence 0 gets the bare base hash
+// with no suffix — the vast majority of rows have no duplicate in the file,
+// and this keeps their hash identical to what earlier versions of this
+// function produced, so a re-upload of an already-imported statement still
+// matches those existing rows instead of finding them all "new."
+function computeSourceHash(base: string, occurrence: number): string {
   return createHash("sha256")
-    .update(`${date}|${description.trim().toLowerCase()}|${amount.toFixed(2)}`)
+    .update(occurrence === 0 ? base : `${base}|${occurrence}`)
     .digest("hex");
+}
+
+// Assigns each transaction's final sourceHash, accounting for other rows in
+// this same file sharing its date+description+amount — see
+// `computeSourceHash` above. Must run once over the whole file's parsed
+// rows (in their original top-to-bottom order), not per-row inside
+// `rowsToTransactions`, since a repeat can appear anywhere later in the file.
+function assignSourceHashes(transactions: ParsedTransaction[]): ParsedTransaction[] {
+  const occurrenceByBase = new Map<string, number>();
+  return transactions.map((t) => {
+    const base = sourceHashBase(t.date, t.description, t.amount);
+    const occurrence = occurrenceByBase.get(base) ?? 0;
+    occurrenceByBase.set(base, occurrence + 1);
+    return { ...t, sourceHash: computeSourceHash(base, occurrence) };
+  });
 }
 
 /**
@@ -193,7 +227,10 @@ function rowsToTransactions(rows: unknown[][], aliases: HeaderAliases): ParsedTr
       description,
       location,
       amount,
-      sourceHash: computeSourceHash(date, description, amount),
+      // Placeholder — the real, occurrence-aware hash is assigned once over
+      // the whole file's rows by `assignSourceHashes`, since a duplicate can
+      // appear anywhere later in the file, not just within this call.
+      sourceHash: "",
       rawRow,
     });
   }
@@ -328,7 +365,7 @@ export async function parseTransactionFile(file: File): Promise<ParsedTransactio
       const transactions = rowsToTransactions(rows, format.aliases);
       if (transactions.length > best.length) best = transactions;
     }
-    return best;
+    return assignSourceHashes(best);
   }
 
   if (isCsv) {
@@ -344,7 +381,7 @@ export async function parseTransactionFile(file: File): Promise<ParsedTransactio
       const transactions = rowsToTransactions(result.data, format.aliases);
       if (transactions.length > best.length) best = transactions;
     }
-    return best;
+    return assignSourceHashes(best);
   }
 
   const buffer = await file.arrayBuffer();
@@ -359,5 +396,5 @@ export async function parseTransactionFile(file: File): Promise<ParsedTransactio
     const transactions = rowsToTransactions(rows, format.aliases);
     if (transactions.length > best.length) best = transactions;
   }
-  return best;
+  return assignSourceHashes(best);
 }

@@ -791,17 +791,26 @@ decisions. For work that's planned but not yet implemented, see
   up. Nothing else (category_id/type/card_type/notes) is ever touched this way.
 - Schema changes live in `supabase/schema.sql` and must be re-run in the
   Supabase SQL editor manually — there's no migration runner in this project.
-- **Known correctness risk**: the dedup key (`source_hash` in
-  `src/lib/parse-transactions.ts`'s `computeSourceHash`) is
-  `sha256(date|description.trim().toLowerCase()|amount.toFixed(2))`, enforced
-  via `unique (month_id, source_hash)` in `supabase/schema.sql`. Two genuinely
-  distinct transactions on the same day with the same description and amount
-  (e.g. two identical coffee purchases) hash identically — the upload route's
-  `ignoreDuplicates: true` upsert silently drops the second one on import,
-  with no warning surfaced anywhere. Verified upload de-duplication otherwise
-  works correctly for the common case (re-uploading a file with transactions
-  you already have plus new ones only inserts the new ones, and never touches
-  existing categorization) — see `src/app/api/upload/route.ts`.
+- **The dedup key is occurrence-aware, not just date+description+amount.**
+  `source_hash` (`src/lib/parse-transactions.ts`) is
+  `sha256(date|description.trim().toLowerCase()|amount.toFixed(2))` for a
+  row with no repeat elsewhere in the same file — unchanged from the
+  original formula, so re-uploading an already-imported statement still
+  matches those existing rows via `unique (month_id, source_hash)`
+  (`supabase/schema.sql`). A row that shares that same date+description+
+  amount with an earlier row in the file (e.g. two identical coffee
+  purchases at the same place, minutes apart — the date column carries no
+  time-of-day, so they're otherwise indistinguishable) gets its
+  in-file occurrence index (1, 2, …) appended before hashing
+  (`assignSourceHashes`), so it no longer collides with the first and both
+  import. This assignment runs once over the whole file's rows in their
+  original top-to-bottom order — re-uploading the same file reproduces the
+  same order and the same occurrence indices, so it still dedupes correctly
+  against what's already imported rather than re-inserting every repeat
+  again. Verified upload de-duplication otherwise works correctly for the
+  common case (re-uploading a file with transactions you already have plus
+  new ones only inserts the new ones, and never touches existing
+  categorization) — see `src/app/api/upload/route.ts`.
 - `transactions.credit_invoice_id`: nullable, references `credit_invoices`,
   `on delete set null` (not `cascade` — there's no invoice-deletion UI, but a
   transaction must never be deleted as a side effect of one). Set only via
