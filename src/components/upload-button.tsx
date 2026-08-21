@@ -38,12 +38,16 @@ export function UploadButton({
   categories,
   householdId,
   openInvoices,
+  creditOnly = false,
 }: {
   categories: Category[];
   /** Null for a user with no household — the invoice step is skipped
    * entirely for them, same upload flow as before this feature existed. */
   householdId?: string | null;
   openInvoices?: CreditInvoice[];
+  /** Starts directly in the credit-card invoice flow. Used from Settlement,
+   * where a debit-card upload cannot produce anything to settle. */
+  creditOnly?: boolean;
 }) {
   const router = useRouter();
   const supabase = useRef(createClient()).current;
@@ -157,36 +161,42 @@ export function UploadButton({
       />
 
       <Button
-        size="sm"
-        variant="outline"
+        size={creditOnly ? "default" : "sm"}
+        variant={creditOnly ? "default" : "outline"}
         disabled={isUploading}
-        onClick={() => setCardTypeDialogOpen(true)}
+        onClick={() => (creditOnly ? pickCardType("credit") : setCardTypeDialogOpen(true))}
       >
         <Upload />
-        {isUploading ? "Uploading..." : "Upload statement"}
+        {isUploading
+          ? "Uploading..."
+          : creditOnly
+            ? "Upload credit-card statement"
+            : "Upload statement"}
       </Button>
 
-      <Dialog open={cardTypeDialogOpen} onOpenChange={setCardTypeDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Credit or debit card?</DialogTitle>
-            <DialogDescription>
-              Every transaction in this file will be tagged with the card type you pick. The
-              file&rsquo;s format (Excel, PDF, CSV, and so on) is detected automatically.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => pickCardType("debit")}>
-              <CreditCard />
-              Debit
-            </Button>
-            <Button onClick={() => pickCardType("credit")}>
-              <CreditCard />
-              Credit
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {!creditOnly && (
+        <Dialog open={cardTypeDialogOpen} onOpenChange={setCardTypeDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Credit or debit card?</DialogTitle>
+              <DialogDescription>
+                Every transaction in this file will be tagged with the card type you pick. The
+                file&rsquo;s format (Excel, PDF, CSV, and so on) is detected automatically.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => pickCardType("debit")}>
+                <CreditCard />
+                Debit
+              </Button>
+              <Button onClick={() => pickCardType("credit")}>
+                <CreditCard />
+                Credit
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
 
       <Dialog open={invoiceDialogOpen} onOpenChange={setInvoiceDialogOpen}>
         <DialogContent>

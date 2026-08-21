@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { UploadButton } from "@/components/upload-button";
 import { SettlementInvoiceFlow } from "@/components/settlement-invoice-flow";
 import { SettlementCompletedCard } from "@/components/settlement-completed-card";
 import { computeSettlementShares, remainingToTransfer } from "@/lib/settlement";
@@ -186,10 +187,7 @@ function useOpenInvoiceSummaries(invoiceIds: string[]) {
   const [summaries, setSummaries] = useState<Record<string, InvoiceMemberSummary[]>>({});
 
   useEffect(() => {
-    if (!key) {
-      setSummaries({});
-      return;
-    }
+    if (!key) return;
     let cancelled = false;
     Promise.all(
       key.split(",").map((id) =>
@@ -218,9 +216,17 @@ function SettlementWorkspace({ household }: { household: Household }) {
   const completedInvoices = invoices.filter((i) => settlementByInvoice.get(i.id)?.status === "completed");
   const openSummaries = useOpenInvoiceSummaries(openInvoices.map((i) => i.id));
 
-  const [selectedId, setSelectedId] = useState<string | null>(openInvoices[0]?.id ?? invoices[0]?.id ?? null);
-  const selectedInvoice = invoices.find((i) => i.id === selectedId) ?? null;
-  const selectedSettlement = selectedId ? settlementByInvoice.get(selectedId) : undefined;
+  // Undefined means "pick the best default" while null is an intentional
+  // mobile "show the invoice list" state. Keeping those distinct also lets
+  // the first invoice become selected after an empty-state upload refreshes
+  // these props without remounting this client component.
+  const [selectedId, setSelectedId] = useState<string | null>();
+  const activeSelectedId =
+    selectedId === undefined ? (openInvoices[0]?.id ?? invoices[0]?.id ?? null) : selectedId;
+  const selectedInvoice = invoices.find((i) => i.id === activeSelectedId) ?? null;
+  const selectedSettlement = activeSelectedId
+    ? settlementByInvoice.get(activeSelectedId)
+    : undefined;
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 p-6">
@@ -235,74 +241,118 @@ function SettlementWorkspace({ household }: { household: Household }) {
         </p>
       </div>
 
-      <div className="grid gap-6 sm:grid-cols-[260px_1fr]">
-        <div className="flex flex-col gap-4">
-          <InvoiceList
-            title="Open invoices"
-            invoices={openInvoices}
-            emptyLabel="Nothing to settle yet — upload a credit-card statement and file it under an invoice."
-            selectedId={selectedId}
-            onSelect={setSelectedId}
-            renderStatus={(invoice) => (
-              <OpenInvoiceStatus
-                summary={openSummaries[invoice.id]}
-                settlement={settlementByInvoice.get(invoice.id)}
+      {invoices.length === 0 ? (
+        <SettlementEmptyState household={household} />
+      ) : (
+        <div className="grid gap-6 sm:grid-cols-[260px_1fr]">
+          <div className="flex flex-col gap-4">
+            <InvoiceList
+              title="Open invoices"
+              invoices={openInvoices}
+              emptyLabel="Nothing to settle yet — upload a credit-card statement and file it under an invoice."
+              selectedId={activeSelectedId}
+              onSelect={setSelectedId}
+              renderStatus={(invoice) => (
+                <OpenInvoiceStatus
+                  summary={openSummaries[invoice.id]}
+                  settlement={settlementByInvoice.get(invoice.id)}
+                  userId={userId}
+                  members={members}
+                />
+              )}
+            />
+            <InvoiceList
+              title="Completed"
+              invoices={completedInvoices}
+              emptyLabel="No settlements yet."
+              selectedId={activeSelectedId}
+              onSelect={setSelectedId}
+            />
+          </div>
+
+          <div className="flex flex-col gap-4">
+            {!selectedInvoice && (
+              <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
+                Pick an invoice to review its settlement.
+              </p>
+            )}
+            {selectedInvoice && (
+              <div className="flex items-center justify-between gap-3 sm:hidden">
+                <button
+                  type="button"
+                  onClick={() => setSelectedId(null)}
+                  className="flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground"
+                >
+                  <ChevronLeft className="size-4" />
+                  All invoices
+                </button>
+              </div>
+            )}
+            {selectedInvoice && selectedSettlement?.status === "completed" && (
+              <SettlementCompletedCard
+                invoiceId={selectedInvoice.id}
+                invoiceLabel={selectedInvoice.label}
+                settlement={selectedSettlement}
                 userId={userId}
                 members={members}
+                categories={categories}
               />
             )}
-          />
-          <InvoiceList
-            title="Completed"
-            invoices={completedInvoices}
-            emptyLabel="No settlements yet."
-            selectedId={selectedId}
-            onSelect={setSelectedId}
-          />
+            {selectedInvoice && selectedSettlement?.status !== "completed" && (
+              <SettlementInvoiceFlow
+                key={selectedInvoice.id}
+                invoiceId={selectedInvoice.id}
+                invoiceLabel={selectedInvoice.label}
+                userId={userId}
+                members={members}
+                categories={categories}
+                settlement={selectedSettlement}
+              />
+            )}
+          </div>
         </div>
-
-        <div className="flex flex-col gap-4">
-          {!selectedInvoice && (
-            <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-              Pick an invoice to review its settlement.
-            </p>
-          )}
-          {selectedInvoice && (
-            <div className="flex items-center justify-between gap-3 sm:hidden">
-              <button
-                type="button"
-                onClick={() => setSelectedId(null)}
-                className="flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground"
-              >
-                <ChevronLeft className="size-4" />
-                All invoices
-              </button>
-            </div>
-          )}
-          {selectedInvoice && selectedSettlement?.status === "completed" && (
-            <SettlementCompletedCard
-              invoiceId={selectedInvoice.id}
-              invoiceLabel={selectedInvoice.label}
-              settlement={selectedSettlement}
-              userId={userId}
-              members={members}
-              categories={categories}
-            />
-          )}
-          {selectedInvoice && selectedSettlement?.status !== "completed" && (
-            <SettlementInvoiceFlow
-              key={selectedInvoice.id}
-              invoiceId={selectedInvoice.id}
-              invoiceLabel={selectedInvoice.label}
-              userId={userId}
-              members={members}
-              categories={categories}
-              settlement={selectedSettlement}
-            />
-          )}
-        </div>
-      </div>
+      )}
     </div>
+  );
+}
+
+function SettlementEmptyState({ household }: { household: Household }) {
+  return (
+    <Card className="overflow-hidden border-primary/20 bg-card">
+      <CardContent className="relative flex min-h-80 flex-col items-center justify-center overflow-hidden px-6 py-12 text-center">
+        <div
+          aria-hidden="true"
+          className="absolute -top-20 -left-20 size-56 rounded-full bg-primary/10 blur-3xl"
+        />
+        <div
+          aria-hidden="true"
+          className="absolute -right-20 -bottom-24 size-64 rounded-full bg-tertiary/10 blur-3xl"
+        />
+
+        <div className="relative mb-5 grid size-16 place-items-center rounded-2xl bg-primary/10 text-primary shadow-[0_8px_28px_rgba(224,64,160,0.16)]">
+          <Receipt className="size-8" />
+        </div>
+        <Badge variant="outline" className="relative mb-3 border-primary/30 text-primary">
+          Your first settlement
+        </Badge>
+        <h3 className="relative font-heading text-2xl font-bold">Start with a card statement</h3>
+        <p className="relative mt-2 max-w-lg text-sm leading-6 text-muted-foreground">
+          Upload a credit-card statement and name the invoice. Then you and your partner can
+          review your own purchases privately and settle the shared total together.
+        </p>
+        <div className="relative mt-6">
+          <UploadButton
+            categories={household.categories}
+            householdId={household.householdId}
+            openInvoices={[]}
+            creditOnly
+          />
+        </div>
+        <p className="relative mt-4 text-xs text-muted-foreground">
+          Excel, CSV, and PDF statements are supported.
+        </p>
+      </CardContent>
+    </Card>
   );
 }
 
