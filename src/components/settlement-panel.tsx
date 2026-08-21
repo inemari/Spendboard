@@ -1,9 +1,21 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Check, ChevronLeft, Copy, PartyPopper, Receipt, Users } from "lucide-react";
+import {
+  ArrowRight,
+  CalendarDays,
+  Check,
+  CheckCircle2,
+  ChevronRight,
+  Clock3,
+  Copy,
+  PartyPopper,
+  Receipt,
+  Users,
+} from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,7 +25,7 @@ import { UploadButton } from "@/components/upload-button";
 import { SettlementInvoiceFlow } from "@/components/settlement-invoice-flow";
 import { SettlementCompletedCard } from "@/components/settlement-completed-card";
 import { computeSettlementShares, remainingToTransfer } from "@/lib/settlement";
-import { formatTransfer } from "@/lib/format";
+import { formatSpend, formatTransfer } from "@/lib/format";
 import type { HouseholdMember, loadHousehold } from "@/lib/workspace-data";
 import type { CreditInvoice, InvoiceMemberSummary, Settlement } from "@/lib/types";
 
@@ -24,12 +36,21 @@ function partnerLabel(members: HouseholdMember[], userId: string | null) {
   return partner?.email ?? "your partner";
 }
 
-export function SettlementPanel({ household }: { household: Household }) {
+export function SettlementPanel({
+  household,
+  invoiceId,
+}: {
+  household: Household;
+  invoiceId?: string;
+}) {
   if (!household.householdId) {
     return <PairingCard />;
   }
   if (household.members.length < 2) {
     return <WaitingForPartnerCard pendingInviteCode={household.pendingInviteCode} />;
+  }
+  if (invoiceId) {
+    return <SettlementDetail household={household} invoiceId={invoiceId} />;
   }
   return <SettlementWorkspace household={household} />;
 }
@@ -213,110 +234,195 @@ function SettlementWorkspace({ household }: { household: Household }) {
     [settlements],
   );
   const openInvoices = invoices.filter((i) => settlementByInvoice.get(i.id)?.status !== "completed");
-  const completedInvoices = invoices.filter((i) => settlementByInvoice.get(i.id)?.status === "completed");
   const openSummaries = useOpenInvoiceSummaries(openInvoices.map((i) => i.id));
 
-  // Undefined means "pick the best default" while null is an intentional
-  // mobile "show the invoice list" state. Keeping those distinct also lets
-  // the first invoice become selected after an empty-state upload refreshes
-  // these props without remounting this client component.
-  const [selectedId, setSelectedId] = useState<string | null>();
-  const activeSelectedId =
-    selectedId === undefined ? (openInvoices[0]?.id ?? invoices[0]?.id ?? null) : selectedId;
-  const selectedInvoice = invoices.find((i) => i.id === activeSelectedId) ?? null;
-  const selectedSettlement = activeSelectedId
-    ? settlementByInvoice.get(activeSelectedId)
-    : undefined;
-
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 p-6">
-      <div>
-        <h2 className="flex items-center gap-2 font-heading text-2xl font-bold">
-          <Receipt className="size-6 text-primary" />
-          Settlement
-        </h2>
-        <p className="text-sm text-muted-foreground">
-          You and {partnerLabel(members, userId)} each keep your own transactions private —
-          only common-spending totals and the final split are shared.
-        </p>
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-7 px-4 py-6 sm:px-6 sm:py-8">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="font-heading text-3xl font-bold tracking-tight">Settlements</h1>
+          <p className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
+            <span className="size-2 rounded-full bg-emerald-500" aria-hidden="true" />
+            Paired with {memberName(partnerLabel(members, userId))}
+          </p>
+        </div>
+        <UploadButton
+          categories={categories}
+          householdId={household.householdId}
+          openInvoices={openInvoices}
+          creditOnly
+          triggerLabel="New settlement"
+        />
       </div>
 
       {invoices.length === 0 ? (
-        <SettlementEmptyState household={household} />
+        <SettlementEmptyState />
       ) : (
-        <div className="grid gap-6 sm:grid-cols-[260px_1fr]">
-          <div className="flex flex-col gap-4">
-            <InvoiceList
-              title="Open invoices"
-              invoices={openInvoices}
-              emptyLabel="Nothing to settle yet — upload a credit-card statement and file it under an invoice."
-              selectedId={activeSelectedId}
-              onSelect={setSelectedId}
-              renderStatus={(invoice) => (
-                <OpenInvoiceStatus
-                  summary={openSummaries[invoice.id]}
-                  settlement={settlementByInvoice.get(invoice.id)}
-                  userId={userId}
-                  members={members}
-                />
-              )}
+        <div className="flex flex-col gap-4">
+          {invoices.map((invoice) => (
+            <SettlementRow
+              key={invoice.id}
+              invoice={invoice}
+              settlement={settlementByInvoice.get(invoice.id)}
+              summary={openSummaries[invoice.id]}
+              userId={userId}
+              members={members}
             />
-            <InvoiceList
-              title="Completed"
-              invoices={completedInvoices}
-              emptyLabel="No settlements yet."
-              selectedId={activeSelectedId}
-              onSelect={setSelectedId}
-            />
-          </div>
-
-          <div className="flex flex-col gap-4">
-            {!selectedInvoice && (
-              <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-                Pick an invoice to review its settlement.
-              </p>
-            )}
-            {selectedInvoice && (
-              <div className="flex items-center justify-between gap-3 sm:hidden">
-                <button
-                  type="button"
-                  onClick={() => setSelectedId(null)}
-                  className="flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground"
-                >
-                  <ChevronLeft className="size-4" />
-                  All invoices
-                </button>
-              </div>
-            )}
-            {selectedInvoice && selectedSettlement?.status === "completed" && (
-              <SettlementCompletedCard
-                invoiceId={selectedInvoice.id}
-                invoiceLabel={selectedInvoice.label}
-                settlement={selectedSettlement}
-                userId={userId}
-                members={members}
-                categories={categories}
-              />
-            )}
-            {selectedInvoice && selectedSettlement?.status !== "completed" && (
-              <SettlementInvoiceFlow
-                key={selectedInvoice.id}
-                invoiceId={selectedInvoice.id}
-                invoiceLabel={selectedInvoice.label}
-                userId={userId}
-                members={members}
-                categories={categories}
-                settlement={selectedSettlement}
-              />
-            )}
-          </div>
+          ))}
         </div>
       )}
     </div>
   );
 }
 
-function SettlementEmptyState({ household }: { household: Household }) {
+function SettlementDetail({ household, invoiceId }: { household: Household; invoiceId: string }) {
+  const { userId, members, invoices, settlements, categories } = household;
+  const invoice = invoices.find((item) => item.id === invoiceId);
+  const settlement = settlements.find((item) => item.invoice_id === invoiceId);
+
+  if (!invoice) return null;
+
+  return (
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-6 sm:px-6 sm:py-8">
+      <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1.5 text-sm">
+        <Link
+          href="/settlement"
+          className="font-medium text-muted-foreground transition-colors hover:text-primary"
+        >
+          Settlements
+        </Link>
+        <ChevronRight className="size-4 shrink-0 text-muted-foreground/60" aria-hidden="true" />
+        <span className="truncate font-semibold text-foreground" aria-current="page">
+          {invoice.label}
+        </span>
+      </nav>
+
+      <div>
+        <h1 className="font-heading text-2xl font-bold tracking-tight sm:text-3xl">
+          {invoice.label}
+        </h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Settlement with {memberName(partnerLabel(members, userId))}
+        </p>
+      </div>
+
+      {settlement?.status === "completed" ? (
+        <SettlementCompletedCard
+          invoiceId={invoice.id}
+          invoiceLabel={invoice.label}
+          settlement={settlement}
+          userId={userId}
+          members={members}
+          categories={categories}
+        />
+      ) : (
+        <SettlementInvoiceFlow
+          key={invoice.id}
+          invoiceId={invoice.id}
+          invoiceLabel={invoice.label}
+          userId={userId}
+          members={members}
+          categories={categories}
+          settlement={settlement}
+        />
+      )}
+    </div>
+  );
+}
+
+function memberName(label: string) {
+  const name = label.includes("@") ? label.split("@")[0] : label;
+  return name ? name.charAt(0).toUpperCase() + name.slice(1) : "your partner";
+}
+
+const settlementDateFormatter = new Intl.DateTimeFormat("en-GB", {
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+});
+
+function formatSettlementDate(value: string) {
+  return settlementDateFormatter.format(new Date(value));
+}
+
+function SettlementRow({
+  invoice,
+  settlement,
+  summary,
+  userId,
+  members,
+}: {
+  invoice: CreditInvoice;
+  settlement: Settlement | undefined;
+  summary: InvoiceMemberSummary[] | undefined;
+  userId: string | null;
+  members: HouseholdMember[];
+}) {
+  const completed = settlement?.status === "completed";
+
+  return (
+    <Link
+      href={`/settlement/${invoice.id}`}
+      className="group grid gap-4 rounded-2xl border bg-card px-5 py-5 shadow-[0_4px_16px_rgba(224,64,160,0.06)] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-[0_10px_28px_rgba(224,64,160,0.14)] focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 sm:grid-cols-[auto_minmax(0,1fr)_auto_auto] sm:items-center sm:px-7"
+    >
+      <span
+        className={`grid size-12 place-items-center rounded-full ${
+          completed ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300" : "bg-primary/10 text-primary"
+        }`}
+        aria-hidden="true"
+      >
+        {completed ? <CheckCircle2 className="size-6" /> : <Clock3 className="size-5" />}
+      </span>
+
+      <span className="min-w-0">
+        <span className="block truncate text-base font-semibold sm:text-lg">{invoice.label}</span>
+        <span className="mt-1 flex items-center gap-1.5 text-sm text-muted-foreground">
+          <CalendarDays className="size-3.5" aria-hidden="true" />
+          Created {formatSettlementDate(invoice.created_at)}
+        </span>
+      </span>
+
+      <span className="min-w-0 sm:text-right">
+        {completed ? (
+          <CompletedInvoiceStatus settlement={settlement} userId={userId} />
+        ) : (
+          <OpenInvoiceStatus
+            summary={summary}
+            settlement={settlement}
+            userId={userId}
+            members={members}
+          />
+        )}
+        <span className="mt-1 block text-sm text-muted-foreground">
+          {completed && settlement.completed_at
+            ? `Settled ${formatSettlementDate(settlement.completed_at)}`
+            : "Open settlement"}
+        </span>
+      </span>
+
+      <span className="flex items-center justify-between gap-3 sm:justify-end">
+        <Badge
+          variant={completed ? "default" : "outline"}
+          className={completed ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200" : "border-primary/30 text-primary"}
+        >
+          {completed ? "Settled" : "Open"}
+        </Badge>
+        <ArrowRight className="size-4 text-muted-foreground transition-transform group-hover:translate-x-1 group-hover:text-primary" aria-hidden="true" />
+      </span>
+    </Link>
+  );
+}
+
+function CompletedInvoiceStatus({ settlement, userId }: { settlement: Settlement; userId: string | null }) {
+  const transfer = settlement.settlement_members.find((member) => member.user_id === userId)?.transfer_total ?? 0;
+  return (
+    <span className={`block font-semibold ${transfer < 0 ? "text-emerald-700 dark:text-emerald-300" : "text-foreground"}`}>
+      {transfer < 0 ? "You received" : "You transferred"} {formatSpend(transfer)}
+    </span>
+  );
+}
+
+function SettlementEmptyState() {
   return (
     <Card className="overflow-hidden border-primary/20 bg-card">
       <CardContent className="relative flex min-h-80 flex-col items-center justify-center overflow-hidden px-6 py-12 text-center">
@@ -341,12 +447,7 @@ function SettlementEmptyState({ household }: { household: Household }) {
           review your own purchases privately and settle the shared total together.
         </p>
         <div className="relative mt-6">
-          <UploadButton
-            categories={household.categories}
-            householdId={household.householdId}
-            openInvoices={[]}
-            creditOnly
-          />
+          <p className="text-sm font-medium text-primary">Use “New settlement” to get started.</p>
         </div>
         <p className="relative mt-4 text-xs text-muted-foreground">
           Excel, CSV, and PDF statements are supported.
@@ -367,7 +468,7 @@ function OpenInvoiceStatus({
   userId: string | null;
   members: HouseholdMember[];
 }) {
-  if (!summary) return null;
+  if (!summary) return <span className="text-sm text-muted-foreground">Loading totals…</span>;
 
   const needsReview = summary.some((s) => s.need_review_count > 0);
   const myPaid =
@@ -378,9 +479,7 @@ function OpenInvoiceStatus({
 
   if (needsReview) {
     return (
-      <Badge variant="outline" className="border-amber-500/50 text-amber-600">
-        Needs review
-      </Badge>
+      <span className="font-semibold text-amber-700 dark:text-amber-300">Needs review</span>
     );
   }
 
@@ -389,9 +488,9 @@ function OpenInvoiceStatus({
     // long address would overflow this fixed-width sidebar column, unlike
     // the full detail pane, which already names the partner explicitly.
     return (
-      <Badge variant="outline" className="text-primary">
+      <span className="font-semibold text-primary">
         {myPaid ? "Waiting for partner" : "Your turn to pay"}
-      </Badge>
+      </span>
     );
   }
 
@@ -403,55 +502,13 @@ function OpenInvoiceStatus({
   const myEstimate = mine ? remainingToTransfer(mine.transferBeforeContribution, myContribution) : null;
 
   if (myEstimate === null) {
-    return <span className="text-xs text-muted-foreground">To pay</span>;
+    return <span className="font-semibold text-muted-foreground">Ready to review</span>;
   }
 
   const { label, value } = formatTransfer(myEstimate);
   return (
-    <span className="text-xs text-muted-foreground">
-      You: ~{value} {label === "You're owed back" ? "back" : "to transfer"}
+    <span className="font-semibold text-foreground">
+      {label === "You're owed back" ? "You receive" : "You transfer"} ~{value}
     </span>
-  );
-}
-
-function InvoiceList({
-  title,
-  invoices,
-  emptyLabel,
-  selectedId,
-  onSelect,
-  renderStatus,
-}: {
-  title: string;
-  invoices: CreditInvoice[];
-  emptyLabel: string;
-  selectedId: string | null;
-  onSelect: (id: string) => void;
-  renderStatus?: (invoice: CreditInvoice) => React.ReactNode;
-}) {
-  return (
-    <div>
-      <h3 className="mb-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-        {title}
-      </h3>
-      {invoices.length === 0 ? (
-        <p className="text-xs text-muted-foreground">{emptyLabel}</p>
-      ) : (
-        <div className="flex flex-col gap-1">
-          {invoices.map((invoice) => (
-            <button
-              key={invoice.id}
-              onClick={() => onSelect(invoice.id)}
-              className={`flex flex-col gap-0.5 rounded-lg px-3 py-2 text-left text-sm transition-colors ${
-                selectedId === invoice.id ? "bg-muted font-medium text-primary" : "hover:bg-muted/60"
-              }`}
-            >
-              <span>{invoice.label}</span>
-              {renderStatus?.(invoice)}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
   );
 }
