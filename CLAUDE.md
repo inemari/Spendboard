@@ -637,11 +637,29 @@ decisions. For work that's planned but not yet implemented, see
 
 - **Shared credit-card settlement (`/settlement`).** Two-person households
   can settle a shared credit-card bill without either person ever seeing the
-  other's individual transactions — only aggregate totals cross the privacy
+  other's individual transactions — only aggregate totals (and, deliberately,
+  the partner's Common transaction rows — see below) cross the privacy
   boundary, and only through `SECURITY DEFINER` RPCs that deliberately
   return less than the full row, the same pattern as `list_app_users`/
   `apply_rule_template` above. V1 scope: exactly two members, a 50/50 common
-  split, no editing a settlement once completed.
+  split.
+  - **The purpose is "how much does each person transfer to the shared
+    payment account," not "who owes whom."** For household members with
+    Personal/Common totals `P₁,C₁` and `P₂,C₂`: `commonShare = (C₁+C₂)/2`,
+    and each member transfers `their own Personal + commonShare −
+    their own monthly contribution` — who originally paid for a Common
+    transaction never affects either person's share of it. The UI never
+    frames this as one person owing the other (no "Max owes Sara"); money
+    only ever moves to the shared account. `src/lib/settlement.ts`
+    (`computeSettlementShares`/`remainingToTransfer`, unit-tested in
+    `settlement.test.ts`) is the **one** place this arithmetic lives on the
+    client — every screen that shows a share/transfer figure calls through
+    it rather than re-deriving the formula. `mark_settlement_paid` mirrors
+    the same two-line formula server-side only because freezing a completed
+    settlement has to happen in the database (it's the only thing that can
+    see both members' transactions at once); every other reader (live open-
+    invoice view, the overview list's estimate) goes through the shared TS
+    function.
   - **Pairing is self-serve, by invite code** (`create_household`,
     `create_household_invite`, `redeem_household_invite`) — there's no
     self-serve *signup* (see README), but pairing two already-existing
@@ -660,34 +678,81 @@ decisions. For work that's planned but not yet implemented, see
     `upload-button.tsx`'s flow when uploading a **credit** file for a user
     who has one. Invoices are created inline in that same dialog (existing
     dropdown or a new named one) — there's no separate "manage invoices" UI.
+    `credit_invoices` has no amount/due-date column, so the settlement
+    screen never shows or reconciles against one; add that only as a
+    deliberate schema extension, not an invented UI field.
+  - **The settlement screen is a step-by-step flow, not one big expandable
+    card** (`settlement-panel.tsx` → `settlement-invoice-flow.tsx` →
+    `settlement-review-step.tsx` / `settlement-summary-step.tsx` /
+    `settlement-completed-card.tsx`). Step 1 (invoice list) shows each open
+    invoice's status and, once computable, each member's live transfer
+    estimate. Step 2 shows only the signed-in user's own transactions for
+    that invoice, split into Personal/Common sections plus a highlighted
+    Need-review call-out, reusing `TransactionList` + `useTransactionActions`
+    (the same hook the overview/categorize screens use) so editing category/
+    type/card-type/notes/delete behaves identically everywhere —
+    `TransactionList` gained two small opt-in props for this,
+    `hideSelection` (no bulk-select checkbox; this context has no bulk-
+    action bar) and `bare` (drops the outer bordered card and "Transactions
+    N" heading so it can sit inside the settlement screen's own section
+    card). "Confirm my transactions" is disabled while any of the user's own
+    transactions on that invoice are still Need review. Step 3+4 (one
+    continuous view, matching the product spec's own layout) shows the
+    user's own Personal/Common totals with "View & edit" links back to
+    Step 2, the partner's total spending and Common total with a "View
+    common transactions" action, the common-spending calculation, and one
+    transfer card per member with a Paid/To-pay toggle.
   - **`household_invoice_summary(invoice_id)` is the only place a member
-    learns anything about their partner's spending.** It returns one row per
-    household member; `personal_total` and `need_review_count` come back
-    `null` for every row that isn't the caller's own, while `common_total`
-    is always visible for both — masked server-side, not by trusting the
-    client to discard fields it shouldn't have used. `complete_settlement`
+    learns anything about their partner's spending totals**, and
+    `household_partner_common_transactions(invoice_id, target_user_id)` is
+    the only place their individual transaction *rows* are ever exposed —
+    hard-filtered to `type = 'common'` server-side (never Personal or Need
+    review, regardless of who calls it), with the owner's own category name/
+    icon already resolved inside the function (a bare `category_id` would be
+    unresolvable by the caller, since RLS blocks reading someone else's
+    `categories`). Unlike an earlier version of this function,
+    `personal_total`/`need_review_count` are **not** nulled out for the
+    partner's row — the product's own privacy rules explicitly allow
+    showing a partner's Personal *total* (never their transaction list), and
+    it's recoverable anyway from `transfer_total − common_share` once a
+    settlement exists, so masking it bought nothing. `mark_settlement_paid`
     separately re-checks need-review status for **both** members internally
     and blocks with a generic error if either has any — the client is never
     told *whose* side is blocking, only that it's blocked.
-  - **A settlement is a frozen snapshot, written once.** There is no
-    settlement "draft" state stored in the database — an invoice with no
-    row in `settlements` is simply open, and the settlement screen computes
-    live totals via `household_invoice_summary` until `complete_settlement`
-    is called. That RPC recomputes both members' totals server-side (the
-    client can't do this itself without reading the partner's
-    transactions), writes one `settlements` row capturing each member's
-    `personal_total`/`common_total`/`contribution`/`amount_due` at that
-    moment, and is one-way: nothing here is ever updated afterward, so a
-    transaction recategorized later can't retroactively change a completed
-    settlement. Either household member can call it — "mark complete" is
-    not a two-party confirmation step.
+  - **Independent per-member payment state, not one one-shot "complete"
+    action.** `settlements` is a header row (`status`: `'open'` or
+    `'completed'`) that can now exist *before* completion —
+    `mark_settlement_paid(invoice_id, contribution)` creates it the first
+    time either member marks their own transfer paid, upserting their own
+    row in `settlement_members` (`payment_status`/`paid_at`/`contribution`;
+    re-callable before full completion, so correcting your contribution
+    before your partner pays is fine). `unmark_settlement_paid(invoice_id)`
+    undoes this while still `open`; both raise once `status = 'completed'`,
+    matching the "never edit a completed settlement" invariant. There is
+    **no partial-paid amount** anywhere — payment status is strictly
+    Paid/To-pay, and the calculated transfer figure itself never changes
+    when toggling it.
+  - **A settlement is a frozen snapshot, finalized once — at the *last*
+    member's payment, not each member's own.** The common split depends on
+    *combined* totals, so freezing figures as each person pays independently
+    could later go stale if the other person's data changes before they pay
+    too. Instead, `mark_settlement_paid` only computes and freezes
+    `personal_total`/`common_share`/`transfer_total` into every member's
+    `settlement_members` row (and `common_total`/`common_share`/
+    `completed_at`/`completed_by` into `settlements`) at the instant
+    `payment_status = 'paid'` becomes true for *every* household member,
+    using live totals for everyone at that single moment — each member's own
+    already-stored `contribution` (captured whenever *they* paid) is what's
+    subtracted. Nothing here is ever updated again afterward, so later
+    transaction edits can't retroactively change a completed settlement.
   - **A member's recurring contribution defaults from
-    `household_members.default_contribution`**, editable per-settlement in
-    the open-invoice view before completing (with an optional "save as my
-    default" checkbox that calls `set_default_contribution`). Only your own
-    contribution is ever editable from your own account — a completed
-    settlement's `per_member` entry for your partner always uses *their*
-    stored default, never a value you supplied.
+    `household_members.default_contribution`**, editable per-invoice in the
+    settlement summary step before marking paid (with an optional "save as
+    my new default" checkbox that calls `set_default_contribution`).
+    `household_members`' own "members can view" RLS policy already lets
+    either member read the other's row (it checks household membership, not
+    "is this your own row"), so both members' contributions are visible to
+    each other with no additional masking needed.
 
 - **Flexible timeframe switcher (day / week / month / custom range), overview
   only.** `timeframe-switcher.tsx` adds Day/Week/Month/Custom tabs above the
@@ -818,10 +883,19 @@ decisions. For work that's planned but not yet implemented, see
   belongs to a household the uploader is a member of before writing it —
   the id arrives from the client, so it can't be trusted at face value.
 - `households` / `household_members` / `household_invites` /
-  `credit_invoices` / `settlements`: see "Shared credit-card settlement"
-  above for the full shape. `household_members.user_id` is `unique` (V1: one
-  household per user). `settlements.per_member` is a frozen jsonb snapshot,
-  never updated after insert — see that section's "frozen snapshot" note.
+  `credit_invoices` / `settlements` / `settlement_members`: see "Shared
+  credit-card settlement" above for the full shape.
+  `household_members.user_id` is `unique` (V1: one household per user).
+  `settlements` is a header row (`status`: `'open'`/`'completed'`) whose
+  numeric columns and `completed_by`/`completed_at` stay null until
+  completion; `settlement_members` holds each member's mutable payment state
+  (`payment_status`/`paid_at`/`contribution`) plus their frozen
+  `personal_total`/`common_share`/`transfer_total`, written once at
+  completion and never updated after — see that section's "frozen snapshot"
+  note. (An earlier version of this schema stored the whole completed
+  snapshot in one `settlements.per_member` jsonb column instead of
+  `settlement_members` rows — dropped once payment status needed to be
+  queried/updated independently per member rather than only all-at-once.)
 - `default_categories`: the admin-managed seed list (see "Admin area"
   above). Readable by every authenticated user (their own first load is what
   seeds their `categories` from it); only `is_admin()` can insert/update.
@@ -864,14 +938,21 @@ Do not change these unless the task explicitly requires it:
 - `need_review` is neither common nor personal.
 - Uncategorized and Need review are independent concepts.
 - A household member must never be able to read another member's
-  `transactions` rows, `personal_total`, or individual need-review count —
-  only `common_total` (and derived settlement figures) cross that boundary,
-  and only through a `SECURITY DEFINER` RPC that masks the rest server-side.
-- A completed `settlements` row is never updated or deleted; it stays a
-  frozen snapshot regardless of later edits to the transactions it summarized.
-- A settlement cannot complete while either household member has any
+  `transactions` rows directly — `personal_total`/`common_total` (both
+  visible for both members, see "Shared credit-card settlement" above) and a
+  partner's `type = 'common'` rows (read-only, resolved category name/icon
+  included) are the only things that ever cross that boundary, and only
+  through a `SECURITY DEFINER` RPC. A partner's Personal transaction rows
+  and Need-review detail are never exposed, regardless of RPC.
+- A completed `settlements`/`settlement_members` row is never updated or
+  deleted; it stays a frozen snapshot regardless of later edits to the
+  transactions it summarized.
+- Settlement payment status is strictly binary (`to_pay`/`paid`) — never add
+  a partial-paid amount. The calculated transfer figure itself never changes
+  when toggling payment status.
+- A settlement cannot fully complete while either household member has any
   `need_review` transaction on that invoice — enforced inside
-  `complete_settlement`, not just in the UI.
+  `mark_settlement_paid`, not just in the UI.
 - `SUPABASE_SERVICE_ROLE_KEY` (and `src/lib/supabase/admin.ts`, which holds
   it) must never be imported into client-side code or exposed via
   `NEXT_PUBLIC_`. It exists solely for `/api/admin/create-user`'s Auth

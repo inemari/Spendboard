@@ -10,7 +10,7 @@ export default async function SettlementPage() {
   const household = await loadHousehold(supabase);
 
   return (
-    <div className="mx-auto flex min-h-svh w-full max-w-4xl flex-col">
+    <div className="mx-auto flex min-h-svh w-full max-w-6xl flex-col">
       <AppHeader userEmail={household.userEmail ?? undefined} />
       <SettlementPanel household={household} />
     </div>

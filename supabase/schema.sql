@@ -6,6 +6,13 @@
 -- "ALTER TYPE ... ADD VALUE cannot run inside a transaction block", run just
 -- that one line by itself first, then run the rest of this file.
 
+-- `gen_random_bytes` (used by create_household_invite() below to generate
+-- invite codes) isn't a Postgres built-in — unlike gen_random_uuid(), it
+-- needs pgcrypto. Without this, household pairing fails outright the moment
+-- anyone tries to invite a partner ("function gen_random_bytes(integer)
+-- does not exist"), confirmed live against this project.
+create extension if not exists pgcrypto;
+
 create table if not exists categories (
   id uuid primary key default gen_random_uuid(),
   user_id uuid references auth.users not null default auth.uid(),
@@ -571,17 +578,17 @@ create table if not exists credit_invoices (
 -- (there's no UI for this in V1) must not take transactions with it.
 alter table transactions add column if not exists credit_invoice_id uuid references credit_invoices(id) on delete set null;
 
--- One row per invoice, written only by `complete_settlement` below at the
--- moment a settlement is completed — there is no "draft" settlement state;
--- an invoice with no row here is simply "open," and the settlement screen
--- computes live totals via `household_invoice_summary` until then. This is
--- what makes a settlement a frozen snapshot: nothing here is ever updated
--- after insert, so later edits to the underlying transactions (e.g.
--- recategorizing after the fact) can never retroactively change a
--- completed settlement. `per_member` holds each member's
--- {user_id, personal_total, common_total, contribution, amount_due} at
--- completion time — it, not a live recomputation, is what the "previous
--- settlements" list reads back.
+-- One row per invoice. Unlike the original version of this table, a row can
+-- now exist before completion: `mark_settlement_paid` below creates one
+-- (`status = 'open'`) the first time *either* member marks their own
+-- transfer paid, so per-member payment state (settlement_members below) has
+-- somewhere to live while the household is still mid-settlement. `status`
+-- only ever flips open -> completed, once, when every household member's
+-- settlement_members row shows `payment_status = 'paid'` — at that instant
+-- `common_total`/`common_share` are filled in and frozen here for good.
+-- Nothing in an already-`completed` row is ever updated again, so later
+-- edits to the underlying transactions can't retroactively change a
+-- completed settlement.
 create table if not exists settlements (
   id uuid primary key default gen_random_uuid(),
   invoice_id uuid references credit_invoices(id) not null unique,
@@ -592,11 +599,82 @@ create table if not exists settlements (
   completed_at timestamptz not null default now()
 );
 
+-- Existing rows only ever came from the old one-shot `complete_settlement`
+-- flow, i.e. they were always fully completed — hence the 'completed'
+-- default, so this backfill doesn't relabel real history as still-open.
+-- Rows created by the new `mark_settlement_paid` flow pass `status = 'open'`
+-- explicitly on insert and only this function ever flips them to
+-- 'completed', so the column default here is purely about pre-existing data.
+alter table settlements add column if not exists status text not null default 'completed'
+  check (status in ('open', 'completed'));
+alter table settlements
+  alter column common_total drop not null,
+  alter column common_share drop not null,
+  alter column completed_by drop not null,
+  alter column completed_at drop not null,
+  alter column completed_at drop default;
+
+-- Independent per-member payment state, replacing what used to be baked
+-- into `settlements.per_member` only at the moment of full completion.
+-- `payment_status`/`paid_at` are mutable while the settlement is still
+-- `open` (either member can mark themselves paid or undo it via
+-- `mark_settlement_paid`/`unmark_settlement_paid`); `personal_total`/
+-- `common_share`/`transfer_total` stay null until the *whole* settlement
+-- completes, at which point they're written once, together, from one live
+-- computation (see `mark_settlement_paid`) and never touched again — this
+-- is what keeps a completed settlement a true frozen snapshot even though
+-- one member may have marked paid well before the other did.
+create table if not exists settlement_members (
+  settlement_id uuid references settlements(id) on delete cascade not null,
+  user_id uuid references auth.users not null,
+  payment_status text not null default 'to_pay' check (payment_status in ('to_pay', 'paid')),
+  paid_at timestamptz,
+  contribution numeric,
+  personal_total numeric,
+  common_share numeric,
+  transfer_total numeric,
+  primary key (settlement_id, user_id)
+);
+
+-- One-time migration of any already-completed settlements' `per_member`
+-- jsonb into the new relational shape above, guarded so re-running this
+-- file doesn't duplicate rows. Old shape per element: {user_id,
+-- personal_total, common_total (was actually this member's *share*,
+-- despite the name), contribution, amount_due (the final transfer figure)}.
+do $$
+declare
+  s record;
+  m jsonb;
+begin
+  for s in select id, per_member, completed_at from settlements where per_member is not null loop
+    for m in select value from jsonb_array_elements(s.per_member) as t(value) loop
+      insert into settlement_members (
+        settlement_id, user_id, payment_status, paid_at, contribution,
+        personal_total, common_share, transfer_total
+      ) values (
+        s.id,
+        (m->>'user_id')::uuid,
+        'paid',
+        s.completed_at,
+        (m->>'contribution')::numeric,
+        (m->>'personal_total')::numeric,
+        (m->>'common_total')::numeric,
+        (m->>'amount_due')::numeric
+      )
+      on conflict (settlement_id, user_id) do nothing;
+    end loop;
+  end loop;
+end $$;
+
+-- Nothing reads per_member anymore now that settlement_members exists.
+alter table settlements drop column if exists per_member;
+
 alter table households enable row level security;
 alter table household_members enable row level security;
 alter table household_invites enable row level security;
 alter table credit_invoices enable row level security;
 alter table settlements enable row level security;
+alter table settlement_members enable row level security;
 
 -- SECURITY DEFINER so it can check membership without itself being blocked
 -- by the RLS it's used inside of — the same reason is_admin() above needs
@@ -637,13 +715,31 @@ drop policy if exists "members can view" on settlements;
 create policy "members can view" on settlements
   for select using (is_household_member((select household_id from credit_invoices where id = invoice_id)));
 
+-- Both members' rows are visible to each other here (not just the caller's
+-- own) — that's intentional: once a settlement exists, seeing your
+-- partner's payment status (and, once completed, their frozen personal/
+-- common/transfer figures) is exactly what the settlement screen needs to
+-- show, and is the one place the request's privacy rules explicitly allow
+-- exposing another member's Personal *total* (never their transaction
+-- rows). No insert/update/delete policy: every write goes through
+-- `mark_settlement_paid`/`unmark_settlement_paid` (SECURITY DEFINER).
+drop policy if exists "members can view" on settlement_members;
+create policy "members can view" on settlement_members
+  for select using (is_household_member((
+    select ci.household_id
+    from settlements s
+    join credit_invoices ci on ci.id = s.invoice_id
+    where s.id = settlement_members.settlement_id
+  )));
+
 grant usage on schema public to authenticated;
 grant select on households, household_members, household_invites to authenticated;
 grant select, insert, update, delete on credit_invoices to authenticated;
 grant select on settlements to authenticated;
+grant select on settlement_members to authenticated;
 
 -- Every other write path here (creating/joining a household, setting your
--- own contribution default, completing a settlement) goes through one of
+-- own contribution default, marking a settlement paid) goes through one of
 -- the RPCs below instead of a table policy — each enforces an invariant
 -- (at most 2 members, no double-join, need-review must be clear) that a
 -- plain row-level policy can't express.
@@ -669,11 +765,18 @@ $$;
 
 grant execute on function create_household() to authenticated;
 
+-- `search_path` includes `extensions` because Supabase installs pgcrypto
+-- there by default, not into `public` — `gen_random_bytes` below is
+-- unresolvable under `search_path = public` alone even once the extension
+-- is enabled, confirmed live against this project ("function
+-- gen_random_bytes(integer) does not exist" persisted even after `create
+-- extension if not exists pgcrypto` ran, because the extension was already
+-- installed in `extensions`, just not on this function's search path).
 create or replace function create_household_invite()
 returns text
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 declare
   caller_household_id uuid;
@@ -748,12 +851,22 @@ $$;
 
 grant execute on function set_default_contribution(numeric) to authenticated;
 
--- The one place a member ever learns anything about their partner's
--- spending: `personal_total` and `need_review_count` come back null for
--- every row that isn't the caller's own, so the client can render "you"
--- vs. "your partner" from one shared query shape without a second,
--- narrower one — the masking happens here, not by trusting the client to
--- discard fields it shouldn't have used.
+-- Live per-member totals for one invoice — the one place a member ever
+-- learns anything about their partner's spending. `personal_total` is
+-- shown for both members (the request's own privacy rules explicitly allow
+-- exposing a partner's Personal *total*, just never their transaction
+-- list — and it's recoverable anyway from transfer_total - common_share
+-- once a settlement exists, so masking it here bought nothing). Amounts are
+-- normalized the same way src/lib/overview.ts does: expenses (negative
+-- amounts) are summed as positive spend magnitude; income/refunds are
+-- excluded, not netted in.
+--
+-- IMPORTANT: every OUT column above is also a bare identifier available to
+-- the function body below (RETURNS TABLE creates PL/pgSQL variables from
+-- its column names) — a past version of this function referenced a bare
+-- `user_id` in a WHERE clause and it silently collided with the `user_id`
+-- OUT column, throwing "column reference is ambiguous" on every call.
+-- Always qualify every column reference in here with its source alias.
 create or replace function household_invoice_summary(p_invoice_id uuid)
 returns table (
   user_id uuid,
@@ -771,8 +884,8 @@ declare
   caller_household_id uuid;
   target_household_id uuid;
 begin
-  select household_id into target_household_id from credit_invoices where id = p_invoice_id;
-  select household_id into caller_household_id from household_members where user_id = auth.uid();
+  select ci.household_id into target_household_id from credit_invoices ci where ci.id = p_invoice_id;
+  select hm.household_id into caller_household_id from household_members hm where hm.user_id = auth.uid();
 
   if target_household_id is null or target_household_id is distinct from caller_household_id then
     raise exception 'Not authorized.';
@@ -782,9 +895,9 @@ begin
     select
       hm.user_id,
       hm.user_id = auth.uid() as is_self,
-      case when hm.user_id = auth.uid() then coalesce(sum(t.amount) filter (where t.type = 'personal'), 0) end,
-      coalesce(sum(t.amount) filter (where t.type = 'common'), 0),
-      case when hm.user_id = auth.uid() then count(*) filter (where t.type = 'need_review')::int end
+      coalesce(sum(case when t.type = 'personal' and t.amount < 0 then -t.amount else 0 end), 0) as personal_total,
+      coalesce(sum(case when t.type = 'common' and t.amount < 0 then -t.amount else 0 end), 0) as common_total,
+      count(*) filter (where t.type = 'need_review')::int as need_review_count
     from household_members hm
     left join transactions t on t.user_id = hm.user_id and t.credit_invoice_id = p_invoice_id
     where hm.household_id = target_household_id
@@ -794,13 +907,22 @@ $$;
 
 grant execute on function household_invoice_summary(uuid) to authenticated;
 
--- Completes a settlement: recomputes both members' totals server-side (the
--- client never has access to compute this itself, since that would require
--- reading the partner's transactions), blocks while either member has any
--- `need_review` transaction on this invoice, and writes one frozen row.
--- Either member may call this — "mark complete" isn't a two-party
--- confirmation step (see CLAUDE.md).
-create or replace function complete_settlement(p_invoice_id uuid, p_contribution numeric)
+-- Marks the caller's own transfer paid for one invoice (upserting the
+-- settlements header as 'open' the first time anyone in the household pays
+-- toward it), blocking while either member still has a `need_review`
+-- transaction on this invoice — same guard the old complete_settlement had,
+-- just checked here instead of only at the very end. Re-callable: paying
+-- again before the household fully completes updates the stored
+-- contribution/paid_at rather than erroring, so a member can correct their
+-- contribution amount up until the last member pays.
+--
+-- Once *every* household member's settlement_members row shows
+-- payment_status = 'paid', this same call computes live totals for
+-- everyone together, in one shot, and freezes them into settlement_members/
+-- settlements — deliberately not per-member as each one pays, since the
+-- household's common split only depends on *combined* totals and can't be
+-- correctly finalized until nobody's data can still change it.
+create or replace function mark_settlement_paid(p_invoice_id uuid, p_contribution numeric)
 returns settlements
 language plpgsql
 security definer
@@ -810,20 +932,25 @@ declare
   caller_household_id uuid;
   target_household_id uuid;
   unresolved_count int;
-  total_common numeric;
-  share numeric;
-  members jsonb;
+  member_count int;
+  paid_count int;
+  target_settlement_id uuid;
+  existing_status text;
+  final_total_common numeric;
+  final_common_share numeric;
   result settlements;
 begin
-  select household_id into target_household_id from credit_invoices where id = p_invoice_id;
-  select household_id into caller_household_id from household_members where user_id = auth.uid();
+  select ci.household_id into target_household_id from credit_invoices ci where ci.id = p_invoice_id;
+  select hm.household_id into caller_household_id from household_members hm where hm.user_id = auth.uid();
 
   if target_household_id is null or target_household_id is distinct from caller_household_id then
     raise exception 'Not authorized.';
   end if;
 
-  if exists (select 1 from settlements where invoice_id = p_invoice_id) then
-    raise exception 'This invoice has already been settled.';
+  select s.id, s.status into target_settlement_id, existing_status from settlements s where s.invoice_id = p_invoice_id;
+
+  if existing_status = 'completed' then
+    raise exception 'This settlement has already been completed.';
   end if;
 
   select count(*) into unresolved_count
@@ -834,46 +961,170 @@ begin
       and t.type = 'need_review';
 
   if unresolved_count > 0 then
-    raise exception 'Cannot settle while any need-review transactions remain on this invoice.';
+    raise exception 'Cannot mark paid while any need-review transactions remain on this invoice.';
   end if;
 
-  select coalesce(sum(t.amount) filter (where t.type = 'common'), 0) into total_common
-    from transactions t
-    join household_members hm on hm.user_id = t.user_id
-    where t.credit_invoice_id = p_invoice_id and hm.household_id = target_household_id;
+  if target_settlement_id is null then
+    insert into settlements (invoice_id, status) values (p_invoice_id, 'open')
+      returning id into target_settlement_id;
+  end if;
 
-  share := total_common / 2;
+  insert into settlement_members (settlement_id, user_id, payment_status, paid_at, contribution)
+    values (target_settlement_id, auth.uid(), 'paid', now(), p_contribution)
+    on conflict (settlement_id, user_id) do update
+      set payment_status = 'paid', paid_at = now(), contribution = p_contribution;
 
-  select jsonb_agg(jsonb_build_object(
-    'user_id', hm.user_id,
-    'personal_total', personal.total,
-    'common_total', share,
-    'contribution', case when hm.user_id = auth.uid() then p_contribution else hm.default_contribution end,
-    'amount_due', personal.total + share - (case when hm.user_id = auth.uid() then p_contribution else hm.default_contribution end)
-  )) into members
-  from household_members hm
-  cross join lateral (
-    select coalesce(sum(t.amount) filter (where t.type = 'personal'), 0) as total
-    from transactions t
-    where t.user_id = hm.user_id and t.credit_invoice_id = p_invoice_id
-  ) personal
-  where hm.household_id = target_household_id;
+  select count(*) into member_count from household_members where household_id = target_household_id;
+  select count(*) into paid_count
+    from settlement_members
+    where settlement_id = target_settlement_id and payment_status = 'paid';
 
-  insert into settlements (invoice_id, common_total, common_share, per_member, completed_by)
-    values (p_invoice_id, total_common, share, members, auth.uid())
-    returning * into result;
+  if paid_count >= member_count then
+    -- Every member has now marked paid: compute live totals for the whole
+    -- household exactly once, together, and freeze the result — not as
+    -- each member pays, since the common split depends on *combined*
+    -- totals and isn't final until nobody's data can still move it.
+    select sum(per_member.common_total), sum(per_member.common_total) / count(*)
+      into final_total_common, final_common_share
+      from (
+        select hm.user_id,
+          coalesce(sum(case when t.type = 'common' and t.amount < 0 then -t.amount else 0 end), 0) as common_total
+        from household_members hm
+        left join transactions t on t.user_id = hm.user_id and t.credit_invoice_id = p_invoice_id
+        where hm.household_id = target_household_id
+        group by hm.user_id
+      ) per_member;
 
+    update settlement_members sm
+      set personal_total = lt.personal_total,
+          common_share = final_common_share,
+          transfer_total = lt.personal_total + final_common_share - coalesce(sm.contribution, 0)
+      from (
+        select hm.user_id,
+          coalesce(sum(case when t.type = 'personal' and t.amount < 0 then -t.amount else 0 end), 0) as personal_total
+        from household_members hm
+        left join transactions t on t.user_id = hm.user_id and t.credit_invoice_id = p_invoice_id
+        where hm.household_id = target_household_id
+        group by hm.user_id
+      ) lt
+      where sm.settlement_id = target_settlement_id and sm.user_id = lt.user_id;
+
+    update settlements s
+      set status = 'completed',
+          common_total = final_total_common,
+          common_share = final_common_share,
+          completed_by = auth.uid(),
+          completed_at = now()
+      where s.id = target_settlement_id;
+  end if;
+
+  select * into result from settlements where id = target_settlement_id;
   return result;
 end;
 $$;
 
-grant execute on function complete_settlement(uuid, numeric) to authenticated;
+grant execute on function mark_settlement_paid(uuid, numeric) to authenticated;
+
+-- Undoes a not-yet-completed "paid" mark for the caller's own transfer.
+-- No-ops if no settlement row exists yet (nothing to undo); raises once the
+-- settlement has fully completed, matching the "never edit a completed
+-- settlement" invariant.
+create or replace function unmark_settlement_paid(p_invoice_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  caller_household_id uuid;
+  target_household_id uuid;
+  target_settlement_id uuid;
+  existing_status text;
+begin
+  select ci.household_id into target_household_id from credit_invoices ci where ci.id = p_invoice_id;
+  select hm.household_id into caller_household_id from household_members hm where hm.user_id = auth.uid();
+
+  if target_household_id is null or target_household_id is distinct from caller_household_id then
+    raise exception 'Not authorized.';
+  end if;
+
+  select s.id, s.status into target_settlement_id, existing_status from settlements s where s.invoice_id = p_invoice_id;
+
+  if target_settlement_id is null then
+    return;
+  end if;
+
+  if existing_status = 'completed' then
+    raise exception 'This settlement has already been completed and can no longer be changed.';
+  end if;
+
+  update settlement_members
+    set payment_status = 'to_pay', paid_at = null
+    where settlement_id = target_settlement_id and user_id = auth.uid();
+end;
+$$;
+
+grant execute on function unmark_settlement_paid(uuid) to authenticated;
+
+-- The only way a partner's individual transaction rows are ever exposed:
+-- hard-filtered to `type = 'common'` (Personal/need-review rows are never
+-- returned, regardless of who asks), and only for a shared invoice. Returns
+-- the target member's own category name/icon already resolved server-side
+-- — a bare category_id would be useless to the caller, since RLS blocks
+-- them from reading someone else's `categories` table to look it up.
+create or replace function household_partner_common_transactions(p_invoice_id uuid, p_target_user_id uuid)
+returns table (
+  id uuid,
+  date date,
+  description text,
+  location text,
+  amount numeric,
+  category_name text,
+  category_icon text
+)
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  caller_household_id uuid;
+  target_household_id uuid;
+  member_household_id uuid;
+begin
+  select ci.household_id into target_household_id from credit_invoices ci where ci.id = p_invoice_id;
+  select hm.household_id into caller_household_id from household_members hm where hm.user_id = auth.uid();
+  select hm.household_id into member_household_id from household_members hm where hm.user_id = p_target_user_id;
+
+  if target_household_id is null
+     or target_household_id is distinct from caller_household_id
+     or target_household_id is distinct from member_household_id then
+    raise exception 'Not authorized.';
+  end if;
+
+  return query
+    select t.id, t.date, t.description, t.location, t.amount, c.name, c.icon
+    from transactions t
+    left join categories c on c.id = t.category_id
+    where t.user_id = p_target_user_id
+      and t.credit_invoice_id = p_invoice_id
+      and t.type = 'common'
+    order by t.date desc;
+end;
+$$;
+
+grant execute on function household_partner_common_transactions(uuid, uuid) to authenticated;
 
 -- Lets the settlement screen show "you" vs. the partner's email — auth.users
 -- isn't exposed to the client, and household_members has no email column of
 -- its own (it only ever stores a user_id), so this is the only way to read
 -- it. Same security-definer shape as list_app_users(), scoped to the
 -- caller's own household instead of gated by is_admin().
+-- Bare `user_id` below is qualified deliberately — this function's own
+-- `returns table (user_id uuid, ...)` makes `user_id` a PL/pgSQL variable
+-- for the rest of the body, and an earlier unqualified reference here threw
+-- "column reference is ambiguous" on every call. See household_invoice_summary
+-- above for the same gotcha in more detail.
 create or replace function household_member_emails()
 returns table (user_id uuid, email text)
 language plpgsql
@@ -883,7 +1134,7 @@ as $$
 declare
   caller_household_id uuid;
 begin
-  select household_id into caller_household_id from household_members where user_id = auth.uid();
+  select hm.household_id into caller_household_id from household_members hm where hm.user_id = auth.uid();
 
   if caller_household_id is null then
     return;

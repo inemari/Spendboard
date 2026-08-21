@@ -3,22 +3,20 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Check, Copy, PartyPopper, Receipt, Users } from "lucide-react";
+import { Check, ChevronLeft, Copy, PartyPopper, Receipt, Users } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { SettlementInvoiceFlow } from "@/components/settlement-invoice-flow";
+import { SettlementCompletedCard } from "@/components/settlement-completed-card";
+import { computeSettlementShares, remainingToTransfer } from "@/lib/settlement";
+import { formatTransfer } from "@/lib/format";
 import type { HouseholdMember, loadHousehold } from "@/lib/workspace-data";
-import type { InvoiceMemberSummary } from "@/lib/types";
+import type { CreditInvoice, InvoiceMemberSummary, Settlement } from "@/lib/types";
 
 type Household = Awaited<ReturnType<typeof loadHousehold>>;
-
-const currency = new Intl.NumberFormat(undefined, { style: "currency", currency: "NOK" });
-
-function fmt(n: number) {
-  return currency.format(Math.abs(n));
-}
 
 function partnerLabel(members: HouseholdMember[], userId: string | null) {
   const partner = members.find((m) => m.user_id !== userId);
@@ -177,21 +175,55 @@ function WaitingForPartnerCard({ pendingInviteCode }: { pendingInviteCode: strin
   );
 }
 
+/** Live per-invoice totals for the Step-1 overview list, so it can show a
+ * status and each member's estimated transfer before anyone opens the
+ * invoice. Bounded by how many open invoices a household has (typically a
+ * handful), so one RPC call per invoice, fanned out in parallel, is simpler
+ * than a bespoke bulk RPC — worth revisiting if that ever stops being true. */
+function useOpenInvoiceSummaries(invoiceIds: string[]) {
+  const supabase = useMemo(() => createClient(), []);
+  const key = invoiceIds.join(",");
+  const [summaries, setSummaries] = useState<Record<string, InvoiceMemberSummary[]>>({});
+
+  useEffect(() => {
+    if (!key) {
+      setSummaries({});
+      return;
+    }
+    let cancelled = false;
+    Promise.all(
+      key.split(",").map((id) =>
+        supabase
+          .rpc("household_invoice_summary", { p_invoice_id: id })
+          .then(({ data }) => [id, (data ?? []) as InvoiceMemberSummary[]] as const),
+      ),
+    ).then((results) => {
+      if (!cancelled) setSummaries(Object.fromEntries(results));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [supabase, key]);
+
+  return summaries;
+}
+
 function SettlementWorkspace({ household }: { household: Household }) {
-  const { userId, householdId, members, myContribution, invoices, settlements } = household;
-  const settledByInvoice = useMemo(
+  const { userId, members, invoices, settlements, categories } = household;
+  const settlementByInvoice = useMemo(
     () => new Map(settlements.map((s) => [s.invoice_id, s])),
     [settlements],
   );
-  const openInvoices = invoices.filter((i) => !settledByInvoice.has(i.id));
-  const completedInvoices = invoices.filter((i) => settledByInvoice.has(i.id));
+  const openInvoices = invoices.filter((i) => settlementByInvoice.get(i.id)?.status !== "completed");
+  const completedInvoices = invoices.filter((i) => settlementByInvoice.get(i.id)?.status === "completed");
+  const openSummaries = useOpenInvoiceSummaries(openInvoices.map((i) => i.id));
 
-  const [selectedId, setSelectedId] = useState<string | null>(openInvoices[0]?.id ?? null);
+  const [selectedId, setSelectedId] = useState<string | null>(openInvoices[0]?.id ?? invoices[0]?.id ?? null);
   const selectedInvoice = invoices.find((i) => i.id === selectedId) ?? null;
-  const selectedSettlement = selectedId ? settledByInvoice.get(selectedId) ?? null : null;
+  const selectedSettlement = selectedId ? settlementByInvoice.get(selectedId) : undefined;
 
   return (
-    <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 p-6">
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 p-6">
       <div>
         <h2 className="flex items-center gap-2 font-heading text-2xl font-bold">
           <Receipt className="size-6 text-primary" />
@@ -203,7 +235,7 @@ function SettlementWorkspace({ household }: { household: Household }) {
         </p>
       </div>
 
-      <div className="grid gap-6 sm:grid-cols-[220px_1fr]">
+      <div className="grid gap-6 sm:grid-cols-[260px_1fr]">
         <div className="flex flex-col gap-4">
           <InvoiceList
             title="Open invoices"
@@ -211,6 +243,14 @@ function SettlementWorkspace({ household }: { household: Household }) {
             emptyLabel="Nothing to settle yet — upload a credit-card statement and file it under an invoice."
             selectedId={selectedId}
             onSelect={setSelectedId}
+            renderStatus={(invoice) => (
+              <OpenInvoiceStatus
+                summary={openSummaries[invoice.id]}
+                settlement={settlementByInvoice.get(invoice.id)}
+                userId={userId}
+                members={members}
+              />
+            )}
           />
           <InvoiceList
             title="Completed"
@@ -221,33 +261,106 @@ function SettlementWorkspace({ household }: { household: Household }) {
           />
         </div>
 
-        <div>
+        <div className="flex flex-col gap-4">
           {!selectedInvoice && (
             <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
               Pick an invoice to review its settlement.
             </p>
           )}
-          {selectedInvoice && selectedSettlement && (
-            <CompletedSettlementCard
-              invoice={selectedInvoice}
+          {selectedInvoice && (
+            <div className="flex items-center justify-between gap-3 sm:hidden">
+              <button
+                type="button"
+                onClick={() => setSelectedId(null)}
+                className="flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground"
+              >
+                <ChevronLeft className="size-4" />
+                All invoices
+              </button>
+            </div>
+          )}
+          {selectedInvoice && selectedSettlement?.status === "completed" && (
+            <SettlementCompletedCard
+              invoiceId={selectedInvoice.id}
+              invoiceLabel={selectedInvoice.label}
               settlement={selectedSettlement}
               userId={userId}
               members={members}
+              categories={categories}
             />
           )}
-          {selectedInvoice && !selectedSettlement && (
-            <OpenInvoiceCard
+          {selectedInvoice && selectedSettlement?.status !== "completed" && (
+            <SettlementInvoiceFlow
               key={selectedInvoice.id}
               invoiceId={selectedInvoice.id}
-              householdId={householdId!}
+              invoiceLabel={selectedInvoice.label}
               userId={userId}
               members={members}
-              myContribution={myContribution}
+              categories={categories}
+              settlement={selectedSettlement}
             />
           )}
         </div>
       </div>
     </div>
+  );
+}
+
+function OpenInvoiceStatus({
+  summary,
+  settlement,
+  userId,
+  members,
+}: {
+  summary: InvoiceMemberSummary[] | undefined;
+  settlement: Settlement | undefined;
+  userId: string | null;
+  members: HouseholdMember[];
+}) {
+  if (!summary) return null;
+
+  const needsReview = summary.some((s) => s.need_review_count > 0);
+  const myPaid =
+    settlement?.settlement_members.find((m) => m.user_id === userId)?.payment_status === "paid";
+  const partnerPaid = settlement?.settlement_members.some(
+    (m) => m.user_id !== userId && m.payment_status === "paid",
+  );
+
+  if (needsReview) {
+    return (
+      <Badge variant="outline" className="border-amber-500/50 text-amber-600">
+        Needs review
+      </Badge>
+    );
+  }
+
+  if (myPaid || partnerPaid) {
+    // Fixed-length copy, deliberately not interpolating an email here — a
+    // long address would overflow this fixed-width sidebar column, unlike
+    // the full detail pane, which already names the partner explicitly.
+    return (
+      <Badge variant="outline" className="text-primary">
+        {myPaid ? "Waiting for partner" : "Your turn to pay"}
+      </Badge>
+    );
+  }
+
+  const shares = computeSettlementShares(
+    summary.map((s) => ({ userId: s.user_id, personalTotal: s.personal_total, commonTotal: s.common_total })),
+  );
+  const mine = shares.perMember.find((m) => m.userId === userId);
+  const myContribution = members.find((m) => m.user_id === userId)?.default_contribution ?? 0;
+  const myEstimate = mine ? remainingToTransfer(mine.transferBeforeContribution, myContribution) : null;
+
+  if (myEstimate === null) {
+    return <span className="text-xs text-muted-foreground">To pay</span>;
+  }
+
+  const { label, value } = formatTransfer(myEstimate);
+  return (
+    <span className="text-xs text-muted-foreground">
+      You: ~{value} {label === "You're owed back" ? "back" : "to transfer"}
+    </span>
   );
 }
 
@@ -257,12 +370,14 @@ function InvoiceList({
   emptyLabel,
   selectedId,
   onSelect,
+  renderStatus,
 }: {
   title: string;
-  invoices: { id: string; label: string }[];
+  invoices: CreditInvoice[];
   emptyLabel: string;
   selectedId: string | null;
   onSelect: (id: string) => void;
+  renderStatus?: (invoice: CreditInvoice) => React.ReactNode;
 }) {
   return (
     <div>
@@ -277,184 +392,16 @@ function InvoiceList({
             <button
               key={invoice.id}
               onClick={() => onSelect(invoice.id)}
-              className={`rounded-lg px-3 py-2 text-left text-sm transition-colors ${
+              className={`flex flex-col gap-0.5 rounded-lg px-3 py-2 text-left text-sm transition-colors ${
                 selectedId === invoice.id ? "bg-muted font-medium text-primary" : "hover:bg-muted/60"
               }`}
             >
-              {invoice.label}
+              <span>{invoice.label}</span>
+              {renderStatus?.(invoice)}
             </button>
           ))}
         </div>
       )}
-    </div>
-  );
-}
-
-function OpenInvoiceCard({
-  invoiceId,
-  householdId,
-  userId,
-  members,
-  myContribution,
-}: {
-  invoiceId: string;
-  householdId: string;
-  userId: string | null;
-  members: HouseholdMember[];
-  myContribution: number;
-}) {
-  const router = useRouter();
-  const supabase = useMemo(() => createClient(), []);
-  const [summary, setSummary] = useState<InvoiceMemberSummary[] | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [contribution, setContribution] = useState(myContribution);
-  const [saveAsDefault, setSaveAsDefault] = useState(false);
-  const [completing, setCompleting] = useState(false);
-
-  useEffect(() => {
-    setLoading(true);
-    supabase
-      .rpc("household_invoice_summary", { p_invoice_id: invoiceId })
-      .then(({ data, error }) => {
-        setLoading(false);
-        if (error) {
-          toast.error("Failed to load this invoice's totals.");
-          return;
-        }
-        setSummary(data ?? []);
-      });
-  }, [supabase, invoiceId]);
-
-  if (loading || !summary) {
-    return <p className="p-8 text-center text-sm text-muted-foreground">Loading…</p>;
-  }
-
-  const mine = summary.find((s) => s.is_self);
-  const partner = summary.find((s) => !s.is_self);
-  const totalCommon = summary.reduce((sum, s) => sum + s.common_total, 0);
-  const share = totalCommon / 2;
-  const myResponsibility = (mine?.personal_total ?? 0) + share;
-  const remaining = myResponsibility - contribution;
-
-  async function handleComplete() {
-    setCompleting(true);
-    if (saveAsDefault) {
-      await supabase.rpc("set_default_contribution", { p_amount: contribution });
-    }
-    const { error } = await supabase.rpc("complete_settlement", {
-      p_invoice_id: invoiceId,
-      p_contribution: contribution,
-    });
-    setCompleting(false);
-    if (error) {
-      toast.error(error.message ?? "Failed to complete settlement.");
-      return;
-    }
-    toast.success("Settlement completed!", { icon: <PartyPopper className="size-4" /> });
-    router.refresh();
-  }
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Your settlement calculation</CardTitle>
-        <CardDescription>
-          {partnerLabel(members, userId)}&rsquo;s personal spending and individual transactions
-          stay private — only their common-spending total is shown here.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3 text-sm">
-        <Row label="Your personal spending" value={fmt(mine?.personal_total ?? 0)} />
-        <Row label="Your common spending" value={fmt(mine?.common_total ?? 0)} />
-        <Row
-          label={`${partnerLabel(members, userId)}'s common spending`}
-          value={fmt(partner?.common_total ?? 0)}
-        />
-        <Row label="Combined common spending" value={fmt(totalCommon)} strong />
-        <Row label="Your share (50%)" value={fmt(share)} />
-        <Row label="Your responsibility" value={fmt(myResponsibility)} strong />
-
-        {(mine?.need_review_count ?? 0) > 0 && (
-          <Badge variant="outline" className="w-fit border-amber-500/50 text-amber-600">
-            {mine?.need_review_count} of your transactions still need review
-          </Badge>
-        )}
-
-        <div className="flex items-center gap-2 pt-2">
-          <label htmlFor="contribution" className="w-40 shrink-0 text-muted-foreground">
-            Your contribution
-          </label>
-          <Input
-            id="contribution"
-            type="number"
-            className="w-32"
-            value={contribution}
-            onChange={(e) => setContribution(Number(e.target.value) || 0)}
-          />
-        </div>
-        <label className="flex items-center gap-2 text-xs text-muted-foreground">
-          <input
-            type="checkbox"
-            className="size-3.5 accent-primary"
-            checked={saveAsDefault}
-            onChange={(e) => setSaveAsDefault(e.target.checked)}
-          />
-          Save as my default recurring contribution
-        </label>
-
-        <Row label="Remaining amount to transfer" value={fmt(remaining)} strong />
-
-        <Button
-          className="mt-2 self-start"
-          disabled={completing}
-          onClick={() => void handleComplete()}
-        >
-          Mark settlement completed
-        </Button>
-      </CardContent>
-    </Card>
-  );
-}
-
-function CompletedSettlementCard({
-  invoice,
-  settlement,
-  userId,
-  members,
-}: {
-  invoice: { id: string; label: string };
-  settlement: Awaited<ReturnType<typeof loadHousehold>>["settlements"][number];
-  userId: string | null;
-  members: HouseholdMember[];
-}) {
-  const mine = settlement.per_member.find((m) => m.user_id === userId);
-  const completedByMe = settlement.completed_by === userId;
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{invoice.label} — settled</CardTitle>
-        <CardDescription>
-          Completed {new Date(settlement.completed_at).toLocaleDateString()} by{" "}
-          {completedByMe ? "you" : partnerLabel(members, userId)}.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3 text-sm">
-        <Row label="Your personal spending" value={fmt(mine?.personal_total ?? 0)} />
-        <Row label="Combined common spending" value={fmt(settlement.common_total)} />
-        <Row label="Your share (50%)" value={fmt(settlement.common_share)} />
-        <Row label="Your contribution" value={fmt(mine?.contribution ?? 0)} />
-        <Row label="Amount transferred" value={fmt(mine?.amount_due ?? 0)} strong />
-      </CardContent>
-    </Card>
-  );
-}
-
-function Row({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
-  return (
-    <div className={`flex items-center justify-between ${strong ? "font-semibold" : ""}`}>
-      <span className={strong ? "" : "text-muted-foreground"}>{label}</span>
-      <span>{value}</span>
     </div>
   );
 }
