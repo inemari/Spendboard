@@ -1,7 +1,14 @@
-import { normalizeDescription } from "@/lib/similar-transactions";
-import type { Rule, RuleCondition, TxType } from "@/lib/types";
+import { normalizeDescription } from "./similar-transactions";
+import type { Rule, RuleCondition, TxType } from "./types";
 
 function matchesCondition(condition: RuleCondition, name: string, subtitle: string): boolean {
+  // Rules are persisted as JSON, and older/manual database rows cannot be
+  // trusted to have the current shape. Treat an invalid condition as a
+  // non-match instead of letting one bad rule crash every statement upload.
+  if (!condition || typeof condition !== "object" || !Array.isArray(condition.values)) {
+    return false;
+  }
+
   const haystack = condition.field === "name" ? name : subtitle;
 
   return condition.values.some((raw) => {
@@ -20,7 +27,7 @@ function matchesCondition(condition: RuleCondition, name: string, subtitle: stri
 }
 
 function matchesRule(rule: Rule, name: string, subtitle: string): boolean {
-  if (rule.conditions.length === 0) return false;
+  if (!Array.isArray(rule.conditions) || rule.conditions.length === 0) return false;
   return rule.conditions.every((condition) => matchesCondition(condition, name, subtitle));
 }
 

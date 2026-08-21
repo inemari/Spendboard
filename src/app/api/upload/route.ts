@@ -12,7 +12,7 @@ function monthOf(isoDate: string): { year: number; month: number } {
   return { year, month };
 }
 
-export async function POST(request: NextRequest) {
+async function handleUpload(request: NextRequest) {
   const supabase = await createClient();
   const {
     data: { user },
@@ -264,4 +264,16 @@ export async function POST(request: NextRequest) {
     attached: attachedToInvoice,
     inserted: inserted ?? [],
   });
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    return await handleUpload(request);
+  } catch (error) {
+    console.error("Unhandled statement upload error", error);
+    return NextResponse.json(
+      { error: "The server could not process this upload." },
+      { status: 500 },
+    );
+  }
 }

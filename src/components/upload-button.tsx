@@ -88,10 +88,35 @@ export function UploadButton({
         method: "POST",
         body: formData,
       });
-      const data = await res.json();
+      const responseText = await res.text();
+      let data: {
+        error?: string;
+        imported?: number;
+        total?: number;
+        attached?: number;
+        inserted?: Transaction[];
+      } = {};
+
+      if (responseText) {
+        try {
+          data = JSON.parse(responseText) as typeof data;
+        } catch {
+          // Hosting/runtime errors can return HTML or plain text. Preserve the
+          // HTTP status below instead of replacing it with a vague parse error.
+        }
+      }
 
       if (!res.ok) {
-        toast.error(data.error ?? "Upload failed.");
+        toast.error(data.error ?? `Upload failed on the server (${res.status}).`);
+        return;
+      }
+
+      if (
+        typeof data.imported !== "number" ||
+        typeof data.total !== "number" ||
+        typeof data.attached !== "number"
+      ) {
+        toast.error("The server returned an invalid upload response.");
         return;
       }
 
