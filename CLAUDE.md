@@ -373,17 +373,14 @@ decisions. For work that's planned but not yet implemented, see
   per-file after the fact. Individual transactions can still be corrected
   afterward via the per-card toggle or the bulk action bar.
 - Custom category create/rename/delete.
-- **Reset to default categories** (`category-manager-panel.tsx`'s "Reset to
-  Defaults" button, an `AlertDialog`-confirmed destructive action). Deletes
-  every one of the user's categories — default and custom alike — then calls
-  `ensureDefaultCategories` again to reseed from `default_categories`, which
-  it can do unconditionally since the account now has zero categories.
-  Deleting cascades: subcategories go with their parent
-  (`parent_id on delete cascade`), transactions filed under a deleted
-  category become uncategorized (`category_id on delete set null`), and any
-  rule pointing at one is deleted with it (`category_id on delete cascade`).
-  There is no partial/selective reset — it's all-or-nothing, matching what
-  the confirmation dialog says.
+- **Update default categories without losing personal categories.** The
+  Categories page's "Update Categories" button calls
+  `sync_default_categories()`. It compares the caller's category tree with
+  `default_categories` using case/whitespace-insensitive names, reuses an
+  existing matching top-level parent, and adds only missing parents or
+  subcategories beneath the correct parent. It never renames, moves, edits,
+  or removes an existing category, so transactions and rules remain intact.
+  Re-running it when the user is fully synchronized is a safe no-op.
 - **Shared category-creation fields.** `category-create-fields.tsx`'s
   `CategoryCreateFields` (icon picker + labeled Name field + labeled Parent
   select, plus the shared `NO_PARENT_VALUE` sentinel and "No parent
@@ -612,7 +609,7 @@ decisions. For work that's planned but not yet implemented, see
     `default_categories` onto an *existing* account, additively — the
     seed above only ever runs once, on a brand-new account with zero
     categories, so an admin who fixes or adds a default category otherwise
-    has no way to backfill it without that user destructively resetting.
+    needs an explicit synchronization step to backfill it.
     `admin_sync_default_categories(target_user_id)` (`supabase/schema.sql`)
     walks `default_categories` the same parents-then-children way the seed
     does, but inserts a category only when that user has none by that name

@@ -399,11 +399,9 @@ $$;
 grant execute on function apply_rule_template(uuid, uuid) to authenticated;
 
 -- Pushes default_categories entries the target user doesn't already have,
--- by name, without touching anything they do have — the non-destructive
--- counterpart to that user's own "Reset to Defaults" (which deletes
--- everything first). Lets an admin who fixes or adds a default category
--- back-fill it onto existing accounts instead of asking each user to
--- destructively reset. Same shape as ensure-default-categories.ts's seed
+-- by name, without touching anything they do have. Lets an admin who fixes
+-- or adds a default category back-fill it onto existing accounts. Same shape
+-- as ensure-default-categories.ts's seed
 -- (parents first, so a subcategory's parent_id can be remapped from the
 -- seed row's id to the id it was cloned into for this user), but every
 -- insert is conditional on "this user has no category by this name in this
@@ -469,6 +467,77 @@ end;
 $$;
 
 grant execute on function admin_sync_default_categories(uuid) to authenticated;
+
+-- Self-service counterpart to admin_sync_default_categories. Compares the
+-- caller's category tree with the admin-managed defaults, reuses matching
+-- top-level parents, and adds only missing parents or children in their
+-- correct position. Existing categories, subcategories, icons, names, and
+-- ordering are never changed or removed. RLS still scopes every categories
+-- read/write to auth.uid(); the function only needs the caller id explicitly
+-- so each lookup and insert is unambiguous. Returns the number added.
+create or replace function sync_default_categories()
+returns int
+language plpgsql
+set search_path = public
+as $$
+declare
+  parent record;
+  child record;
+  resolved_parent_id uuid;
+  cat_id uuid;
+  uid uuid := auth.uid();
+  inserted_count int := 0;
+begin
+  if uid is null then
+    raise exception 'not authenticated';
+  end if;
+
+  for parent in
+    select id, name, icon, sort_order
+    from default_categories
+    where parent_id is null
+    order by sort_order
+  loop
+    select id into resolved_parent_id
+      from categories
+      where user_id = uid
+        and parent_id is null
+        and lower(trim(name)) = lower(trim(parent.name))
+      limit 1;
+
+    if resolved_parent_id is null then
+      insert into categories (user_id, name, icon, is_default, sort_order)
+        values (uid, parent.name, parent.icon, true, parent.sort_order)
+        returning id into resolved_parent_id;
+      inserted_count := inserted_count + 1;
+    end if;
+
+    for child in
+      select name, icon, sort_order
+      from default_categories
+      where parent_id = parent.id
+      order by sort_order
+    loop
+      select id into cat_id
+        from categories
+        where user_id = uid
+          and parent_id = resolved_parent_id
+          and lower(trim(name)) = lower(trim(child.name))
+        limit 1;
+
+      if cat_id is null then
+        insert into categories (user_id, parent_id, name, icon, is_default, sort_order)
+          values (uid, resolved_parent_id, child.name, child.icon, true, child.sort_order);
+        inserted_count := inserted_count + 1;
+      end if;
+    end loop;
+  end loop;
+
+  return inserted_count;
+end;
+$$;
+
+grant execute on function sync_default_categories() to authenticated;
 
 -- Self-service template refresh used by the Rules page's "Update Rules"
 -- action. It replaces only rules marked is_default and preserves every
