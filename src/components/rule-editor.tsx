@@ -122,7 +122,10 @@ function RuleEditorContent({
     if (mergeTarget) {
       ({ error } = await supabase
         .from("rules")
-        .update({ conditions: [mergeValuesIntoRule(mergeTarget, cleanedConditions[0].values)] })
+        .update({
+          conditions: [mergeValuesIntoRule(mergeTarget, cleanedConditions[0].values)],
+          is_default: false,
+        })
         .eq("id", mergeTarget.id));
       if (!error) {
         ({ error } = await supabase.from("rules").delete().eq("id", existing.id));
@@ -130,7 +133,7 @@ function RuleEditorContent({
     } else {
       ({ error } = await supabase
         .from("rules")
-        .update({ category_id: categoryId, conditions: cleanedConditions })
+        .update({ category_id: categoryId, conditions: cleanedConditions, is_default: false })
         .eq("id", existing.id));
     }
     setSaving(false);

@@ -172,7 +172,7 @@ export function useTransactionActions(
     // creating a second rule for the same condition, if one already exists.
     const { data: existingRows, error: fetchError } = await supabase
       .from("rules")
-      .select("id, category_id, conditions")
+      .select("id, category_id, conditions, is_default")
       .eq("category_id", categoryId);
 
     if (fetchError) {
@@ -184,7 +184,10 @@ export function useTransactionActions(
     const mergeTarget = findMergeTarget(existingRules, categoryId, "name", "equals");
 
     const error = mergeTarget
-      ? (await supabase.from("rules").update({ conditions: [mergeValuesIntoRule(mergeTarget, matchTexts)] }).eq("id", mergeTarget.id))
+      ? (await supabase.from("rules").update({
+          conditions: [mergeValuesIntoRule(mergeTarget, matchTexts)],
+          is_default: false,
+        }).eq("id", mergeTarget.id))
           .error
       : (
           await supabase.from("rules").insert({

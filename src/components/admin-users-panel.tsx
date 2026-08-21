@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { PartyPopper, Plus, UserRound } from "lucide-react";
+import { PartyPopper, Plus, RefreshCw, UserRound } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -11,9 +12,11 @@ import type { AppUser } from "@/lib/types";
 
 export function AdminUsersPanel({ users }: { users: AppUser[] }) {
   const router = useRouter();
+  const supabase = useMemo(() => createClient(), []);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [creating, setCreating] = useState(false);
+  const [syncingUserId, setSyncingUserId] = useState<string | null>(null);
 
   async function handleCreate() {
     setCreating(true);
@@ -38,6 +41,29 @@ export function AdminUsersPanel({ users }: { users: AppUser[] }) {
     } finally {
       setCreating(false);
     }
+  }
+
+  async function handleSyncUser(user: AppUser) {
+    setSyncingUserId(user.id);
+    const { data, error } = await supabase.rpc("admin_sync_user_defaults", {
+      target_user_id: user.id,
+    });
+    setSyncingUserId(null);
+
+    if (error) {
+      toast.error(`Failed to update ${user.email ?? "the user"}. No partial changes were saved.`);
+      return;
+    }
+
+    const result = (data ?? {}) as {
+      categories_added?: number;
+      rules_synced?: number;
+    };
+    const categoryCount = result.categories_added ?? 0;
+    const ruleCount = result.rules_synced ?? 0;
+    toast.success(
+      `Updated ${user.email ?? "user"}: added ${categoryCount} missing categor${categoryCount === 1 ? "y" : "ies"} and synced ${ruleCount} admin rule${ruleCount === 1 ? "" : "s"}.`,
+    );
   }
 
   return (
@@ -83,10 +109,29 @@ export function AdminUsersPanel({ users }: { users: AppUser[] }) {
 
       <div className="flex flex-col gap-1.5">
         <h3 className="text-sm font-semibold">All users</h3>
+        <p className="text-sm text-muted-foreground">
+          Update all adds missing default categories and refreshes every managed admin rule,
+          without removing personal categories or rules.
+        </p>
         {users.map((u) => (
-          <div key={u.id} className="flex items-center gap-2 rounded-lg bg-muted/40 p-2.5 text-sm">
-            <UserRound className="size-4 text-muted-foreground" />
-            {u.email ?? u.id}
+          <div
+            key={u.id}
+            className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-muted/40 p-2.5 text-sm"
+          >
+            <span className="flex min-w-0 items-center gap-2">
+              <UserRound className="size-4 shrink-0 text-muted-foreground" />
+              <span className="truncate">{u.email ?? u.id}</span>
+            </span>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={syncingUserId !== null}
+              onClick={() => void handleSyncUser(u)}
+            >
+              <RefreshCw className={syncingUserId === u.id ? "size-3.5 animate-spin" : "size-3.5"} />
+              {syncingUserId === u.id ? "Updating..." : "Update all"}
+            </Button>
           </div>
         ))}
       </div>

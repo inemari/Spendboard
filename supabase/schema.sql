@@ -188,9 +188,9 @@ grant select, insert, update, delete on categories, months, transactions, rules 
 
 -- Admin rule templates (src/app/admin/rules/, src/components/admin-rules-panel.tsx).
 -- Global, not scoped to any one user — templates are named, reusable rule
--- bundles an admin curates, one of which can be marked `is_default` to mark
--- what a brand-new user should receive. `category_name` on each item (not a
--- category_id) is what makes a template portable across users, since every
+-- bundles an admin curates. Every template item is part of the managed
+-- default-rule set users receive when they update. `category_name` on each
+-- item (not a category_id) is what makes a template portable across users, since every
 -- user has their own distinct set of categories; applying a template
 -- finds-or-creates a category by that name for whichever user it's applied
 -- to (see `apply_rule_template` below).
@@ -229,8 +229,47 @@ create table if not exists rule_template_items (
 -- that name.
 alter table rule_template_items add column if not exists category_parent_name text;
 
--- Only one template can be the default at a time — setting one clears any
--- other, rather than leaving the app to guess which of several to use.
+-- Rules copied from an admin template are managed defaults, while rules a
+-- user creates (or customizes) remain personal. The provenance flag is what
+-- lets apply_default_rule_template replace only the managed set without ever
+-- deleting a user's own rules. When this column is introduced on an existing
+-- database, tag rows that exactly match a known template item so the first
+-- refresh can also retire template rules created before provenance existed.
+do $$
+begin
+  if not exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'rules'
+      and column_name = 'is_default'
+  ) then
+    alter table rules add column is_default boolean not null default false;
+
+    update rules r
+    set is_default = true
+    from categories c
+    left join categories parent on parent.id = c.parent_id
+    where c.id = r.category_id
+      and exists (
+        select 1
+        from rule_template_items item
+        where item.conditions = r.conditions
+          and lower(trim(item.category_name)) = lower(trim(c.name))
+          and (
+            (item.category_parent_name is null and c.parent_id is null)
+            or lower(trim(item.category_parent_name)) = lower(trim(parent.name))
+          )
+      );
+  end if;
+end $$;
+
+create index if not exists rules_user_id_is_default_idx
+  on rules (user_id, is_default);
+
+-- Legacy compatibility for databases/UI versions that exposed one selected
+-- template. Current synchronization includes every template regardless of
+-- this flag, but retaining the trigger keeps old clients deterministic.
 create or replace function enforce_single_default_template()
 returns trigger
 language plpgsql
@@ -307,6 +346,7 @@ declare
   item record;
   resolved_parent_id uuid;
   cat_id uuid;
+  existing_rule_id uuid;
 begin
   if not is_admin() then
     raise exception 'not authorized';
@@ -346,14 +386,19 @@ begin
         returning id into cat_id;
     end if;
 
-    if not exists (
-      select 1 from rules
+    select id into existing_rule_id
+      from rules
       where user_id = target_user_id
         and category_id = cat_id
         and conditions = item.conditions
-    ) then
-      insert into rules (user_id, category_id, conditions)
-        values (target_user_id, cat_id, item.conditions);
+      limit 1;
+
+    if existing_rule_id is null then
+      insert into rules (user_id, category_id, conditions, is_default)
+        values (target_user_id, cat_id, item.conditions, true);
+    else
+      -- An exact pre-existing match is now part of the managed template set.
+      update rules set is_default = true where id = existing_rule_id;
     end if;
   end loop;
 end;
@@ -362,11 +407,9 @@ $$;
 grant execute on function apply_rule_template(uuid, uuid) to authenticated;
 
 -- Pushes default_categories entries the target user doesn't already have,
--- by name, without touching anything they do have — the non-destructive
--- counterpart to that user's own "Reset to Defaults" (which deletes
--- everything first). Lets an admin who fixes or adds a default category
--- back-fill it onto existing accounts instead of asking each user to
--- destructively reset. Same shape as ensure-default-categories.ts's seed
+-- by name, without touching anything they do have. Lets an admin who fixes
+-- or adds a default category back-fill it onto existing accounts. Same shape
+-- as ensure-default-categories.ts's seed
 -- (parents first, so a subcategory's parent_id can be remapped from the
 -- seed row's id to the id it was cloned into for this user), but every
 -- insert is conditional on "this user has no category by this name in this
@@ -433,14 +476,143 @@ $$;
 
 grant execute on function admin_sync_default_categories(uuid) to authenticated;
 
--- Self-service counterpart to apply_rule_template above, used by the Rules
--- page's "Reset to defaults" action (src/components/rules-manager-panel.tsx).
--- Unlike that function, this needs no is_admin() check — it only ever
--- reads/writes auth.uid()'s own rows, the same thing RLS's
--- `auth.uid() = user_id` policy on categories/rules already lets a user do
--- directly. It's security definer purely to read rule_templates/
--- rule_template_items, which carry an "admin only" RLS policy otherwise.
--- No-ops (returns 0) if no template is currently marked is_default.
+-- Self-service counterpart to admin_sync_default_categories. Compares the
+-- caller's category tree with the admin-managed defaults, reuses matching
+-- top-level parents, and adds only missing parents or children in their
+-- correct position. Existing categories, subcategories, icons, names, and
+-- ordering are never changed or removed. RLS still scopes every categories
+-- read/write to auth.uid(); the function only needs the caller id explicitly
+-- so each lookup and insert is unambiguous. Returns the number added.
+create or replace function sync_default_categories()
+returns int
+language plpgsql
+set search_path = public
+as $$
+declare
+  parent record;
+  child record;
+  resolved_parent_id uuid;
+  cat_id uuid;
+  uid uuid := auth.uid();
+  inserted_count int := 0;
+begin
+  if uid is null then
+    raise exception 'not authenticated';
+  end if;
+
+  for parent in
+    select id, name, icon, sort_order
+    from default_categories
+    where parent_id is null
+    order by sort_order
+  loop
+    select id into resolved_parent_id
+      from categories
+      where user_id = uid
+        and parent_id is null
+        and lower(trim(name)) = lower(trim(parent.name))
+      limit 1;
+
+    if resolved_parent_id is null then
+      insert into categories (user_id, name, icon, is_default, sort_order)
+        values (uid, parent.name, parent.icon, true, parent.sort_order)
+        returning id into resolved_parent_id;
+      inserted_count := inserted_count + 1;
+    end if;
+
+    for child in
+      select name, icon, sort_order
+      from default_categories
+      where parent_id = parent.id
+      order by sort_order
+    loop
+      select id into cat_id
+        from categories
+        where user_id = uid
+          and parent_id = resolved_parent_id
+          and lower(trim(name)) = lower(trim(child.name))
+        limit 1;
+
+      if cat_id is null then
+        insert into categories (user_id, parent_id, name, icon, is_default, sort_order)
+          values (uid, resolved_parent_id, child.name, child.icon, true, child.sort_order);
+        inserted_count := inserted_count + 1;
+      end if;
+    end loop;
+  end loop;
+
+  return inserted_count;
+end;
+$$;
+
+grant execute on function sync_default_categories() to authenticated;
+
+-- One-click admin synchronization for the Users tab. Adds any missing
+-- default categories/subcategories, then atomically replaces only the
+-- target user's managed template rules with every current admin template.
+-- Personal categories and personal rules are never deleted or modified.
+-- Calling the two existing admin helpers inside this function keeps their
+-- category-placement and rule-provenance behavior identical everywhere.
+create or replace function admin_sync_user_defaults(target_user_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  template record;
+  categories_before int := 0;
+  categories_added int := 0;
+  rules_synced int := 0;
+begin
+  if not is_admin() then
+    raise exception 'not authorized';
+  end if;
+
+  if not exists (select 1 from auth.users where id = target_user_id) then
+    raise exception 'user not found';
+  end if;
+
+  select count(*) into categories_before
+    from categories
+    where user_id = target_user_id;
+
+  perform admin_sync_default_categories(target_user_id);
+
+  delete from rules
+    where user_id = target_user_id
+      and is_default;
+
+  for template in
+    select id from rule_templates order by created_at
+  loop
+    perform apply_rule_template(template.id, target_user_id);
+  end loop;
+
+  select count(*) into rules_synced
+    from rules
+    where user_id = target_user_id
+      and is_default;
+
+  select count(*) - categories_before into categories_added
+    from categories
+    where user_id = target_user_id;
+
+  return jsonb_build_object(
+    'categories_added', categories_added,
+    'rules_synced', rules_synced
+  );
+end;
+$$;
+
+grant execute on function admin_sync_user_defaults(uuid) to authenticated;
+
+-- Self-service template refresh used by the Rules page's "Update Rules"
+-- action. It replaces only rules marked is_default, preserves every personal
+-- rule, and rebuilds the managed set from every admin template item. The
+-- delete/reapply sequence is one transaction, so any insertion error can
+-- never leave the user with a partially refreshed set. Returns the number of
+-- managed default rules active after synchronization.
 create or replace function apply_default_rule_template()
 returns int
 language plpgsql
@@ -451,22 +623,20 @@ declare
   item record;
   resolved_parent_id uuid;
   cat_id uuid;
-  default_template_id uuid;
+  existing_rule_id uuid;
   uid uuid := auth.uid();
-  inserted_count int := 0;
+  synced_count int := 0;
 begin
   if uid is null then
     raise exception 'not authenticated';
   end if;
 
-  select id into default_template_id from rule_templates where is_default limit 1;
-  if default_template_id is null then
-    return 0;
-  end if;
+  delete from rules where user_id = uid and is_default;
 
   for item in
     select category_name, category_parent_name, conditions
-    from rule_template_items where template_id = default_template_id
+    from rule_template_items
+    order by created_at
   loop
     resolved_parent_id := null;
 
@@ -498,19 +668,26 @@ begin
         returning id into cat_id;
     end if;
 
-    if not exists (
-      select 1 from rules
+    select id into existing_rule_id
+      from rules
       where user_id = uid
         and category_id = cat_id
         and conditions = item.conditions
-    ) then
-      insert into rules (user_id, category_id, conditions)
-        values (uid, cat_id, item.conditions);
-      inserted_count := inserted_count + 1;
+      limit 1;
+
+    if existing_rule_id is null then
+      insert into rules (user_id, category_id, conditions, is_default)
+        values (uid, cat_id, item.conditions, true);
+    else
+      update rules set is_default = true where id = existing_rule_id;
     end if;
   end loop;
 
-  return inserted_count;
+  select count(*) into synced_count
+    from rules
+    where user_id = uid and is_default;
+
+  return synced_count;
 end;
 $$;
 

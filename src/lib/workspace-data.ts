@@ -22,7 +22,7 @@ export async function loadCategoriesAndRules(supabase: SupabaseClient) {
 
   const { data: rules, error: rulesError } = await supabase
     .from("rules")
-    .select("id, category_id, created_at, conditions")
+    .select("id, category_id, created_at, conditions, is_default")
     .order("created_at", { ascending: false });
 
   return {

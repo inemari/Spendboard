@@ -40,6 +40,9 @@ export type Rule = {
   category_id: string;
   /** Conditions are AND'd together. */
   conditions: RuleCondition[];
+  /** True when this rule is managed by the active admin template. User
+   * edits convert it to a personal rule so a later refresh preserves it. */
+  is_default: boolean;
   created_at: string;
 };
 
@@ -47,13 +50,14 @@ export type Rule = {
  * global, not tied to any one user's `rules` rows. `category_name` (not a
  * category_id) is what each item targets, since a template can be applied
  * to any user's own distinct set of categories; applying it finds-or-creates
- * a category by that name for the target user. At most one template is
- * `is_default` at a time (enforced by a DB trigger), marking which one new
- * users should receive. */
+ * a category by that name for the target user. Every template is included in
+ * the managed rule set users receive when they update. */
 export type RuleTemplate = {
   id: string;
   name: string;
   description: string | null;
+  /** Legacy database field retained for schema compatibility; all templates
+   * are synchronized regardless of its value. */
   is_default: boolean;
   created_at: string;
   items: RuleTemplateItem[];

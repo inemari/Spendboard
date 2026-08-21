@@ -373,17 +373,14 @@ decisions. For work that's planned but not yet implemented, see
   per-file after the fact. Individual transactions can still be corrected
   afterward via the per-card toggle or the bulk action bar.
 - Custom category create/rename/delete.
-- **Reset to default categories** (`category-manager-panel.tsx`'s "Reset to
-  Defaults" button, an `AlertDialog`-confirmed destructive action). Deletes
-  every one of the user's categories — default and custom alike — then calls
-  `ensureDefaultCategories` again to reseed from `default_categories`, which
-  it can do unconditionally since the account now has zero categories.
-  Deleting cascades: subcategories go with their parent
-  (`parent_id on delete cascade`), transactions filed under a deleted
-  category become uncategorized (`category_id on delete set null`), and any
-  rule pointing at one is deleted with it (`category_id on delete cascade`).
-  There is no partial/selective reset — it's all-or-nothing, matching what
-  the confirmation dialog says.
+- **Update default categories without losing personal categories.** The
+  Categories page's "Update Categories" button calls
+  `sync_default_categories()`. It compares the caller's category tree with
+  `default_categories` using case/whitespace-insensitive names, reuses an
+  existing matching top-level parent, and adds only missing parents or
+  subcategories beneath the correct parent. It never renames, moves, edits,
+  or removes an existing category, so transactions and rules remain intact.
+  Re-running it when the user is fully synchronized is a safe no-op.
 - **Shared category-creation fields.** `category-create-fields.tsx`'s
   `CategoryCreateFields` (icon picker + labeled Name field + labeled Parent
   select, plus the shared `NO_PARENT_VALUE` sentinel and "No parent
@@ -479,20 +476,18 @@ decisions. For work that's planned but not yet implemented, see
   (`highlightHref` in `rules-manager-panel.tsx`, via `monthAnchorFor`), which
   scrolls to and briefly ring-highlights those cards, then clears the
   `highlight` param after a few seconds.
-- **Reset to default rules** (`rules-manager-panel.tsx`'s "Reset to
-  Defaults" button, an `AlertDialog`-confirmed destructive action). Deletes
-  every one of the user's rules, then calls the `apply_default_rule_template`
-  RPC to reapply whichever rule template is currently marked `is_default`
-  (find-or-creating that template's categories by name, same as
-  `apply_rule_template`). This is a **self-service counterpart** to
-  `apply_rule_template` — that one is admin-only (an admin applying a
-  template to someone else's account), while this one only ever touches the
-  caller's own rows, so it skips the `is_admin()` check entirely and is
-  `security definer` purely to read `rule_templates`/`rule_template_items`,
-  which otherwise carry an "admin only" RLS policy. Already-categorized
-  transactions are untouched — only the `rules` rows themselves are
-  replaced. No-ops (deletes rules, applies nothing) if no template is
-  currently `is_default`.
+- **Update default rules without losing personal rules.** Rules copied from
+  an admin template carry `rules.is_default = true`; rules users create are
+  personal (`false`), and manually editing or merging into a default rule
+  turns that customized copy personal. `rules-manager-panel.tsx`'s "Update
+  Rules" button calls `apply_default_rule_template()`, which deletes only the
+  caller's managed default rules and recreates that set from every admin
+  template item while leaving every personal rule
+  untouched. The delete/reapply sequence is one database transaction,
+  so any failure rolls the whole refresh back. It also find-or-creates named
+  categories just like `apply_rule_template`; already-categorized
+  transactions are untouched. If there are no templates, the synchronized
+  managed set is simply empty.
 - **Rule matching conditions: equals, contains, starts with (name);
   contains, doesn't contain (subtitle).** `RuleCondition`
   (`src/lib/types.ts`), `apply-rules.ts`'s matcher, and the operator dropdown
@@ -525,6 +520,12 @@ decisions. For work that's planned but not yet implemented, see
     `auth.admin.createUser`. This is the one place in the app that holds a
     key capable of bypassing RLS entirely — it must never be imported into
     anything that runs in the browser.
+    Each user row also has one **"Update all"** action backed by
+    `admin_sync_user_defaults(target_user_id)`: in one transaction it adds
+    missing default categories/subcategories and replaces only that user's
+    managed rules with every current admin template. Personal categories and
+    rules are preserved, and any failure rolls the entire combined update
+    back instead of leaving half-applied defaults.
   - **Households tab** (`admin-households-panel.tsx`) lists every household
     (`admin_list_households()`) and pairs two chosen users directly via
     `admin_create_household(user_a, user_b)` — deliberately bypassing the
@@ -558,13 +559,18 @@ decisions. For work that's planned but not yet implemented, see
     `category_id`, making it portable across different users' distinct
     category sets. Lists templates (each showing its items' plain-English
     description via `describeRuleConditions`), lets an admin create/edit/
-    delete them, mark one `is_default` (a DB trigger enforces only one at a
-    time), and apply any template to a chosen existing user on demand
+    delete them, and apply any template to a chosen existing user on demand
     (there's no self-serve signup to hook a "new user" flow into yet, so
     applying is a manual, admin-triggered action for now — see README on how
-    users are provisioned). Applying a template finds-or-creates each item's
-    named category for the target user and inserts the corresponding rule;
-    it never touches anything that user already has.
+    users are provisioned). Every item from every template is included when a
+    user clicks "Update Rules," and newly provisioned users receive every
+    template as well. Applying one template manually finds-or-creates each
+    item's
+    named category for the target user and inserts the corresponding rule as
+    a managed default (`rules.is_default = true`); it never removes any rule
+    that user already has. The user's "Update Rules" action later replaces
+    this managed set with all current admin templates while preserving all
+    personal rules.
     - **Each template item's category is picked from a cascading dropdown
       pair, not typed freehand.** The top-level `Select` lists
       `default_categories`' top-level rows; picking one that has children
@@ -611,7 +617,7 @@ decisions. For work that's planned but not yet implemented, see
     `default_categories` onto an *existing* account, additively — the
     seed above only ever runs once, on a brand-new account with zero
     categories, so an admin who fixes or adds a default category otherwise
-    has no way to backfill it without that user destructively resetting.
+    needs an explicit synchronization step to backfill it.
     `admin_sync_default_categories(target_user_id)` (`supabase/schema.sql`)
     walks `default_categories` the same parents-then-children way the seed
     does, but inserts a category only when that user has none by that name
@@ -627,7 +633,8 @@ decisions. For work that's planned but not yet implemented, see
     in the app. `list_app_users()` / `admin_list_households()` (read
     `auth.users`, not exposed to the client otherwise),
     `apply_rule_template(p_template_id, target_user_id)` /
-    `admin_sync_default_categories(target_user_id)` (write categories/
+    `admin_sync_default_categories(target_user_id)` /
+    `admin_sync_user_defaults(target_user_id)` (write categories/
     rules owned by `target_user_id`), and `admin_create_household(user_a,
     user_b)` (writes `household_members` rows for two other users) all run
     with elevated privileges specifically to make these admin actions the
