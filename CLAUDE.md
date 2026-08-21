@@ -520,6 +520,12 @@ decisions. For work that's planned but not yet implemented, see
     `auth.admin.createUser`. This is the one place in the app that holds a
     key capable of bypassing RLS entirely — it must never be imported into
     anything that runs in the browser.
+    Each user row also has one **"Update all"** action backed by
+    `admin_sync_user_defaults(target_user_id)`: in one transaction it adds
+    missing default categories/subcategories and replaces only that user's
+    managed rules with every current admin template. Personal categories and
+    rules are preserved, and any failure rolls the entire combined update
+    back instead of leaving half-applied defaults.
   - **Households tab** (`admin-households-panel.tsx`) lists every household
     (`admin_list_households()`) and pairs two chosen users directly via
     `admin_create_household(user_a, user_b)` — deliberately bypassing the
@@ -627,7 +633,8 @@ decisions. For work that's planned but not yet implemented, see
     in the app. `list_app_users()` / `admin_list_households()` (read
     `auth.users`, not exposed to the client otherwise),
     `apply_rule_template(p_template_id, target_user_id)` /
-    `admin_sync_default_categories(target_user_id)` (write categories/
+    `admin_sync_default_categories(target_user_id)` /
+    `admin_sync_user_defaults(target_user_id)` (write categories/
     rules owned by `target_user_id`), and `admin_create_household(user_a,
     user_b)` (writes `household_members` rows for two other users) all run
     with elevated privileges specifically to make these admin actions the

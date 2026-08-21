@@ -540,6 +540,66 @@ $$;
 
 grant execute on function sync_default_categories() to authenticated;
 
+-- One-click admin synchronization for the Users tab. Adds any missing
+-- default categories/subcategories, then atomically replaces only the
+-- target user's managed template rules with every current admin template.
+-- Personal categories and personal rules are never deleted or modified.
+-- Calling the two existing admin helpers inside this function keeps their
+-- category-placement and rule-provenance behavior identical everywhere.
+create or replace function admin_sync_user_defaults(target_user_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  template record;
+  categories_before int := 0;
+  categories_added int := 0;
+  rules_synced int := 0;
+begin
+  if not is_admin() then
+    raise exception 'not authorized';
+  end if;
+
+  if not exists (select 1 from auth.users where id = target_user_id) then
+    raise exception 'user not found';
+  end if;
+
+  select count(*) into categories_before
+    from categories
+    where user_id = target_user_id;
+
+  perform admin_sync_default_categories(target_user_id);
+
+  delete from rules
+    where user_id = target_user_id
+      and is_default;
+
+  for template in
+    select id from rule_templates order by created_at
+  loop
+    perform apply_rule_template(template.id, target_user_id);
+  end loop;
+
+  select count(*) into rules_synced
+    from rules
+    where user_id = target_user_id
+      and is_default;
+
+  select count(*) - categories_before into categories_added
+    from categories
+    where user_id = target_user_id;
+
+  return jsonb_build_object(
+    'categories_added', categories_added,
+    'rules_synced', rules_synced
+  );
+end;
+$$;
+
+grant execute on function admin_sync_user_defaults(uuid) to authenticated;
+
 -- Self-service template refresh used by the Rules page's "Update Rules"
 -- action. It replaces only rules marked is_default, preserves every personal
 -- rule, and rebuilds the managed set from every admin template item. The
