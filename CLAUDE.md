@@ -607,13 +607,27 @@ decisions. For work that's planned but not yet implemented, see
     remapping each child's `parent_id` from the seed row's own id to the
     *new* per-user category id it was cloned into — a fresh `categories` row
     always gets its own generated id, never the seed row's.
+  - **"Sync defaults to a user"** (same tab) pushes edits to
+    `default_categories` onto an *existing* account, additively — the
+    seed above only ever runs once, on a brand-new account with zero
+    categories, so an admin who fixes or adds a default category otherwise
+    has no way to backfill it without that user destructively resetting.
+    `admin_sync_default_categories(target_user_id)` (`supabase/schema.sql`)
+    walks `default_categories` the same parents-then-children way the seed
+    does, but inserts a category only when that user has none by that name
+    in that position (case/whitespace-insensitive, same as
+    `categories_user_parent_name_key`/`apply_rule_template`) — it never
+    touches or removes anything the user already has, so it's safe to run
+    repeatedly or on an account that's already fully synced (a no-op, 0
+    inserted).
   - **Several `SECURITY DEFINER` RPCs** exist because the browser's anon-key
     client is _correctly_ blocked by every table's `auth.uid() = user_id`
     RLS policy from ever reading another user's email or writing rows with
     a different `user_id` — that's the whole point of that policy elsewhere
     in the app. `list_app_users()` / `admin_list_households()` (read
     `auth.users`, not exposed to the client otherwise),
-    `apply_rule_template(p_template_id, target_user_id)` (writes categories/
+    `apply_rule_template(p_template_id, target_user_id)` /
+    `admin_sync_default_categories(target_user_id)` (write categories/
     rules owned by `target_user_id`), and `admin_create_household(user_a,
     user_b)` (writes `household_members` rows for two other users) all run
     with elevated privileges specifically to make these admin actions the
