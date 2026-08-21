@@ -1,6 +1,5 @@
 import * as XLSX from "xlsx";
 import Papa from "papaparse";
-import * as pdfjs from "pdfjs-dist/legacy/build/pdf.mjs";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import { STATEMENT_FORMATS, type HeaderAliases } from "./statement-formats";
@@ -283,6 +282,11 @@ function clusterLineByGap(items: PdfTextItem[]): { x: number; text: string }[] {
 // blank cell (e.g. no reference number) has fewer gaps, and re-splitting it
 // would shift every column after the blank one out of alignment.
 async function pdfToRows(buffer: ArrayBuffer, aliases: HeaderAliases): Promise<unknown[][]> {
+  // pdfjs is large and has Node-specific startup work. Loading it at module
+  // scope made every Excel/CSV upload initialize the PDF runtime too, which
+  // can make a serverless function fail before the route handler even starts.
+  // Keep it entirely off the Excel/CSV path.
+  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
   const doc = await pdfjs.getDocument({
     data: new Uint8Array(buffer),
     standardFontDataUrl: `${path.join(process.cwd(), "node_modules/pdfjs-dist/standard_fonts")}/`,

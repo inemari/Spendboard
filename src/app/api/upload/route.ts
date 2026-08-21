@@ -6,6 +6,11 @@ import type { CardType, Rule } from "@/lib/types";
 
 const CARD_TYPES: CardType[] = ["credit", "debit"];
 
+// Parsing and importing a statement can involve several database requests.
+// Let deployment platforms provision a realistic execution window rather
+// than terminating the function with a platform-generated HTML 500.
+export const maxDuration = 60;
+
 /** "2026-07-15" -> { year: 2026, month: 7 } */
 function monthOf(isoDate: string): { year: number; month: number } {
   const [year, month] = isoDate.split("-").map(Number);
@@ -250,10 +255,24 @@ async function handleUpload(request: NextRequest) {
       .is("location", null)
       .in("source_hash", Array.from(parsedLocationByHash.keys()));
 
-    for (const row of existingWithoutLocation ?? []) {
+    const locationUpdates = (existingWithoutLocation ?? []).flatMap((row) => {
       const location = parsedLocationByHash.get(row.source_hash);
-      if (location) {
-        await supabase.from("transactions").update({ location }).eq("id", row.id);
+      return location ? [{ id: row.id, location }] : [];
+    });
+
+    // Re-uploading a statement can find dozens of older rows needing this
+    // backfill. Updating them serially is unnecessarily slow in a serverless
+    // request, so run small bounded batches concurrently.
+    for (let offset = 0; offset < locationUpdates.length; offset += 10) {
+      const batch = locationUpdates.slice(offset, offset + 10);
+      const results = await Promise.all(
+        batch.map(({ id, location }) =>
+          supabase.from("transactions").update({ location }).eq("id", id),
+        ),
+      );
+      const failed = results.find((result) => result.error)?.error;
+      if (failed) {
+        return NextResponse.json({ error: failed.message }, { status: 500 });
       }
     }
   }
