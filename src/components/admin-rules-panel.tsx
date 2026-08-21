@@ -33,15 +33,25 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { EMPTY_CONDITION, RuleConditionsEditor } from "@/components/rule-conditions-editor";
+import { RuleTypeSelect } from "@/components/rule-type-select";
 import { describeRuleConditions } from "@/lib/rule-description";
+import { formatTxType } from "@/lib/format";
 import { buildCategoryTree } from "@/lib/category-tree";
-import type { AppUser, DefaultCategory, RuleCondition, RuleTemplate, RuleTemplateItem } from "@/lib/types";
+import type {
+  AppUser,
+  DefaultCategory,
+  RuleCondition,
+  RuleTemplate,
+  RuleTemplateItem,
+  TxType,
+} from "@/lib/types";
 
 type MyRule = {
   id: string;
   categoryName: string;
   categoryParentName: string | null;
   conditions: RuleCondition[];
+  type: TxType | null;
 };
 
 /** category_name/category_parent_name are the persisted values (see
@@ -56,6 +66,7 @@ type DraftItem = {
   categoryTopId: string;
   categorySubId: string;
   conditions: RuleCondition[];
+  type: TxType | null;
 };
 
 type EditorTarget = { mode: "create" } | { mode: "edit"; template: RuleTemplate };
@@ -106,6 +117,7 @@ function itemsToDraft(items: RuleTemplateItem[], defaultCategories: DefaultCateg
       categoryTopId: topId,
       categorySubId: subId,
       conditions: i.conditions.map((c) => ({ ...c, values: [...c.values] })),
+      type: i.type,
     };
   });
 }
@@ -144,6 +156,7 @@ export function AdminRulesPanel({
       category_name: rule.categoryName,
       category_parent_name: rule.categoryParentName,
       conditions: rule.conditions,
+      type: rule.type,
     });
     setCopyingRuleId(null);
 
@@ -232,6 +245,9 @@ export function AdminRulesPanel({
                   <span className="text-muted-foreground">
                     {describeRuleConditions(rule.conditions)}
                   </span>
+                  {rule.type && (
+                    <span className="text-muted-foreground"> · also sets {formatTxType(rule.type)}</span>
+                  )}
                 </p>
                 <div className="flex items-center gap-1.5">
                   <Select
@@ -317,6 +333,9 @@ export function AdminRulesPanel({
                       <span className="text-muted-foreground">
                         {describeRuleConditions(item.conditions)}
                       </span>
+                      {item.type && (
+                        <span className="text-muted-foreground"> · also sets {formatTxType(item.type)}</span>
+                      )}
                     </p>
                   ))
                 )}
@@ -454,6 +473,7 @@ function TemplateEditorContent({
             categoryTopId: "",
             categorySubId: "",
             conditions: [{ ...EMPTY_CONDITION, values: [""] }],
+            type: null,
           },
         ],
   );
@@ -505,6 +525,10 @@ function TemplateEditorContent({
     setItems((prev) => prev.map((it, i) => (i !== index ? it : { ...it, conditions })));
   }
 
+  function setItemType(index: number, type: TxType | null) {
+    setItems((prev) => prev.map((it, i) => (i !== index ? it : { ...it, type })));
+  }
+
   function addItem() {
     setItems((prev) => [
       ...prev,
@@ -514,6 +538,7 @@ function TemplateEditorContent({
         categoryTopId: "",
         categorySubId: "",
         conditions: [{ ...EMPTY_CONDITION, values: [""] }],
+        type: null,
       },
     ]);
   }
@@ -535,6 +560,7 @@ function TemplateEditorContent({
         conditions: it.conditions
           .map((c) => ({ ...c, values: c.values.map((v) => v.trim()).filter(Boolean) }))
           .filter((c) => c.values.length > 0),
+        type: it.type,
       }))
       .filter((it) => it.category_name && it.conditions.length > 0);
 
@@ -579,6 +605,7 @@ function TemplateEditorContent({
           category_name: it.category_name,
           category_parent_name: it.category_parent_name,
           conditions: it.conditions,
+          type: it.type,
         })),
       );
       error = itemsError?.message ?? null;
@@ -679,6 +706,11 @@ function TemplateEditorContent({
               <RuleConditionsEditor
                 conditions={item.conditions}
                 onChange={(next) => setItemConditions(index, next)}
+              />
+              <RuleTypeSelect
+                value={item.type}
+                onChange={(type) => setItemType(index, type)}
+                className="h-8 w-full text-xs"
               />
             </div>
           );

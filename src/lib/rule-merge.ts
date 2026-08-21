@@ -1,21 +1,27 @@
-import type { Rule, RuleCondition } from "@/lib/types";
+import type { Rule, RuleCondition, TxType } from "@/lib/types";
 
-/** Finds an existing single-condition rule in the same category with the
- * same field+operator, so new values can be folded into it instead of
- * creating a second rule for the same condition — e.g. two separate "Name
- * is exactly" rules for one category should be one rule with both values. */
+/** Finds an existing single-condition rule in the same category (and same
+ * "also set type" effect, if any) with the same field+operator, so new
+ * values can be folded into it instead of creating a second rule for the
+ * same condition — e.g. two separate "Name is exactly" rules for one
+ * category should be one rule with both values. `type` must match too
+ * (both null, or the same value): a rule that also sets Common and one that
+ * also sets Personal are different rules even with the same category and
+ * condition shape, so they must never silently merge into one. */
 export function findMergeTarget(
   rules: Rule[],
   categoryId: string,
   field: RuleCondition["field"],
   operator: string,
+  type: TxType | null,
 ): Rule | undefined {
   return rules.find(
     (rule) =>
       rule.category_id === categoryId &&
       rule.conditions.length === 1 &&
       rule.conditions[0].field === field &&
-      rule.conditions[0].operator === operator,
+      rule.conditions[0].operator === operator &&
+      rule.type === type,
   );
 }
 

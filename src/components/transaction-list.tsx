@@ -18,8 +18,9 @@ import {
   formatTxType,
 } from "@/lib/format";
 import { flattenWithDepth } from "@/lib/category-tree";
+import { SettlementTagControl } from "@/components/settlement-tag-control";
 import { cn } from "@/lib/utils";
-import type { Category, Transaction } from "@/lib/types";
+import type { Category, CreditInvoice, Transaction } from "@/lib/types";
 
 const UNCATEGORIZED_VALUE = "__uncategorized__";
 
@@ -28,6 +29,8 @@ export type ActiveFilterChip = { label: string; className: string };
 export function TransactionList({
   transactions,
   categories,
+  invoices = [],
+  openInvoiceIds = new Set(),
   selectedIds,
   highlightedIds,
   filterChip,
@@ -38,11 +41,17 @@ export function TransactionList({
   onCategoryChange,
   onTypeToggle,
   onCardTypeToggle,
+  onInvoiceChange,
   onNotesChange,
   onDelete,
 }: {
   transactions: Transaction[];
   categories: Category[];
+  /** Every invoice the household has, for the settlement tag control. Empty
+   *  (and the control hidden entirely) for callers that don't pass it, e.g.
+   *  the settlement review step, which doesn't offer this here. */
+  invoices?: CreditInvoice[];
+  openInvoiceIds?: Set<string>;
   selectedIds: Set<string>;
   highlightedIds: Set<string>;
   /** Set by the category sidebar's active selection; null when scoped to "all". */
@@ -64,6 +73,7 @@ export function TransactionList({
     id: string,
     currentCardType: Transaction["card_type"],
   ) => void;
+  onInvoiceChange?: (id: string, invoiceId: string | null) => void;
   onNotesChange: (id: string, notes: string | null) => void;
   onDelete: (id: string) => void;
 }) {
@@ -156,6 +166,8 @@ export function TransactionList({
                     key={t.id}
                     transaction={t}
                     categories={categories}
+                    invoices={invoices}
+                    openInvoiceIds={openInvoiceIds}
                     selected={selectedIds.has(t.id)}
                     highlighted={highlightedIds.has(t.id)}
                     hideSelection={hideSelection}
@@ -169,6 +181,9 @@ export function TransactionList({
                     }
                     onTypeToggle={() => onTypeToggle(t.id, t.type)}
                     onCardTypeToggle={() => onCardTypeToggle(t.id, t.card_type)}
+                    onInvoiceChange={
+                      onInvoiceChange ? (invoiceId) => onInvoiceChange(t.id, invoiceId) : undefined
+                    }
                     onNotesChange={(notes) => onNotesChange(t.id, notes)}
                     onDelete={() => onDelete(t.id)}
                   />
@@ -185,6 +200,8 @@ export function TransactionList({
 function TransactionRow({
   transaction: t,
   categories,
+  invoices,
+  openInvoiceIds,
   selected,
   highlighted,
   hideSelection = false,
@@ -194,11 +211,14 @@ function TransactionRow({
   onCategoryChange,
   onTypeToggle,
   onCardTypeToggle,
+  onInvoiceChange,
   onNotesChange,
   onDelete,
 }: {
   transaction: Transaction;
   categories: Category[];
+  invoices: CreditInvoice[];
+  openInvoiceIds: Set<string>;
   selected: boolean;
   highlighted: boolean;
   hideSelection?: boolean;
@@ -208,6 +228,7 @@ function TransactionRow({
   onCategoryChange: (categoryId: string | null) => void;
   onTypeToggle: () => void;
   onCardTypeToggle: () => void;
+  onInvoiceChange?: (invoiceId: string | null) => void;
   onNotesChange: (notes: string | null) => void;
   onDelete: () => void;
 }) {
@@ -338,6 +359,16 @@ function TransactionRow({
               <CreditCard className="size-2.5" />
               {t.card_type}
             </button>
+
+            {onInvoiceChange && (
+              <SettlementTagControl
+                transaction={t}
+                invoices={invoices}
+                openInvoiceIds={openInvoiceIds}
+                onChange={onInvoiceChange}
+                className="h-7 w-auto text-[11px]"
+              />
+            )}
 
             <button
               type="button"

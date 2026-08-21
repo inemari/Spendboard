@@ -20,17 +20,45 @@ import { DeleteConfirmDialog } from "@/components/delete-confirm-dialog";
 import { TimeframeSwitcher } from "@/components/timeframe-switcher";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import type { Category, Transaction, TxType } from "@/lib/types";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import type { Category, CreditInvoice, Transaction, TxType } from "@/lib/types";
 
 type View = "overview" | "board";
+
+/** "all" shows everything, "unassigned" shows transactions with no
+ *  credit_invoice_id, anything else is a specific invoice's id. */
+type InvoiceFilter = "all" | "unassigned" | string;
+
+function filterByInvoice(transactions: Transaction[], filter: InvoiceFilter): Transaction[] {
+  if (filter === "all") return transactions;
+  if (filter === "unassigned") return transactions.filter((t) => !t.credit_invoice_id);
+  return transactions.filter((t) => t.credit_invoice_id === filter);
+}
 
 export function TransactionBoard({
   initialTransactions,
   categories,
+  invoices = [],
+  openInvoices = [],
 }: {
   initialTransactions: Transaction[];
   categories: Category[];
+  /** Every invoice the household has ever filed a credit transaction under —
+   *  used for filtering (safe to filter by any invoice, open or not). */
+  invoices?: CreditInvoice[];
+  /** Invoices still eligible for a retroactive settlement tag — the same
+   *  set the upload dialog offers. Empty (and the whole settlement UI
+   *  hidden) for a solo user with no household. */
+  openInvoices?: CreditInvoice[];
 }) {
+  const openInvoiceIds = useMemo(() => new Set(openInvoices.map((i) => i.id)), [openInvoices]);
+
   const {
     transactions,
     selectedIds,
@@ -43,6 +71,8 @@ export function TransactionBoard({
     handleTypeChangeMulti,
     handleCardTypeToggle,
     handleCardTypeChangeMulti,
+    handleInvoiceChange,
+    handleInvoiceChangeMulti,
     handleNotesChange,
     handleDeleteTransaction,
     handleDeleteMulti,
@@ -55,11 +85,12 @@ export function TransactionBoard({
     pendingDelete,
     confirmDelete,
     dismissDelete,
-  } = useTransactionActions(initialTransactions, categories);
+  } = useTransactionActions(initialTransactions, categories, invoices, openInvoiceIds);
 
   const [overviewType, setOverviewType] = useState<TxType | null>(null);
   const [view, setView] = useState<View>("overview");
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>({ kind: "all" });
+  const [invoiceFilter, setInvoiceFilter] = useState<InvoiceFilter>("all");
   // Each view keeps its own search text, so switching Overview <-> Board
   // doesn't clobber whichever query the other view had typed.
   const [listQuery, setListQuery] = useState("");
@@ -108,8 +139,8 @@ export function TransactionBoard({
   );
 
   const sorted = useMemo(
-    () => [...transactions].sort((a, b) => (a.date < b.date ? 1 : -1)),
-    [transactions],
+    () => [...filterByInvoice(transactions, invoiceFilter)].sort((a, b) => (a.date < b.date ? 1 : -1)),
+    [transactions, invoiceFilter],
   );
 
   // Shared by the sidebar and the board's kanban columns, so a category's
@@ -128,6 +159,11 @@ export function TransactionBoard({
         return transactions.filter((t) => t.category_id && categoryFilter.categoryIds.includes(t.category_id));
     }
   }, [transactions, categoryFilter]);
+
+  const visibleTransactions = useMemo(
+    () => filterByInvoice(categoryFilteredTransactions, invoiceFilter),
+    [categoryFilteredTransactions, invoiceFilter],
+  );
 
   const filterChip = useMemo(() => {
     if (categoryFilter.kind === "uncategorized") {
@@ -228,6 +264,28 @@ export function TransactionBoard({
                 />
               )}
             </div>
+            {invoices.length > 0 && (
+              <Select value={invoiceFilter} onValueChange={(v) => v && setInvoiceFilter(v)}>
+                <SelectTrigger className="h-8 w-36 text-xs">
+                  <SelectValue>
+                    {invoiceFilter === "all"
+                      ? "All settlements"
+                      : invoiceFilter === "unassigned"
+                        ? "No settlement"
+                        : (invoices.find((i) => i.id === invoiceFilter)?.label ?? "All settlements")}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All settlements</SelectItem>
+                  <SelectItem value="unassigned">No settlement</SelectItem>
+                  {invoices.map((invoice) => (
+                    <SelectItem key={invoice.id} value={invoice.id}>
+                      {invoice.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
             {viewToggle}
           </div>
         )}
@@ -257,8 +315,10 @@ export function TransactionBoard({
               </aside>
 
               <TransactionList
-                transactions={categoryFilteredTransactions}
+                transactions={visibleTransactions}
                 categories={categories}
+                invoices={invoices}
+                openInvoiceIds={openInvoiceIds}
                 selectedIds={selectedIds}
                 highlightedIds={highlightedIds}
                 filterChip={filterChip}
@@ -267,6 +327,7 @@ export function TransactionBoard({
                 onCategoryChange={handleCategoryChange}
                 onTypeToggle={handleTypeToggle}
                 onCardTypeToggle={handleCardTypeToggle}
+                onInvoiceChange={handleInvoiceChange}
                 onNotesChange={handleNotesChange}
                 onDelete={handleDeleteTransaction}
               />
@@ -330,12 +391,16 @@ export function TransactionBoard({
         <BulkActionBar
           count={selectedIds.size}
           categories={categories}
+          openInvoices={openInvoices}
           onCategoryChange={(categoryId) =>
             handleCategoryChangeMulti(Array.from(selectedIds), categoryId)
           }
           onTypeChange={(type) => handleTypeChangeMulti(Array.from(selectedIds), type)}
           onCardTypeChange={(cardType) =>
             handleCardTypeChangeMulti(Array.from(selectedIds), cardType)
+          }
+          onInvoiceChange={(invoiceId) =>
+            handleInvoiceChangeMulti(Array.from(selectedIds), invoiceId)
           }
           onDelete={() => handleDeleteMulti(Array.from(selectedIds))}
           onClear={clearSelection}
