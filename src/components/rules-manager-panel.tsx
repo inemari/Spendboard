@@ -7,7 +7,7 @@ import {
   CircleDashed,
   Pencil,
   Plus,
-  RotateCcw,
+  RefreshCw,
   Search,
   SearchX,
   Trash2,
@@ -18,16 +18,6 @@ import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { RuleEditor } from "@/components/rule-editor";
 import { RuleQuickAddForm } from "@/components/rule-quick-add-form";
 import {
@@ -78,40 +68,27 @@ export function RulesManagerPanel({
   const [query, setQuery] = useState("");
   const [pendingConflicts, setPendingConflicts] =
     useState<PendingRuleConflicts | null>(null);
-  const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
-  const [resetting, setResetting] = useState(false);
+  const [updatingDefaults, setUpdatingDefaults] = useState(false);
 
   const colorMap = useMemo(() => buildCategoryColorMap(categories), [categories]);
 
-  async function handleReset() {
-    setResetting(true);
-    // RLS's `auth.uid() = user_id` policy scopes this to only the
-    // signed-in user's own rules.
-    const { error: deleteError } = await supabase.from("rules").delete().not("id", "is", null);
-    if (deleteError) {
-      setResetting(false);
-      setResetConfirmOpen(false);
-      toast.error("Failed to reset rules.");
-      return;
-    }
-
-    const { data: insertedCount, error: applyError } = await supabase.rpc(
+  async function handleUpdateDefaults() {
+    setUpdatingDefaults(true);
+    const { data: syncedCount, error } = await supabase.rpc(
       "apply_default_rule_template",
     );
-    setResetting(false);
-    setResetConfirmOpen(false);
+    setUpdatingDefaults(false);
 
-    if (applyError) {
-      toast.error("Rules cleared, but restoring the defaults failed.");
-      router.refresh();
+    if (error) {
+      toast.error("Failed to update default rules. Your existing rules were not changed.");
       return;
     }
 
-    if (!insertedCount) {
-      toast.info("Rules cleared. No default rule template is set up yet.");
+    if (syncedCount === -1) {
+      toast.info("No default rule template is set up yet.");
     } else {
       toast.success(
-        `Rules reset to defaults (${insertedCount} rule${insertedCount === 1 ? "" : "s"}).`,
+        `Default rules updated (${syncedCount ?? 0} rule${syncedCount === 1 ? "" : "s"}). Your personal rules were kept.`,
       );
     }
     router.refresh();
@@ -312,11 +289,18 @@ export function RulesManagerPanel({
             {rules.length} auto-categorization rule{rules.length === 1 ? "" : "s"}
             {rules.length > 0 && " · hover a rule to edit or re-apply"}
           </p>
+          <p className="text-xs text-muted-foreground">
+            Update Rules refreshes admin defaults without removing your personal rules.
+          </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => setResetConfirmOpen(true)}>
-            <RotateCcw className="size-4" />
-            Reset to Defaults
+          <Button
+            variant="outline"
+            disabled={updatingDefaults}
+            onClick={() => void handleUpdateDefaults()}
+          >
+            <RefreshCw className={cn("size-4", updatingDefaults && "animate-spin")} />
+            {updatingDefaults ? "Updating..." : "Update Rules"}
           </Button>
           {!showQuickAdd && (
             <Button onClick={() => setShowQuickAdd(true)}>
@@ -426,28 +410,6 @@ export function RulesManagerPanel({
         </div>
       )}
 
-      <AlertDialog open={resetConfirmOpen} onOpenChange={setResetConfirmOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Reset to default rules?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This deletes all your current rules, then restores whichever rule template is set
-              as the default (creating any of its categories you don&rsquo;t already have).
-              Already-categorized transactions are untouched. This can&rsquo;t be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              variant="destructive"
-              disabled={resetting}
-              onClick={() => void handleReset()}
-            >
-              {resetting ? "Resetting..." : "Reset"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }
@@ -472,6 +434,11 @@ function RuleRow({
   return (
     <div className="group flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-border/60 bg-card px-4 py-3 text-sm">
       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+        {rule.is_default && (
+          <Badge variant="secondary" className="bg-emerald-100 text-emerald-700">
+            Default
+          </Badge>
+        )}
         {rule.conditions.map((condition, conditionIndex) => (
           <div key={conditionIndex} className="flex flex-wrap items-center gap-2">
             {conditionIndex > 0 && (

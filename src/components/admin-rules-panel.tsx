@@ -218,7 +218,8 @@ export function AdminRulesPanel({
           </h2>
           <p className="text-sm text-muted-foreground">
             Named, reusable rule bundles. The default one is what a brand-new user should
-            receive; any template can also be applied to an existing user on demand.
+            receive; any template can also be applied to an existing user on demand. Applied
+            template rules are managed defaults, while users keep their personal rules.
           </p>
         </div>
         <Button onClick={() => setEditorTarget({ mode: "create" })}>
@@ -230,7 +231,7 @@ export function AdminRulesPanel({
       {templates.length > 0 && templates.every((t) => !t.is_default) && (
         <div className="flex items-center gap-2 rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400">
           <TriangleAlert className="size-4 shrink-0" />
-          No default template is set — new accounts and &ldquo;Reset to Defaults&rdquo; won&rsquo;t
+          No default template is set — new accounts and &ldquo;Update Rules&rdquo; won&rsquo;t
           receive any starter rules until one is marked default.
         </div>
       )}

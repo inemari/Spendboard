@@ -479,20 +479,18 @@ decisions. For work that's planned but not yet implemented, see
   (`highlightHref` in `rules-manager-panel.tsx`, via `monthAnchorFor`), which
   scrolls to and briefly ring-highlights those cards, then clears the
   `highlight` param after a few seconds.
-- **Reset to default rules** (`rules-manager-panel.tsx`'s "Reset to
-  Defaults" button, an `AlertDialog`-confirmed destructive action). Deletes
-  every one of the user's rules, then calls the `apply_default_rule_template`
-  RPC to reapply whichever rule template is currently marked `is_default`
-  (find-or-creating that template's categories by name, same as
-  `apply_rule_template`). This is a **self-service counterpart** to
-  `apply_rule_template` — that one is admin-only (an admin applying a
-  template to someone else's account), while this one only ever touches the
-  caller's own rows, so it skips the `is_admin()` check entirely and is
-  `security definer` purely to read `rule_templates`/`rule_template_items`,
-  which otherwise carry an "admin only" RLS policy. Already-categorized
-  transactions are untouched — only the `rules` rows themselves are
-  replaced. No-ops (deletes rules, applies nothing) if no template is
-  currently `is_default`.
+- **Update default rules without losing personal rules.** Rules copied from
+  an admin template carry `rules.is_default = true`; rules users create are
+  personal (`false`), and manually editing or merging into a default rule
+  turns that customized copy personal. `rules-manager-panel.tsx`'s "Update
+  Rules" button calls `apply_default_rule_template()`, which finds the active
+  admin template, deletes only the caller's managed default rules, and
+  recreates that set from the template while leaving every personal rule
+  untouched. The lookup/delete/reapply sequence is one database transaction,
+  so any failure rolls the whole refresh back. It also find-or-creates named
+  categories just like `apply_rule_template`; already-categorized
+  transactions are untouched. The RPC returns `-1` and changes nothing when
+  no template is marked default.
 - **Rule matching conditions: equals, contains, starts with (name);
   contains, doesn't contain (subtitle).** `RuleCondition`
   (`src/lib/types.ts`), `apply-rules.ts`'s matcher, and the operator dropdown
@@ -563,8 +561,11 @@ decisions. For work that's planned but not yet implemented, see
     (there's no self-serve signup to hook a "new user" flow into yet, so
     applying is a manual, admin-triggered action for now — see README on how
     users are provisioned). Applying a template finds-or-creates each item's
-    named category for the target user and inserts the corresponding rule;
-    it never touches anything that user already has.
+    named category for the target user and inserts the corresponding rule as
+    a managed default (`rules.is_default = true`); it never removes any rule
+    that user already has. The user's "Update Rules" action later replaces
+    this managed set with the current default template while preserving all
+    personal rules.
     - **Each template item's category is picked from a cascading dropdown
       pair, not typed freehand.** The top-level `Select` lists
       `default_categories`' top-level rows; picking one that has children

@@ -72,7 +72,7 @@ export function RuleQuickAddForm({
     const { error } = mergeTarget
       ? await supabase
           .from("rules")
-          .update({ conditions: [mergeValuesIntoRule(mergeTarget, values)] })
+          .update({ conditions: [mergeValuesIntoRule(mergeTarget, values)], is_default: false })
           .eq("id", mergeTarget.id)
       : await supabase.from("rules").insert({ category_id: categoryId, conditions: [condition] });
     setSaving(false);

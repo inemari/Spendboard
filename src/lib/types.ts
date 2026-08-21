@@ -40,6 +40,9 @@ export type Rule = {
   category_id: string;
   /** Conditions are AND'd together. */
   conditions: RuleCondition[];
+  /** True when this rule is managed by the active admin template. User
+   * edits convert it to a personal rule so a later refresh preserves it. */
+  is_default: boolean;
   created_at: string;
 };
 

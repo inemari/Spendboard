@@ -34,12 +34,6 @@ removing anything they already have, exposed via a "Sync defaults to a
 user" control on `/admin/categories` (`admin-categories-panel.tsx`).
 Remaining gaps:
 
-- **"Reset to Defaults" (rules) can fail into a worse state than before.**
-  `rules-manager-panel.tsx`'s reset deletes all of the user's rules and only
-  then calls `apply_default_rule_template()`; if that call fails, the rules
-  are already gone and nothing is restored, with no recovery but retrying.
-  Fix: combine delete-then-reapply into one `security definer` RPC so both
-  steps run in a single transaction and a failure rolls back the delete too.
 - **Copied template items have no live link back to the source rule.** The
   rule-templates panel's "Copy from your own rules" does a one-time string
   copy of `category_name` into a new `rule_template_items` row — editing or
