@@ -16,13 +16,14 @@ import {
 } from "@/components/ui/select";
 import { flattenWithDepth } from "@/lib/category-tree";
 import { findMergeTarget, mergeValuesIntoRule } from "@/lib/rule-merge";
+import { RuleTypeSelect } from "@/components/rule-type-select";
 import {
   FIELD_LABELS,
   OPERATOR_LABELS,
   OPERATORS_FOR_FIELD,
   defaultOperatorForField,
 } from "@/lib/rule-labels";
-import type { Category, Rule, RuleCondition } from "@/lib/types";
+import type { Category, Rule, RuleCondition, TxType } from "@/lib/types";
 
 /**
  * The fast path for adding a single-condition rule, opened from the Rules
@@ -48,6 +49,7 @@ export function RuleQuickAddForm({
   const [operator, setOperator] = useState<string>(defaultOperatorForField("name"));
   const [values, setValues] = useState<string[]>([]);
   const [categoryId, setCategoryId] = useState("");
+  const [type, setType] = useState<TxType | null>(null);
   const [saving, setSaving] = useState(false);
 
   function changeField(next: RuleCondition["field"]) {
@@ -67,14 +69,16 @@ export function RuleQuickAddForm({
 
     setSaving(true);
     const condition = { field, operator, values } as RuleCondition;
-    const mergeTarget = findMergeTarget(existingRules, categoryId, field, operator);
+    const mergeTarget = findMergeTarget(existingRules, categoryId, field, operator, type);
 
     const { error } = mergeTarget
       ? await supabase
           .from("rules")
           .update({ conditions: [mergeValuesIntoRule(mergeTarget, values)], is_default: false })
           .eq("id", mergeTarget.id)
-      : await supabase.from("rules").insert({ category_id: categoryId, conditions: [condition] });
+      : await supabase
+          .from("rules")
+          .insert({ category_id: categoryId, conditions: [condition], type });
     setSaving(false);
 
     if (error) {
@@ -102,7 +106,7 @@ export function RuleQuickAddForm({
         </button>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <FormField label="Field">
           <Select value={field} onValueChange={(value) => value && changeField(value as RuleCondition["field"])}>
             <SelectTrigger className="h-9 w-full">
@@ -152,6 +156,10 @@ export function RuleQuickAddForm({
               ))}
             </SelectContent>
           </Select>
+        </FormField>
+
+        <FormField label="Type (optional)">
+          <RuleTypeSelect value={type} onChange={setType} />
         </FormField>
       </div>
 

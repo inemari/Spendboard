@@ -496,6 +496,26 @@ decisions. For work that's planned but not yet implemented, see
   same operator set. "Starts with" matches the beginning of the normalized
   name (`normalizeDescription` already lowercases/strips punctuation, so
   this is a prefix check on that normalized string, not the raw text).
+- **A rule can also set common/personal/need_review, not just category.**
+  `rules.type` (nullable — null means "this rule doesn't touch type") is the
+  one optional second effect a rule can carry, picked via the shared
+  `RuleTypeSelect` (`rule-type-select.tsx`) in both the quick-add form and
+  the full editor. `apply-rules.ts`'s `matchingRuleFor` is the single lookup
+  both `categoryIdForTransaction` and `typeForTransaction` resolve off of,
+  so category and type can never disagree about which rule matched — the
+  upload route (`api/upload/route.ts`) calls it once per row and applies
+  both. `findMergeTarget` (`rule-merge.ts`) now also requires the same
+  `type` (both null, or the same value) before folding two rules together,
+  so a "set Common" rule and a "set Personal" rule for the same category/
+  condition shape stay distinct rather than silently merging. Retroactive
+  "apply to existing" (`rules-manager-panel.tsx`) sets type the same way it
+  sets category, on the same uncategorized-only transactions — see "Rules
+  never silently overwrite an already categorized transaction" below.
+  `rule_template_items.type` mirrors this so admin's "Copy from your own
+  rules" and `apply_default_rule_template`'s replace-and-resync cycle can't
+  silently drop a rule's type; conflict detection when multiple rules match
+  stays category-only by design (whichever rule wins the category is the
+  one whose type, if any, gets applied).
 - **Admin area (`/admin/*`).** Four tabs under one gate
   (`src/app/admin/layout.tsx`, tab bar in `admin-tabs.tsx`): Users,
   Households, Rule templates, Default categories.
@@ -688,6 +708,33 @@ decisions. For work that's planned but not yet implemented, see
     `credit_invoices` has no amount/due-date column, so the settlement
     screen never shows or reconciles against one; add that only as a
     deliberate schema extension, not an invented UI field.
+  - **The settlement tag is also editable after upload, individually and in
+    bulk, and the overview list can filter by it.** `credit_invoice_id`
+    isn't write-once — a household member can retag or untag a credit
+    transaction from the overview's expanded card editor
+    (`transaction-card.tsx`/`transaction-list.tsx`, both via the shared
+    `settlement-tag-control.tsx`) or across a whole selection from the bulk
+    action bar (`bulk-action-bar.tsx`), through the same direct-update path
+    `handleInvoiceChange`/`handleInvoiceChangeMulti`
+    (`use-transaction-actions.ts`) already use for category/type/card-type.
+    This is safe without a new server-side check: the household RPCs
+    (`household_invoice_summary`, `mark_settlement_paid`, …) join
+    `transactions t on t.user_id = hm.user_id` scoped to the invoice's own
+    household, so a transaction can never be made to count toward a
+    household its owner isn't a member of, no matter what invoice id a
+    client sends. **Retroactive (re)assignment only ever offers open
+    invoices** — the same set the upload dialog computes (an invoice with no
+    `settlements` row yet) — passed down as `openInvoiceIds`; a transaction
+    already tagged to an invoice that's mid-settlement or completed renders
+    read-only instead, so it can't be desynced from a settlement that's
+    already in flight or frozen. The bulk handler applies the same rule
+    per-row across a selection, skipping ineligible transactions rather than
+    failing the whole batch. The overview's toolbar
+    (`transaction-board.tsx`) gets a "Settlement" filter next to search —
+    All / a specific invoice / No settlement — shown only when the
+    household has any invoices; it's the one thing in this feature that's
+    safe against every invoice, open or not, since filtering never mutates
+    anything.
   - **The settlement screen is a step-by-step flow, not one big expandable
     card** (`settlement-panel.tsx` → `settlement-invoice-flow.tsx` →
     `settlement-review-step.tsx` / `settlement-summary-step.tsx` /
@@ -886,14 +933,21 @@ decisions. For work that's planned but not yet implemented, see
   new ones only inserts the new ones, and never touches existing
   categorization) — see `src/app/api/upload/route.ts`.
 - `transactions.credit_invoice_id`: nullable, references `credit_invoices`,
-  `on delete set null` (not `cascade` — there's no invoice-deletion UI, but a
-  transaction must never be deleted as a side effect of one). The Settlement
-  screen can delete an open or completed invoice through the membership-checked
-  `delete_settlement` RPC; this removes its payment snapshot and detaches all
-  household transactions so they can be filed elsewhere. Set only via
-  the upload route, which validates server-side that the invoice actually
-  belongs to a household the uploader is a member of before writing it —
-  the id arrives from the client, so it can't be trusted at face value.
+  `on delete set null` (not `cascade` — a transaction must never be deleted as
+  a side effect of deleting its invoice). Set at upload
+  time via the upload route, which validates server-side that the invoice
+  actually belongs to a household the uploader is a member of before writing
+  it — the id arrives from the client, so it can't be trusted at face value
+  there. Editable afterward too (individually and in bulk — see "Shared
+  credit-card settlement" below), via a plain client-side update same as
+  category/type/card-type: safe without an equivalent server-side check
+  because every RPC that aggregates by invoice joins
+  `transactions t on t.user_id = hm.user_id` scoped to that invoice's own
+  household, so a transaction can never be made to count toward a household
+  its owner isn't a member of. The Settlement screen can delete an open or
+  completed invoice through the membership-checked `delete_settlement` RPC;
+  this removes its payment snapshot and detaches all household transactions
+  so they can be filed elsewhere.
 - `households` / `household_members` / `household_invites` /
   `credit_invoices` / `settlements` / `settlement_members`: see "Shared
   credit-card settlement" above for the full shape.

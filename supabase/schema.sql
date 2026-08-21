@@ -158,6 +158,15 @@ alter table rules add column if not exists conditions jsonb not null default '[]
 -- table was created.
 alter table rules drop column if exists match_texts;
 
+-- Optional second effect: a rule can also set the matched transaction's
+-- common/personal/need_review type, not just its category. Null means "this
+-- rule doesn't touch type" — every existing rule keeps behaving exactly as
+-- before with no backfill needed. See categoryIdForTransaction/
+-- typeForTransaction in src/lib/apply-rules.ts, which both resolve off the
+-- same matched rule so category and type can never disagree about which
+-- rule "won".
+alter table rules add column if not exists type tx_type;
+
 alter table categories enable row level security;
 alter table months enable row level security;
 alter table transactions enable row level security;
@@ -228,6 +237,13 @@ create table if not exists rule_template_items (
 -- below must resolve/create the correct parent, not just any category with
 -- that name.
 alter table rule_template_items add column if not exists category_parent_name text;
+
+-- Mirrors rules.type above, so a template item can carry the same optional
+-- "also set type" effect. Without this, admin's "Copy from your own rules"
+-- (which copies a personal rule's conditions into a template item) and
+-- apply_default_rule_template's replace-and-resync cycle would both
+-- silently drop a rule's type the moment it passed through a template.
+alter table rule_template_items add column if not exists type tx_type;
 
 -- Rules copied from an admin template are managed defaults, while rules a
 -- user creates (or customizes) remain personal. The provenance flag is what
@@ -353,7 +369,7 @@ begin
   end if;
 
   for item in
-    select category_name, category_parent_name, conditions
+    select category_name, category_parent_name, conditions, type
     from rule_template_items where template_id = p_template_id
   loop
     resolved_parent_id := null;
@@ -391,11 +407,12 @@ begin
       where user_id = target_user_id
         and category_id = cat_id
         and conditions = item.conditions
+        and type is not distinct from item.type
       limit 1;
 
     if existing_rule_id is null then
-      insert into rules (user_id, category_id, conditions, is_default)
-        values (target_user_id, cat_id, item.conditions, true);
+      insert into rules (user_id, category_id, conditions, type, is_default)
+        values (target_user_id, cat_id, item.conditions, item.type, true);
     else
       -- An exact pre-existing match is now part of the managed template set.
       update rules set is_default = true where id = existing_rule_id;
@@ -634,7 +651,7 @@ begin
   delete from rules where user_id = uid and is_default;
 
   for item in
-    select category_name, category_parent_name, conditions
+    select category_name, category_parent_name, conditions, type
     from rule_template_items
     order by created_at
   loop
@@ -673,11 +690,12 @@ begin
       where user_id = uid
         and category_id = cat_id
         and conditions = item.conditions
+        and type is not distinct from item.type
       limit 1;
 
     if existing_rule_id is null then
-      insert into rules (user_id, category_id, conditions, is_default)
-        values (uid, cat_id, item.conditions, true);
+      insert into rules (user_id, category_id, conditions, type, is_default)
+        values (uid, cat_id, item.conditions, item.type, true);
     else
       update rules set is_default = true where id = existing_rule_id;
     end if;
@@ -1272,6 +1290,7 @@ begin
 end;
 $$;
 
+revoke all on function delete_settlement(uuid) from public;
 grant execute on function delete_settlement(uuid) to authenticated;
 
 -- The only way a partner's individual transaction rows are ever exposed:

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { AlertTriangle, Banknote, Loader2, PartyPopper, RefreshCw } from "lucide-react";
+import { AlertTriangle, Banknote, ListChecks, Loader2, PartyPopper, RefreshCw } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,16 +22,14 @@ export function SettlementSummaryStep({
   userId,
   members,
   settlement,
-  onEditPersonal,
-  onEditCommon,
+  onReviewTransactions,
   onMutated,
 }: {
   invoiceId: string;
   userId: string | null;
   members: HouseholdMember[];
   settlement: Settlement | undefined;
-  onEditPersonal: () => void;
-  onEditCommon: () => void;
+  onReviewTransactions: () => void;
   onMutated: () => void;
 }) {
   const supabase = useMemo(() => createClient(), []);
@@ -129,29 +127,29 @@ export function SettlementSummaryStep({
         Total Common {formatSpend(shares.commonTotal)} → {formatSpend(shares.commonShare)} each
       </p>
 
-      {/* Your section — the primary focus of this screen: a full-size hero
-          figure for the one number that matters (what you transfer), with
-          Personal/Common share/Contribution as an equal-weight supporting
-          row underneath, matching the requested priority order. */}
-      <Card className={cn("border-2 border-primary/30", myPaid && "border-green-500/50")}>
+      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(260px,1fr)]">
+      {/* The signed-in user's settlement owns two thirds of the detail area:
+          it contains the primary transfer figure and every action they can
+          take, including transaction review. */}
+      <Card className={cn("border-2 border-primary/30", myPaid && "border-emerald-500/50")}>
         <CardHeader>
-          <CardTitle className="text-xl">You</CardTitle>
+          <div className="flex items-center justify-between gap-3">
+            <CardTitle className="text-xl">Your settlement</CardTitle>
+            <Badge variant={myPaid ? "default" : "outline"}>{myPaid ? "Paid" : "To pay"}</Badge>
+          </div>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <HeroFigure icon={Banknote} size="lg" {...formatTransfer(myRemaining)} />
-            <div className="flex items-center gap-2">
-              <Badge variant={myPaid ? "default" : "outline"}>{myPaid ? "Paid" : "To pay"}</Badge>
-              {myPaid ? (
-                <Button variant="outline" size="sm" disabled={busy} onClick={() => void unmarkPaid()}>
-                  Mark as not paid
-                </Button>
-              ) : (
-                <Button size="sm" disabled={busy || anyoneNeedsReview} onClick={() => void markPaid()}>
-                  Mark as paid
-                </Button>
-              )}
-            </div>
+            {myPaid ? (
+              <Button variant="outline" size="sm" disabled={busy} onClick={() => void unmarkPaid()}>
+                Mark as not paid
+              </Button>
+            ) : (
+              <Button size="sm" disabled={busy || anyoneNeedsReview} onClick={() => void markPaid()}>
+                Mark as paid
+              </Button>
+            )}
           </div>
           {anyoneNeedsReview && !myPaid && (
             <p className="text-xs text-muted-foreground">
@@ -191,28 +189,38 @@ export function SettlementSummaryStep({
             </label>
           )}
 
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" size="sm" onClick={onEditPersonal}>
-              Edit Personal
-            </Button>
-            <Button variant="outline" size="sm" onClick={onEditCommon}>
-              Edit Common
-            </Button>
-          </div>
+          <Button
+            variant={(me?.need_review_count ?? 0) > 0 ? "default" : "outline"}
+            className="w-fit"
+            onClick={onReviewTransactions}
+          >
+            <ListChecks />
+            Review transactions
+            {(me?.need_review_count ?? 0) > 0 && (
+              <span className="rounded-full bg-primary-foreground/20 px-1.5 text-xs">
+                {me?.need_review_count}
+              </span>
+            )}
+          </Button>
         </CardContent>
       </Card>
 
-      {/* Partner's section — same shape, deliberately quieter and smaller:
-          less saturated accent, a smaller hero figure, tighter spacing. */}
-      <Card className={cn("border-secondary/25", partnerPaid && "border-green-500/40")}>
+      {/* The partner's third stays intentionally quieter: neutral surface,
+          subdued status treatment, and a compact vertical fact list. */}
+      <Card className="border-border/60 bg-muted/20 shadow-none hover:translate-y-0 hover:shadow-none">
         <CardHeader className="pb-2">
-          <CardTitle className="wrap-break-word text-base text-muted-foreground">{partnerLabel}</CardTitle>
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <p className="text-xs font-medium text-muted-foreground">Partner</p>
+              <CardTitle className="wrap-break-word text-base text-muted-foreground">{partnerLabel}</CardTitle>
+            </div>
+            <Badge variant="outline" className="border-border text-muted-foreground">
+              {partnerPaid ? "Paid" : "To pay"}
+            </Badge>
+          </div>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <HeroFigure icon={Banknote} size="sm" {...formatTransfer(partnerRemaining)} />
-            <Badge variant={partnerPaid ? "default" : "outline"}>{partnerPaid ? "Paid" : "To pay"}</Badge>
-          </div>
+          <HeroFigure icon={Banknote} size="sm" {...formatTransfer(partnerRemaining)} />
 
           {(partner?.need_review_count ?? 0) > 0 && (
             <Badge variant="outline" className="w-fit border-amber-500/50 text-amber-600">
@@ -222,25 +230,18 @@ export function SettlementSummaryStep({
             </Badge>
           )}
 
-          <div className="grid grid-cols-3 gap-3 rounded-xl bg-muted/50 p-2.5">
-            <MiniStat
-              label="Personal"
-              dotClassName="bg-chart-2"
-              value={formatSpend(partnerShare?.personalTotal ?? 0)}
-            />
-            <MiniStat
-              label="Common share"
-              dotClassName="bg-chart-1"
-              value={formatSpend(partnerShare?.commonShare ?? 0)}
-            />
-            <MiniStat label="Contribution" value={formatSpend(partnerContribution)} />
-          </div>
+          <dl className="divide-y divide-border/60 rounded-xl bg-background/60 px-3">
+            <PartnerFact label="Personal" value={formatSpend(partnerShare?.personalTotal ?? 0)} />
+            <PartnerFact label="Common share" value={formatSpend(partnerShare?.commonShare ?? 0)} />
+            <PartnerFact label="Contribution" value={formatSpend(partnerContribution)} />
+          </dl>
 
           <Button variant="outline" size="sm" className="w-fit" onClick={() => setShowPartnerDialog(true)}>
             View common transactions
           </Button>
         </CardContent>
       </Card>
+      </div>
 
       {partner && (
         <PartnerCommonTransactionsDialog
@@ -251,6 +252,15 @@ export function SettlementSummaryStep({
           partnerLabel={partnerLabel}
         />
       )}
+    </div>
+  );
+}
+
+function PartnerFact({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-3 py-2.5">
+      <dt className="text-xs text-muted-foreground">{label}</dt>
+      <dd className="text-sm font-semibold tabular-nums text-foreground/70">{value}</dd>
     </div>
   );
 }

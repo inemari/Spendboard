@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CreditCard, PartyPopper, Upload } from "lucide-react";
+import { CreditCard, PartyPopper, Plus, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,6 +39,7 @@ export function UploadButton({
   openInvoices,
   defaultInvoiceId,
   creditOnly = false,
+  triggerLabel,
 }: {
   categories: Category[];
   /** Null for a user with no household — the invoice step is skipped
@@ -50,6 +51,9 @@ export function UploadButton({
   /** Starts directly in the credit-card invoice flow. Used from Settlement,
    * where a debit-card upload cannot produce anything to settle. */
   creditOnly?: boolean;
+  /** Optional context-specific copy for the trigger. Settlement uses this to
+   * present invoice creation as the start of a new settlement. */
+  triggerLabel?: string;
 }) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -185,12 +189,12 @@ export function UploadButton({
         disabled={isUploading}
         onClick={() => (creditOnly ? pickCardType("credit") : setCardTypeDialogOpen(true))}
       >
-        <Upload />
+        {triggerLabel ? <Plus /> : <Upload />}
         {isUploading
           ? "Uploading..."
-          : creditOnly
+          : triggerLabel ?? (creditOnly
             ? "Upload credit-card statement"
-            : "Upload statement"}
+            : "Upload statement")}
       </Button>
 
       {!creditOnly && (

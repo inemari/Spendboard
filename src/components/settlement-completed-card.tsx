@@ -1,16 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Banknote, PartyPopper } from "lucide-react";
+import { Banknote, ListChecks, PartyPopper } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { createClient } from "@/lib/supabase/client";
 import { SettlementReviewStep } from "@/components/settlement-review-step";
 import { PartnerCommonTransactionsDialog } from "@/components/partner-common-transactions-dialog";
 import { HeroFigure, MiniStat } from "@/components/settlement-stat";
 import { formatSpend } from "@/lib/format";
-import { cn } from "@/lib/utils";
 import type { Category, Settlement, Transaction } from "@/lib/types";
 import type { HouseholdMember } from "@/lib/workspace-data";
 
@@ -87,65 +86,68 @@ export function SettlementCompletedCard({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-1 rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+        <p className="flex items-center gap-2 font-medium text-emerald-700 dark:text-emerald-300">
           <PartyPopper className="size-4 text-primary" />
-          {invoiceLabel} — settled
-        </CardTitle>
-        <CardDescription>
-          Completed {settlement.completed_at ? new Date(settlement.completed_at).toLocaleDateString() : ""}.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
-        <p className="flex items-center justify-center gap-1.5 text-center text-xs text-muted-foreground">
-          Total Common {formatSpend(settlement.common_total ?? 0)} → {formatSpend(settlement.common_share ?? 0)} each
+          Settlement completed
         </p>
+        <p className="text-xs text-muted-foreground">
+          {settlement.completed_at ? new Date(settlement.completed_at).toLocaleDateString() : ""} · Total Common{" "}
+          {formatSpend(settlement.common_total ?? 0)} → {formatSpend(settlement.common_share ?? 0)} each
+        </p>
+      </div>
 
-        {/* Your section — primary focus, same shape as the open-invoice
-            summary step: a hero transfer figure, then Personal/Common
-            share/Contribution as an equal-weight supporting row. */}
-        <div className="flex flex-col gap-3 rounded-xl border-2 border-primary/30 p-3">
-          <div className="flex items-center justify-between gap-2">
-            <p className="font-semibold">You</p>
-            <Badge variant="default">Paid</Badge>
-          </div>
-          <HeroFigure icon={Banknote} size="lg" {...transferredLabel(mine?.transfer_total ?? 0)} />
-          <div className="grid grid-cols-3 gap-3 rounded-xl bg-primary/5 p-3">
-            <MiniStat label="Personal" dotClassName="bg-chart-2" value={formatSpend(mine?.personal_total ?? 0)} />
-            <MiniStat label="Common share" dotClassName="bg-chart-1" value={formatSpend(mine?.common_share ?? 0)} />
-            <MiniStat label="Contribution" value={formatSpend(mine?.contribution ?? 0)} />
-          </div>
-          <Button variant="outline" size="sm" className="w-fit" onClick={() => setShowOwn(true)}>
-            View &amp; edit your transactions
-          </Button>
-        </div>
+      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(260px,1fr)]">
+        <Card className="border-2 border-primary/30">
+          <CardHeader>
+            <div className="flex items-center justify-between gap-3">
+              <CardTitle className="text-xl">Your settlement</CardTitle>
+              <Badge variant="default">Paid</Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <HeroFigure icon={Banknote} size="lg" {...transferredLabel(mine?.transfer_total ?? 0)} />
+            <div className="grid grid-cols-3 gap-3 rounded-xl bg-primary/5 p-3">
+              <MiniStat label="Personal" dotClassName="bg-chart-2" value={formatSpend(mine?.personal_total ?? 0)} />
+              <MiniStat label="Common share" dotClassName="bg-chart-1" value={formatSpend(mine?.common_share ?? 0)} />
+              <MiniStat label="Contribution" value={formatSpend(mine?.contribution ?? 0)} />
+            </div>
+            <Button variant="outline" className="w-fit" onClick={() => setShowOwn(true)}>
+              <ListChecks />
+              Review transactions
+            </Button>
+          </CardContent>
+        </Card>
 
-        {/* Partner's section — same shape, deliberately quieter/smaller. */}
-        <div className={cn("flex flex-col gap-3 rounded-xl border border-secondary/25 p-3")}>
-          <div className="flex items-center justify-between gap-2">
-            <p className="wrap-break-word text-sm text-muted-foreground">{partnerLabel}</p>
-            <Badge variant="default">Paid</Badge>
-          </div>
-          <HeroFigure icon={Banknote} size="sm" {...transferredLabel(partnerSettlementMember?.transfer_total ?? 0)} />
-          <div className="grid grid-cols-3 gap-3 rounded-xl bg-muted/50 p-2.5">
-            <MiniStat
-              label="Personal"
-              dotClassName="bg-chart-2"
-              value={formatSpend(partnerSettlementMember?.personal_total ?? 0)}
-            />
-            <MiniStat
-              label="Common share"
-              dotClassName="bg-chart-1"
-              value={formatSpend(partnerSettlementMember?.common_share ?? 0)}
-            />
-            <MiniStat label="Contribution" value={formatSpend(partnerSettlementMember?.contribution ?? 0)} />
-          </div>
-          <Button variant="outline" size="sm" className="w-fit" onClick={() => setShowPartnerDialog(true)}>
-            View common transactions
-          </Button>
-        </div>
-      </CardContent>
+        <Card className="border-border/60 bg-muted/20 shadow-none hover:translate-y-0 hover:shadow-none">
+          <CardHeader className="pb-2">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="text-xs font-medium text-muted-foreground">Partner</p>
+                <CardTitle className="wrap-break-word text-base text-muted-foreground">{partnerLabel}</CardTitle>
+              </div>
+              <Badge variant="outline" className="border-border text-muted-foreground">Paid</Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            <HeroFigure icon={Banknote} size="sm" {...transferredLabel(partnerSettlementMember?.transfer_total ?? 0)} />
+            <dl className="divide-y divide-border/60 rounded-xl bg-background/60 px-3">
+              <PartnerFact label="Personal" value={formatSpend(partnerSettlementMember?.personal_total ?? 0)} />
+              <PartnerFact label="Common share" value={formatSpend(partnerSettlementMember?.common_share ?? 0)} />
+              <PartnerFact label="Contribution" value={formatSpend(partnerSettlementMember?.contribution ?? 0)} />
+            </dl>
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-fit border-border text-muted-foreground"
+              onClick={() => setShowPartnerDialog(true)}
+            >
+              View common transactions
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
 
       {partnerSettlementMember && (
         <PartnerCommonTransactionsDialog
@@ -156,6 +158,15 @@ export function SettlementCompletedCard({
           partnerLabel={partnerLabel}
         />
       )}
-    </Card>
+    </div>
+  );
+}
+
+function PartnerFact({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-3 py-2.5">
+      <dt className="text-xs text-muted-foreground">{label}</dt>
+      <dd className="text-sm font-semibold tabular-nums text-foreground/70">{value}</dd>
+    </div>
   );
 }

@@ -1,5 +1,5 @@
 import { normalizeDescription } from "@/lib/similar-transactions";
-import type { Rule, RuleCondition } from "@/lib/types";
+import type { Rule, RuleCondition, TxType } from "@/lib/types";
 
 function matchesCondition(condition: RuleCondition, name: string, subtitle: string): boolean {
   const haystack = condition.field === "name" ? name : subtitle;
@@ -24,16 +24,37 @@ function matchesRule(rule: Rule, name: string, subtitle: string): boolean {
   return rule.conditions.every((condition) => matchesCondition(condition, name, subtitle));
 }
 
+/** The single rule (if any) that governs a transaction, so category and type
+ * are always read off the same match rather than searched for twice — the
+ * two could otherwise disagree about which rule "won". */
+export function matchingRuleFor(
+  description: string,
+  location: string | null,
+  rules: Rule[],
+): Rule | undefined {
+  const name = normalizeDescription(description);
+  if (!name) return undefined;
+  const subtitle = location ? normalizeDescription(location) : "";
+
+  return rules.find((rule) => matchesRule(rule, name, subtitle));
+}
+
 export function categoryIdForTransaction(
   description: string,
   location: string | null,
   rules: Rule[],
 ): string | null {
-  const name = normalizeDescription(description);
-  if (!name) return null;
-  const subtitle = location ? normalizeDescription(location) : "";
+  return matchingRuleFor(description, location, rules)?.category_id ?? null;
+}
 
-  return rules.find((rule) => matchesRule(rule, name, subtitle))?.category_id ?? null;
+/** The type a matching rule would also set, or null if no rule matches or
+ * the matching rule doesn't set one. */
+export function typeForTransaction(
+  description: string,
+  location: string | null,
+  rules: Rule[],
+): TxType | null {
+  return matchingRuleFor(description, location, rules)?.type ?? null;
 }
 
 export function ruleMatchesTransaction(

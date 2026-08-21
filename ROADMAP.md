@@ -89,9 +89,10 @@ Remaining gaps:
   know which months have data, so there's no picker and no indication that a
   neighbouring month is empty. The `months` table already records which exist
   (`supabase/schema.sql`).
-- **Edit raw transaction fields.** Only category/type/card_type/notes are
-  editable; `description`/`date`/`amount` are rendered as plain text with no
-  edit affordance, so a bank-export typo can't be corrected in the app.
+- **Edit raw transaction fields.** Only category/type/card_type/notes/
+  settlement tag are editable; `description`/`date`/`amount` are rendered as
+  plain text with no edit affordance, so a bank-export typo can't be
+  corrected in the app.
 - **Date-range filtering** on the overview list — it filters by text and by
   uncategorized / need-review, but not by date. Largely subsumed by the
   timeframe switcher (CLAUDE.md) now that it exists.
