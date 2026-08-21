@@ -3,7 +3,7 @@
 import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ChevronDown, Plus, Trash2, X } from "lucide-react";
+import { ChevronDown, Plus, RefreshCw, Trash2, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { CategoryIconPicker } from "@/components/category-icon-picker";
 import { CategoryCreateFields, NO_PARENT_VALUE } from "@/components/category-create-fields";
@@ -12,6 +12,13 @@ import { categorySwatch, type CategorySwatch } from "@/lib/category-colors";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -23,7 +30,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
-import type { DefaultCategory } from "@/lib/types";
+import type { AppUser, DefaultCategory } from "@/lib/types";
 
 function DefaultSubcategoryRow({
   category,
@@ -238,8 +245,10 @@ function DefaultCategoryCard({
 
 export function AdminCategoriesPanel({
   categories,
+  users,
 }: {
   categories: DefaultCategory[];
+  users: AppUser[];
 }) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
@@ -252,6 +261,29 @@ export function AdminCategoriesPanel({
   const [pendingDelete, setPendingDelete] = useState<DefaultCategory | null>(null);
   const [deleteConfirmStep, setDeleteConfirmStep] = useState<1 | 2>(1);
   const [deleting, setDeleting] = useState(false);
+  const [syncUserId, setSyncUserId] = useState<string | undefined>();
+  const [syncing, setSyncing] = useState(false);
+
+  async function handleSync() {
+    if (!syncUserId) return;
+    setSyncing(true);
+    const { data, error } = await supabase.rpc("admin_sync_default_categories", {
+      target_user_id: syncUserId,
+    });
+    setSyncing(false);
+
+    if (error) {
+      toast.error("Failed to sync default categories.");
+      return;
+    }
+    const count = (data ?? 0) as number;
+    const email = users.find((u) => u.id === syncUserId)?.email ?? "that user";
+    toast.success(
+      count > 0
+        ? `Added ${count} missing default categor${count === 1 ? "y" : "ies"} to ${email}.`
+        : `${email} already has every default category.`,
+    );
+  }
 
   const tree = buildCategoryTree(categories);
   const topLevelCategories = tree.map((g) => g.parent);
@@ -369,6 +401,43 @@ export function AdminCategoriesPanel({
           New Category
         </Button>
       </div>
+
+      {users.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border p-4">
+          <div className="mr-auto">
+            <h3 className="text-sm font-semibold">Sync defaults to a user</h3>
+            <p className="text-sm text-muted-foreground">
+              Adds any default category that user doesn&rsquo;t already have, by name.
+              Never touches or removes categories they already have.
+            </p>
+          </div>
+          <Select
+            value={syncUserId}
+            onValueChange={(value) => setSyncUserId(value ?? undefined)}
+          >
+            <SelectTrigger className="h-8 w-56 text-xs">
+              <SelectValue placeholder="Choose a user…" />
+            </SelectTrigger>
+            <SelectContent>
+              {users.map((u) => (
+                <SelectItem key={u.id} value={u.id}>
+                  {u.email}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={!syncUserId || syncing}
+            onClick={() => void handleSync()}
+          >
+            <RefreshCw className="size-3.5" />
+            {syncing ? "Syncing…" : "Sync"}
+          </Button>
+        </div>
+      )}
 
       {showAddForm && (
         <Card className="flex flex-col gap-3 border-primary/40 p-4 ring-1 ring-primary/20">

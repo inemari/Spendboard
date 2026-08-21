@@ -25,16 +25,15 @@ silent "no default template" state are now fixed: `rule_template_items`
 carries a `category_parent_name` column, both RPCs resolve/create the
 correct parent before the item's own category and match names via
 `lower(trim(...))`, and `admin-rules-panel.tsx` shows a warning banner when
-no template is marked default. Remaining gaps:
+no template is marked default. A third — no admin path to sync updated
+defaults to existing users — is also fixed: `admin_sync_default_categories
+(target_user_id)` (`supabase/schema.sql`) inserts only the default
+categories a user doesn't already have by name (parents first, same
+find-or-create shape as `ensure-default-categories.ts`), never touching or
+removing anything they already have, exposed via a "Sync defaults to a
+user" control on `/admin/categories` (`admin-categories-panel.tsx`).
+Remaining gaps:
 
-- **No admin path to sync updated defaults to existing users.**
-  `ensureDefaultCategories` only seeds a brand-new account (zero categories)
-  or runs via a user's own destructive "Reset to Defaults." An admin who
-  fixes or adds a default category today has no way to push it to existing
-  accounts short of each user destructively resetting. Fix: add an additive,
-  non-destructive admin RPC (e.g. `admin_sync_default_categories
-  (target_user_id)`) that inserts only the default categories missing by
-  name, never touching or removing what the user already has.
 - **"Reset to Defaults" (rules) can fail into a worse state than before.**
   `rules-manager-panel.tsx`'s reset deletes all of the user's rules and only
   then calls `apply_default_rule_template()`; if that call fails, the rules

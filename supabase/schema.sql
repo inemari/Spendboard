@@ -354,6 +354,78 @@ $$;
 
 grant execute on function apply_rule_template(uuid, uuid) to authenticated;
 
+-- Pushes default_categories entries the target user doesn't already have,
+-- by name, without touching anything they do have — the non-destructive
+-- counterpart to that user's own "Reset to Defaults" (which deletes
+-- everything first). Lets an admin who fixes or adds a default category
+-- back-fill it onto existing accounts instead of asking each user to
+-- destructively reset. Same shape as ensure-default-categories.ts's seed
+-- (parents first, so a subcategory's parent_id can be remapped from the
+-- seed row's id to the id it was cloned into for this user), but every
+-- insert is conditional on "this user has no category by this name in this
+-- position" rather than assuming a brand-new, empty account. Matching is
+-- case/whitespace-insensitive (lower(trim(...))), same as
+-- categories_user_parent_name_key and apply_rule_template. Returns the
+-- number of categories actually inserted.
+create or replace function admin_sync_default_categories(target_user_id uuid)
+returns int
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  parent record;
+  child record;
+  resolved_parent_id uuid;
+  cat_id uuid;
+  inserted_count int := 0;
+begin
+  if not is_admin() then
+    raise exception 'not authorized';
+  end if;
+
+  for parent in
+    select id, name, icon, sort_order from default_categories where parent_id is null order by sort_order
+  loop
+    select id into resolved_parent_id
+      from categories
+      where user_id = target_user_id
+        and parent_id is null
+        and lower(trim(name)) = lower(trim(parent.name))
+      limit 1;
+
+    if resolved_parent_id is null then
+      insert into categories (user_id, name, icon, is_default, sort_order)
+        values (target_user_id, parent.name, parent.icon, true, parent.sort_order)
+        returning id into resolved_parent_id;
+      inserted_count := inserted_count + 1;
+    end if;
+
+    for child in
+      select name, icon, sort_order from default_categories
+        where parent_id = parent.id order by sort_order
+    loop
+      select id into cat_id
+        from categories
+        where user_id = target_user_id
+          and parent_id = resolved_parent_id
+          and lower(trim(name)) = lower(trim(child.name))
+        limit 1;
+
+      if cat_id is null then
+        insert into categories (user_id, parent_id, name, icon, is_default, sort_order)
+          values (target_user_id, resolved_parent_id, child.name, child.icon, true, child.sort_order);
+        inserted_count := inserted_count + 1;
+      end if;
+    end loop;
+  end loop;
+
+  return inserted_count;
+end;
+$$;
+
+grant execute on function admin_sync_default_categories(uuid) to authenticated;
+
 -- Self-service counterpart to apply_rule_template above, used by the Rules
 -- page's "Reset to defaults" action (src/components/rules-manager-panel.tsx).
 -- Unlike that function, this needs no is_admin() check — it only ever
