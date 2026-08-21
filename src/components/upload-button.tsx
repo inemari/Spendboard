@@ -22,7 +22,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { NewTransactionsSheet } from "@/components/new-transactions-sheet";
-import { createClient } from "@/lib/supabase/client";
 import { STATEMENT_FORMATS } from "@/lib/statement-formats";
 import type { CardType, Category, CreditInvoice, Transaction } from "@/lib/types";
 
@@ -38,6 +37,7 @@ export function UploadButton({
   categories,
   householdId,
   openInvoices,
+  defaultInvoiceId,
   creditOnly = false,
 }: {
   categories: Category[];
@@ -45,30 +45,37 @@ export function UploadButton({
    * entirely for them, same upload flow as before this feature existed. */
   householdId?: string | null;
   openInvoices?: CreditInvoice[];
+  /** Preselects the invoice currently open on the Settlement screen. */
+  defaultInvoiceId?: string;
   /** Starts directly in the credit-card invoice flow. Used from Settlement,
    * where a debit-card upload cannot produce anything to settle. */
   creditOnly?: boolean;
 }) {
   const router = useRouter();
-  const supabase = useRef(createClient()).current;
   const inputRef = useRef<HTMLInputElement>(null);
   const pendingCardTypeRef = useRef<CardType | null>(null);
   const pendingInvoiceIdRef = useRef<string | null>(null);
+  const pendingInvoiceLabelRef = useRef<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [cardTypeDialogOpen, setCardTypeDialogOpen] = useState(false);
   const [invoiceDialogOpen, setInvoiceDialogOpen] = useState(false);
   const [invoiceChoice, setInvoiceChoice] = useState<string>("");
   const [newInvoiceLabel, setNewInvoiceLabel] = useState("");
-  const [resolvingInvoice, setResolvingInvoice] = useState(false);
   const [newTransactions, setNewTransactions] = useState<Transaction[] | null>(null);
 
-  async function uploadFile(file: File, cardType: CardType, creditInvoiceId: string | null) {
+  async function uploadFile(
+    file: File,
+    cardType: CardType,
+    creditInvoiceId: string | null,
+    creditInvoiceLabel: string | null,
+  ) {
     setIsUploading(true);
     try {
       const formData = new FormData();
       formData.set("file", file);
       formData.set("cardType", cardType);
       if (creditInvoiceId) formData.set("creditInvoiceId", creditInvoiceId);
+      if (creditInvoiceLabel) formData.set("creditInvoiceLabel", creditInvoiceLabel);
 
       // No year/month: each transaction is filed under the month its own date
       // falls in, so the upload doesn't depend on what the overview happens to
@@ -84,7 +91,13 @@ export function UploadButton({
         return;
       }
 
-      toast.success(`Imported ${data.imported} of ${data.total} transactions.`, {
+      const message =
+        data.attached > 0
+          ? data.imported > 0
+            ? `Imported ${data.imported} new and added ${data.attached} existing transactions to the invoice.`
+            : `Added ${data.attached} existing transactions to the invoice.`
+          : `Imported ${data.imported} of ${data.total} transactions.`;
+      toast.success(message, {
         icon: <PartyPopper className="size-4" />,
       });
       router.refresh();
@@ -104,10 +117,15 @@ export function UploadButton({
   // exactly as it did before the settlement feature existed.
   function pickCardType(cardType: CardType) {
     pendingCardTypeRef.current = cardType;
+    pendingInvoiceIdRef.current = null;
+    pendingInvoiceLabelRef.current = null;
     setCardTypeDialogOpen(false);
 
     if (cardType === "credit" && householdId) {
-      setInvoiceChoice(openInvoices?.[0]?.id ?? NEW_INVOICE_VALUE);
+      const preferredInvoice = openInvoices?.some((invoice) => invoice.id === defaultInvoiceId)
+        ? defaultInvoiceId
+        : openInvoices?.[0]?.id;
+      setInvoiceChoice(preferredInvoice ?? NEW_INVOICE_VALUE);
       setNewInvoiceLabel("");
       setInvoiceDialogOpen(true);
       return;
@@ -116,28 +134,21 @@ export function UploadButton({
     inputRef.current?.click();
   }
 
-  async function confirmInvoice() {
+  function confirmInvoice() {
     if (invoiceChoice === NEW_INVOICE_VALUE) {
       const label = newInvoiceLabel.trim();
       if (!label) {
         toast.error("Name this invoice (e.g. “August 2026”).");
         return;
       }
-      setResolvingInvoice(true);
-      const { data, error } = await supabase
-        .from("credit_invoices")
-        .insert({ household_id: householdId, label })
-        .select("id")
-        .single();
-      setResolvingInvoice(false);
-
-      if (error || !data) {
-        toast.error("Failed to create invoice.");
-        return;
-      }
-      pendingInvoiceIdRef.current = data.id;
+      // Defer creating the invoice until a file has actually been selected.
+      // Keeping this handler synchronous preserves the browser's user gesture,
+      // so the native file picker is allowed to open from the Continue click.
+      pendingInvoiceIdRef.current = null;
+      pendingInvoiceLabelRef.current = label;
     } else {
       pendingInvoiceIdRef.current = invoiceChoice;
+      pendingInvoiceLabelRef.current = null;
     }
 
     setInvoiceDialogOpen(false);
@@ -154,8 +165,16 @@ export function UploadButton({
         onChange={(e) => {
           const file = e.target.files?.[0];
           const cardType = pendingCardTypeRef.current;
-          if (file && cardType) void uploadFile(file, cardType, pendingInvoiceIdRef.current);
+          if (file && cardType) {
+            void uploadFile(
+              file,
+              cardType,
+              pendingInvoiceIdRef.current,
+              pendingInvoiceLabelRef.current,
+            );
+          }
           pendingInvoiceIdRef.current = null;
+          pendingInvoiceLabelRef.current = null;
           e.target.value = "";
         }}
       />
@@ -236,7 +255,7 @@ export function UploadButton({
             <Button variant="outline" onClick={() => setInvoiceDialogOpen(false)}>
               Cancel
             </Button>
-            <Button disabled={resolvingInvoice} onClick={() => void confirmInvoice()}>
+            <Button onClick={confirmInvoice}>
               Continue
             </Button>
           </DialogFooter>

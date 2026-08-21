@@ -3,12 +3,22 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Check, ChevronLeft, Copy, PartyPopper, Receipt, Users } from "lucide-react";
+import { Check, ChevronLeft, Copy, PartyPopper, Receipt, Trash2, Users } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { UploadButton } from "@/components/upload-button";
 import { SettlementInvoiceFlow } from "@/components/settlement-invoice-flow";
 import { SettlementCompletedCard } from "@/components/settlement-completed-card";
@@ -207,6 +217,8 @@ function useOpenInvoiceSummaries(invoiceIds: string[]) {
 }
 
 function SettlementWorkspace({ household }: { household: Household }) {
+  const router = useRouter();
+  const supabase = useMemo(() => createClient(), []);
   const { userId, members, invoices, settlements, categories } = household;
   const settlementByInvoice = useMemo(
     () => new Map(settlements.map((s) => [s.invoice_id, s])),
@@ -221,6 +233,8 @@ function SettlementWorkspace({ household }: { household: Household }) {
   // the first invoice become selected after an empty-state upload refreshes
   // these props without remounting this client component.
   const [selectedId, setSelectedId] = useState<string | null>();
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const activeSelectedId =
     selectedId === undefined ? (openInvoices[0]?.id ?? invoices[0]?.id ?? null) : selectedId;
   const selectedInvoice = invoices.find((i) => i.id === activeSelectedId) ?? null;
@@ -228,17 +242,51 @@ function SettlementWorkspace({ household }: { household: Household }) {
     ? settlementByInvoice.get(activeSelectedId)
     : undefined;
 
+  async function deleteSelectedSettlement() {
+    if (!selectedInvoice) return;
+    setDeleting(true);
+    const { error } = await supabase.rpc("delete_settlement", {
+      p_invoice_id: selectedInvoice.id,
+    });
+    setDeleting(false);
+
+    if (error) {
+      toast.error(error.message ?? "Failed to delete settlement.");
+      return;
+    }
+
+    setDeleteDialogOpen(false);
+    setSelectedId(undefined);
+    toast.success("Settlement deleted. Its transactions were kept.");
+    router.refresh();
+  }
+
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 p-6">
-      <div>
-        <h2 className="flex items-center gap-2 font-heading text-2xl font-bold">
-          <Receipt className="size-6 text-primary" />
-          Settlement
-        </h2>
-        <p className="text-sm text-muted-foreground">
-          You and {partnerLabel(members, userId)} each keep your own transactions private —
-          only common-spending totals and the final split are shared.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="flex items-center gap-2 font-heading text-2xl font-bold">
+            <Receipt className="size-6 text-primary" />
+            Settlement
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            You and {partnerLabel(members, userId)} each keep your own transactions private —
+            only common-spending totals and the final split are shared.
+          </p>
+        </div>
+        {invoices.length > 0 && (
+          <UploadButton
+            categories={categories}
+            householdId={household.householdId}
+            openInvoices={openInvoices}
+            defaultInvoiceId={
+              selectedInvoice && selectedSettlement?.status !== "completed"
+                ? selectedInvoice.id
+                : undefined
+            }
+            creditOnly
+          />
+        )}
       </div>
 
       {invoices.length === 0 ? (
@@ -277,15 +325,24 @@ function SettlementWorkspace({ household }: { household: Household }) {
               </p>
             )}
             {selectedInvoice && (
-              <div className="flex items-center justify-between gap-3 sm:hidden">
+              <div className="flex items-center justify-between gap-3">
                 <button
                   type="button"
                   onClick={() => setSelectedId(null)}
-                  className="flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground"
+                  className="flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground sm:hidden"
                 >
                   <ChevronLeft className="size-4" />
                   All invoices
                 </button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="ml-auto text-destructive hover:text-destructive"
+                  onClick={() => setDeleteDialogOpen(true)}
+                >
+                  <Trash2 />
+                  Delete settlement
+                </Button>
               </div>
             )}
             {selectedInvoice && selectedSettlement?.status === "completed" && (
@@ -312,6 +369,29 @@ function SettlementWorkspace({ household }: { household: Household }) {
           </div>
         </div>
       )}
+
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {selectedInvoice?.label ?? "this settlement"}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              The settlement, invoice, and payment history will be removed for both household
+              members. The transactions themselves will be kept and can be filed under another
+              settlement.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={deleting}
+              onClick={() => void deleteSelectedSettlement()}
+            >
+              {deleting ? "Deleting..." : "Delete settlement"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

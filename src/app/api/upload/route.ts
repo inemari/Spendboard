@@ -26,6 +26,7 @@ export async function POST(request: NextRequest) {
   const file = formData.get("file");
   const cardType = formData.get("cardType");
   const creditInvoiceId = formData.get("creditInvoiceId");
+  const creditInvoiceLabel = formData.get("creditInvoiceLabel");
 
   if (!(file instanceof File)) {
     return NextResponse.json({ error: "No file uploaded." }, { status: 400 });
@@ -35,30 +36,80 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid or missing card type." }, { status: 400 });
   }
 
-  // Never trust an invoice id from the client at face value — it must belong
-  // to a household the uploader is actually a member of, otherwise anyone
-  // could tag their own transactions onto another household's invoice and
-  // skew that household's shared common total.
+  const requestedInvoiceLabel =
+    typeof creditInvoiceLabel === "string" ? creditInvoiceLabel.trim() : null;
+  const hasInvoiceId = typeof creditInvoiceId === "string" && creditInvoiceId.length > 0;
+  const hasInvoiceLabel = typeof creditInvoiceLabel === "string";
+
+  if (hasInvoiceId && hasInvoiceLabel) {
+    return NextResponse.json(
+      { error: "Choose an existing invoice or create a new one, not both." },
+      { status: 400 },
+    );
+  }
+
+  if (hasInvoiceLabel && !requestedInvoiceLabel) {
+    return NextResponse.json({ error: "Invoice name is required." }, { status: 400 });
+  }
+
+  if (requestedInvoiceLabel && requestedInvoiceLabel.length > 120) {
+    return NextResponse.json(
+      { error: "Invoice name must be 120 characters or fewer." },
+      { status: 400 },
+    );
+  }
+
+  if (cardType !== "credit" && (hasInvoiceId || hasInvoiceLabel)) {
+    return NextResponse.json(
+      { error: "Only credit-card statements can be filed under an invoice." },
+      { status: 400 },
+    );
+  }
+
+  // Never trust invoice details from the client at face value. Existing ids
+  // must belong to the uploader's household, and new invoices are created for
+  // that verified household rather than a client-provided household id.
   let resolvedInvoiceId: string | null = null;
-  if (typeof creditInvoiceId === "string" && creditInvoiceId) {
-    const { data: membership } = await supabase
+  let invoiceHouseholdId: string | null = null;
+  if (hasInvoiceId || requestedInvoiceLabel) {
+    const { data: membership, error: membershipError } = await supabase
       .from("household_members")
       .select("household_id")
       .eq("user_id", user.id)
       .maybeSingle();
 
-    const { data: invoice } = membership
-      ? await supabase
-          .from("credit_invoices")
-          .select("id, household_id")
-          .eq("id", creditInvoiceId)
-          .maybeSingle()
-      : { data: null };
-
-    if (!membership || !invoice || invoice.household_id !== membership.household_id) {
-      return NextResponse.json({ error: "Invalid invoice." }, { status: 400 });
+    if (membershipError || !membership) {
+      return NextResponse.json(
+        { error: "You must belong to a household to file transactions under an invoice." },
+        { status: 400 },
+      );
     }
-    resolvedInvoiceId = invoice.id;
+    invoiceHouseholdId = membership.household_id;
+
+    if (hasInvoiceId) {
+      const { data: invoice } = await supabase
+        .from("credit_invoices")
+        .select("id, household_id")
+        .eq("id", creditInvoiceId as string)
+        .maybeSingle();
+
+      if (!invoice || invoice.household_id !== membership.household_id) {
+        return NextResponse.json({ error: "Invalid invoice." }, { status: 400 });
+      }
+
+      const { data: settlement } = await supabase
+        .from("settlements")
+        .select("status")
+        .eq("invoice_id", invoice.id)
+        .maybeSingle();
+      if (settlement?.status === "completed") {
+        return NextResponse.json(
+          { error: "Completed settlements are frozen and cannot receive more transactions." },
+          { status: 409 },
+        );
+      }
+      resolvedInvoiceId = invoice.id;
+    }
   }
 
   let parsed;
@@ -105,6 +156,26 @@ export async function POST(request: NextRequest) {
     .from("rules")
     .select("id, category_id, created_at, conditions, is_default");
 
+  // Creating the invoice here (after the file has parsed successfully) avoids
+  // empty invoice rows when the file picker is cancelled or the file is not a
+  // supported statement. It also lets the picker open directly from the
+  // user's Continue click instead of after a client-side network request.
+  if (requestedInvoiceLabel && invoiceHouseholdId) {
+    const { data: invoice, error: invoiceError } = await supabase
+      .from("credit_invoices")
+      .insert({ household_id: invoiceHouseholdId, label: requestedInvoiceLabel })
+      .select("id")
+      .single();
+
+    if (invoiceError || !invoice) {
+      return NextResponse.json(
+        { error: invoiceError?.message ?? "Failed to create invoice." },
+        { status: 500 },
+      );
+    }
+    resolvedInvoiceId = invoice.id;
+  }
+
   const rows = parsed.map((t) => ({
     month_id: monthIdByKey.get(t.date.slice(0, 7))!,
     date: t.date,
@@ -137,6 +208,26 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: insertError.message }, { status: 500 });
   }
 
+  // Statements imported before invoice support already have matching rows,
+  // so the conflict-safe upsert above deliberately skips them. Filing that
+  // same statement now should attach those unfiled rows to the selected
+  // invoice without overwriting any categorization or moving rows that are
+  // already filed under another invoice.
+  let attachedToInvoice = 0;
+  if (resolvedInvoiceId) {
+    const { count: attachedCount, error: attachmentError } = await supabase
+      .from("transactions")
+      .update({ credit_invoice_id: resolvedInvoiceId }, { count: "exact" })
+      .in("month_id", Array.from(monthIdByKey.values()))
+      .in("source_hash", parsed.map((t) => t.sourceHash))
+      .is("credit_invoice_id", null);
+
+    if (attachmentError) {
+      return NextResponse.json({ error: attachmentError.message }, { status: 500 });
+    }
+    attachedToInvoice = attachedCount ?? 0;
+  }
+
   // The upsert above never touches rows that already exist, so it can't fill in
   // `location` for transactions imported before "Sted" column parsing existed.
   // Backfill just that field on re-upload, without touching category/type/notes.
@@ -163,6 +254,7 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({
     imported: count ?? rows.length,
     total: rows.length,
+    attached: attachedToInvoice,
     inserted: inserted ?? [],
   });
 }

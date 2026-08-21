@@ -26,8 +26,10 @@ export default async function OverviewPage({
   const [{ userEmail, categories, categoriesError, transactions, transactionsError }, { householdId, invoices, settlements }] =
     await Promise.all([loadWorkspaceDataForRange(supabase, range), loadHousehold(supabase)]);
 
-  const settledInvoiceIds = new Set(settlements.map((s) => s.invoice_id));
-  const openInvoices = invoices.filter((i) => !settledInvoiceIds.has(i.id));
+  const completedInvoiceIds = new Set(
+    settlements.filter((settlement) => settlement.status === "completed").map((s) => s.invoice_id),
+  );
+  const openInvoices = invoices.filter((invoice) => !completedInvoiceIds.has(invoice.id));
 
   return (
     <div className="mx-auto flex min-h-svh w-full max-w-[1600px] flex-col">

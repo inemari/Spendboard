@@ -752,7 +752,7 @@ create table if not exists credit_invoices (
 -- Nullable: a transaction has no invoice until the uploader picks one (and
 -- solo users with no household never see the picker at all — see
 -- upload-button.tsx). on delete set null, not cascade: deleting an invoice
--- (there's no UI for this in V1) must not take transactions with it.
+-- through the Settlement UI must not take transactions with it.
 alter table transactions add column if not exists credit_invoice_id uuid references credit_invoices(id) on delete set null;
 
 -- One row per invoice. Unlike the original version of this table, a row can
@@ -1242,6 +1242,37 @@ end;
 $$;
 
 grant execute on function unmark_settlement_paid(uuid) to authenticated;
+
+-- Removes an invoice/settlement from the household without deleting any
+-- transactions. `transactions.credit_invoice_id` uses `on delete set null`,
+-- while settlement member/payment rows cascade through the settlement. The
+-- caller must belong to the invoice's household; either member may clean up
+-- an open or completed settlement because the record is shared by both.
+create or replace function delete_settlement(p_invoice_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  caller_household_id uuid;
+  target_household_id uuid;
+begin
+  select ci.household_id into target_household_id
+    from credit_invoices ci where ci.id = p_invoice_id;
+  select hm.household_id into caller_household_id
+    from household_members hm where hm.user_id = auth.uid();
+
+  if target_household_id is null or target_household_id is distinct from caller_household_id then
+    raise exception 'Not authorized.';
+  end if;
+
+  delete from settlements where invoice_id = p_invoice_id;
+  delete from credit_invoices where id = p_invoice_id;
+end;
+$$;
+
+grant execute on function delete_settlement(uuid) to authenticated;
 
 -- The only way a partner's individual transaction rows are ever exposed:
 -- hard-filtered to `type = 'common'` (Personal/need-review rows are never

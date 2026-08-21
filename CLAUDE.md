@@ -857,10 +857,12 @@ decisions. For work that's planned but not yet implemented, see
 - Re-uploading a statement (`src/app/api/upload/route.ts`) never overwrites
   fields on transactions that already exist (matched by `month_id` +
   `source_hash`) — this protects the user's manual categorization from being
-  clobbered on re-import. The one deliberate exception: `location` is
-  backfilled on existing rows when it's currently `null`, since transactions
-  imported before "Sted" column parsing existed have no other way to pick it
-  up. Nothing else (category_id/type/card_type/notes) is ever touched this way.
+  clobbered on re-import. The deliberate exceptions are `location`, which is
+  backfilled when currently `null`, and `credit_invoice_id`, which is filled
+  when currently `null` if the re-upload explicitly files the statement under
+  an invoice. This lets statements imported before invoice support participate
+  in settlement without moving transactions already filed elsewhere. Nothing
+  else (category_id/type/card_type/notes) is ever touched this way.
 - Schema changes live in `supabase/schema.sql` and must be re-run in the
   Supabase SQL editor manually — there's no migration runner in this project.
 - **The dedup key is occurrence-aware, not just date+description+amount.**
@@ -885,7 +887,10 @@ decisions. For work that's planned but not yet implemented, see
   categorization) — see `src/app/api/upload/route.ts`.
 - `transactions.credit_invoice_id`: nullable, references `credit_invoices`,
   `on delete set null` (not `cascade` — there's no invoice-deletion UI, but a
-  transaction must never be deleted as a side effect of one). Set only via
+  transaction must never be deleted as a side effect of one). The Settlement
+  screen can delete an open or completed invoice through the membership-checked
+  `delete_settlement` RPC; this removes its payment snapshot and detaches all
+  household transactions so they can be filed elsewhere. Set only via
   the upload route, which validates server-side that the invoice actually
   belongs to a household the uploader is a member of before writing it —
   the id arrives from the client, so it can't be trusted at face value.
