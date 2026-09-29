@@ -108,14 +108,21 @@ decisions. For work that's planned but not yet implemented, see
   when present.
 - The overview (`/`) is a **dashboard**
   (`transaction-board.tsx`): a hero "spent this month" figure, a common /
-  personal / need-review split meter, a **clickable "Where it went" category
-  sidebar** (`category-sidebar.tsx`, subcategory spend rolled into its
-  parent, tail folded into "Other"), and a day-grouped, searchable transaction
+  personal / need-review split meter, a **clickable and droppable category
+  sidebar** (`category-sidebar.tsx`), and a day-grouped, searchable transaction
   list (`transaction-list.tsx`) whose rows expand to reveal the full editor.
-  The sidebar is navigation, not just a readout: clicking a category (or "All
-  transactions" / "Uncategorized") scopes the list to it and shows a colored
-  chip beside the "Transactions" heading; clicking the active row again
-  resets to "All." Every row leads with a **pastel disc holding that
+  Every top-level category is present, including empty categories;
+  subcategories expand under the active parent or appear through the category
+  search, keeping a large taxonomy scannable. Drag a transaction row by its
+  handle onto a category to recategorize it;
+  dragging a selected row moves the whole selection. Clicking a category (or
+  "All transactions" / "Uncategorized") scopes the list to it and shows a
+  colored chip beside the "Transactions" heading; clicking the active row
+  again resets to "All." Each row also has a direct add/edit-note action and
+  expands to expose category, type, card type, settlement, note, and delete
+  controls. On mobile the summary and transactions come before the category
+  list, while desktop keeps summary/categories on the left and transactions
+  on the right. Every row leads with a **pastel disc holding that
   category's icon** (`categories.icon` — see "Category icons" below), in the
   category's own `badge` color: a second recognition channel next to the color
   and the name, so the list can be scanned by shape rather than read.
@@ -123,9 +130,8 @@ decisions. For work that's planned but not yet implemented, see
   rotation (`src/lib/category-colors.ts`) so it stays recognizable as a filter
   target — that's an identity/navigation color, unlike the single-hue spend
   bars this replaced, and doesn't need the categorical CVD palette's 8-hue
-  cap, since the name is always shown as text alongside the color. A
-  desktop-only **Overview / Board** toggle swaps the list for the drag-and-
-  drop board. Spend-focused aggregates live in `src/lib/overview.ts`,
+  cap, since the name is always shown as text alongside the color.
+  Spend-focused aggregates live in `src/lib/overview.ts`,
   deliberately separate from `totals.ts` (which nets income against expenses).
 - **Month navigation lives only on the overview**, in the Month tab's step
   arrows on `timeframe-switcher.tsx`. The app header deliberately carries no
@@ -144,7 +150,8 @@ decisions. For work that's planned but not yet implemented, see
   "no transactions yet" state, but every panel below the toolbar is gated on
   `transactions.length > 0`, so the list never mounted to show it and the
   page rendered as a bare toolbar over blank space.
-- Categorize transactions via dropdown, drag-and-drop board (desktop), or the
+- Categorize transactions via the overview's drag-and-drop category sidebar,
+  a dropdown, or the
   one-by-one "Categorize" screen (drag a card onto its category — or use its
   Prev/Next arrows to step through the uncategorized list without touching
   it, same as the board carousel's stepper below). **The Categorize screen is
@@ -289,7 +296,8 @@ decisions. For work that's planned but not yet implemented, see
     "Automatic", so it previews the icon the typed name would get on its own —
     the choice reads as "here's your icon, change it if you like" rather than
     another required decision.
-- The board (`category-board.tsx`) is a **compact multi-row cockpit**: every
+- **Historical board implementation — removed from the product UI.** The old
+  board (`category-board.tsx`) was a compact multi-row cockpit: every
   category — plus Uncategorized — gets its own cell (`category-column.tsx`,
   still exporting `CategoryColumn`) in one wrapping grid
   (`grid-cols-[repeat(auto-fill,minmax(var(--col-min),1fr))]`,
@@ -423,8 +431,8 @@ decisions. For work that's planned but not yet implemented, see
   Supabase client call has no explicit filter beyond "id is set", since the
   `transactions` table's `auth.uid() = user_id` RLS policy already scopes
   it to the signed-in user's own rows. Categories and rules are untouched.
-- Multi-select transaction cards (checkbox); dragging a selected card in the
-  desktop board moves the whole selection, not just that card. A bulk action
+- Multi-select transaction rows (checkbox); dragging a selected row in the
+  overview moves the whole selection, not just that row. A bulk action
   bar (bottom of screen) lets you set category / common-personal-need_review /
   card type across the whole selection at once.
 - Categorizing a transaction with similarly-named uncategorized siblings opens

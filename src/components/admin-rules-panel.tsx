@@ -257,7 +257,9 @@ export function AdminRulesPanel({
                     }
                   >
                     <SelectTrigger className="h-8 w-48 text-xs">
-                      <SelectValue placeholder="Into which template…" />
+                      <SelectValue placeholder="Into which template…">
+                        {templates.find((template) => template.id === selectedTemplateByRule[rule.id])?.name}
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       {templates.map((t) => (
@@ -350,12 +352,17 @@ export function AdminRulesPanel({
                   }
                 >
                   <SelectTrigger className="h-8 w-56 text-xs">
-                    <SelectValue placeholder="Apply to a user…" />
+                    <SelectValue placeholder="Apply to a user…">
+                      {selectedUserByTemplate[template.id]
+                        ? users.find((user) => user.id === selectedUserByTemplate[template.id])?.email ??
+                          "User without email"
+                        : undefined}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {users.map((u) => (
                       <SelectItem key={u.id} value={u.id}>
-                        {u.email ?? u.id}
+                        {u.email ?? "User without email"}
                       </SelectItem>
                     ))}
                   </SelectContent>

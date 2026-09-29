@@ -416,12 +416,16 @@ export function AdminCategoriesPanel({
             onValueChange={(value) => setSyncUserId(value ?? undefined)}
           >
             <SelectTrigger className="h-8 w-56 text-xs">
-              <SelectValue placeholder="Choose a user…" />
+              <SelectValue placeholder="Choose a user…">
+                {syncUserId
+                  ? users.find((user) => user.id === syncUserId)?.email ?? "User without email"
+                  : undefined}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               {users.map((u) => (
                 <SelectItem key={u.id} value={u.id}>
-                  {u.email}
+                  {u.email ?? "User without email"}
                 </SelectItem>
               ))}
             </SelectContent>

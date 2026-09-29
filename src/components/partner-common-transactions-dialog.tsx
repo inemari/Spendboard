@@ -33,14 +33,19 @@ export function PartnerCommonTransactionsDialog({
   partnerUserId: string;
   partnerLabel: string;
 }) {
-  const [rows, setRows] = useState<PartnerCommonTransaction[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const requestKey = `${invoiceId}:${partnerUserId}:${open}`;
+  const [result, setResult] = useState<{
+    key: string;
+    rows: PartnerCommonTransaction[];
+    error: string | null;
+  } | null>(null);
+  const currentResult = result?.key === requestKey ? result : null;
+  const rows = currentResult?.rows ?? null;
+  const error = currentResult?.error ?? null;
 
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    setRows(null);
-    setError(null);
 
     const supabase = createClient();
     supabase
@@ -51,16 +56,20 @@ export function PartnerCommonTransactionsDialog({
       .then(({ data, error }) => {
         if (cancelled) return;
         if (error) {
-          setError(error.message);
+          setResult({ key: requestKey, rows: [], error: error.message });
           return;
         }
-        setRows((data ?? []) as PartnerCommonTransaction[]);
+        setResult({
+          key: requestKey,
+          rows: (data ?? []) as PartnerCommonTransaction[],
+          error: null,
+        });
       });
 
     return () => {
       cancelled = true;
     };
-  }, [open, invoiceId, partnerUserId]);
+  }, [open, invoiceId, partnerUserId, requestKey]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

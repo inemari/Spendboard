@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { ChevronDown, GripVertical, Plus, RefreshCw, Trash2, X } from "lucide-react";
@@ -301,8 +301,6 @@ export function CategoryManagerPanel({ categories }: { categories: Category[] })
   const [syncingDefaults, setSyncingDefaults] = useState(false);
   const supabase = useMemo(() => createClient(), []);
   const newNameInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => setItems(categories), [categories]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),

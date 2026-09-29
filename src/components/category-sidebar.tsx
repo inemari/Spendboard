@@ -1,7 +1,9 @@
 "use client";
 
-import type { ReactNode } from "react";
-import { CircleDashed, Layers, type LucideIcon } from "lucide-react";
+import { useState, type ComponentProps, type ReactNode } from "react";
+import { useDroppable } from "@dnd-kit/core";
+import { ChevronDown, CircleDashed, Layers, Search, type LucideIcon } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { formatSpend } from "@/lib/format";
 import {
   NEUTRAL_SWATCH,
@@ -9,23 +11,19 @@ import {
   type CategorySwatch,
 } from "@/lib/category-colors";
 import { categoryIcon } from "@/lib/category-icons";
+import { buildCategoryTree } from "@/lib/category-tree";
 import { cn } from "@/lib/utils";
-import type { CategorySlice } from "@/lib/overview";
+import type { Category, Transaction } from "@/lib/types";
 
 export type CategoryFilter =
   | { kind: "all" }
   | { kind: "uncategorized" }
   | { kind: "category"; sliceId: string; categoryIds: string[]; name: string };
 
-/**
- * "Where it went" as navigation, not just a readout: clicking a row scopes the
- * transaction list to that category. "All transactions" resets it, and
- * "Uncategorized" is pinned below the ranked list rather than folded into it,
- * since it isn't part of the spend ranking — it's the pool everything else
- * came out of.
- */
+/** Category navigation and categorization target in one place. */
 export function CategorySidebar({
-  breakdown,
+  categories,
+  transactions,
   totalCount,
   uncategorizedCount,
   uncategorizedSpent,
@@ -33,118 +31,222 @@ export function CategorySidebar({
   filter,
   onSelectFilter,
 }: {
-  breakdown: CategorySlice[];
+  categories: Category[];
+  transactions: Transaction[];
   totalCount: number;
   uncategorizedCount: number;
   uncategorizedSpent: number;
-  /** Same map the board's kanban columns use, so a category's color matches
-   *  between the two views instead of being re-derived from this list's rank. */
   colorMap: Map<string, CategorySwatch>;
   filter: CategoryFilter;
   onSelectFilter: (filter: CategoryFilter) => void;
 }) {
-  const max = Math.max(1, ...breakdown.map((s) => s.spent));
+  const [query, setQuery] = useState("");
+  const tree = buildCategoryTree(categories);
+  const spentByCategory = new Map<string, number>();
+  const countByCategory = new Map<string, number>();
+
+  for (const transaction of transactions) {
+    if (!transaction.category_id) continue;
+    countByCategory.set(
+      transaction.category_id,
+      (countByCategory.get(transaction.category_id) ?? 0) + 1,
+    );
+    if (transaction.amount < 0) {
+      spentByCategory.set(
+        transaction.category_id,
+        (spentByCategory.get(transaction.category_id) ?? 0) - transaction.amount,
+      );
+    }
+  }
+
+  const parentRows = tree.map(({ parent, children }) => {
+    const categoryIds = [parent.id, ...children.map((child) => child.id)];
+    return {
+      parent,
+      children,
+      categoryIds,
+      spent: categoryIds.reduce((sum, id) => sum + (spentByCategory.get(id) ?? 0), 0),
+      count: categoryIds.reduce((sum, id) => sum + (countByCategory.get(id) ?? 0), 0),
+    };
+  });
+  const max = Math.max(1, ...parentRows.map((row) => row.spent));
+  const normalizedQuery = query.trim().toLowerCase();
+  const visibleParentRows = normalizedQuery
+    ? parentRows.filter(
+        ({ parent, children }) =>
+          parent.name.toLowerCase().includes(normalizedQuery) ||
+          children.some((child) => child.name.toLowerCase().includes(normalizedQuery)),
+      )
+    : parentRows;
 
   return (
     <section className="flex flex-col gap-1">
-      <h2 className="px-1 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
-        Where it went
-      </h2>
+      <div className="flex items-center justify-between gap-2 px-1">
+        <h2 className="text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
+          Categories
+        </h2>
+        <span className="hidden text-[10px] text-muted-foreground sm:inline">
+          Drag transactions here
+        </span>
+      </div>
+
+      <div className="relative my-1">
+        <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Find a category…"
+          aria-label="Find a category"
+          className="h-8 pl-8 text-xs"
+        />
+      </div>
 
       <SidebarRow
         icon={Layers}
         swatch={NEUTRAL_SWATCH}
         name="All transactions"
         active={filter.kind === "all"}
-        trailing={
-          <span className="text-sm text-muted-foreground tabular-nums">
-            {totalCount}
-          </span>
-        }
+        trailing={<span className="text-sm text-muted-foreground tabular-nums">{totalCount}</span>}
         onClick={() => onSelectFilter({ kind: "all" })}
       />
 
-      {breakdown.map((slice) => {
-        const swatch = colorMap.get(slice.id) ?? NEUTRAL_SWATCH;
-        const active =
-          filter.kind === "category" && filter.sliceId === slice.id;
+      {visibleParentRows.map(({ parent, children, categoryIds, spent, count }) => {
+        const swatch = colorMap.get(parent.id) ?? NEUTRAL_SWATCH;
+        const active = filter.kind === "category" && filter.sliceId === parent.id;
+        const childIsActive =
+          filter.kind === "category" && children.some((child) => child.id === filter.sliceId);
+        const showChildren = active || childIsActive || normalizedQuery.length > 0;
+        const visibleChildren = normalizedQuery
+          ? children.filter(
+              (child) =>
+                parent.name.toLowerCase().includes(normalizedQuery) ||
+                child.name.toLowerCase().includes(normalizedQuery),
+            )
+          : children;
 
         return (
-          <SidebarRow
-            key={slice.id}
-            icon={categoryIcon(slice.icon, slice.name)}
-            swatch={swatch}
-            name={slice.name}
-            active={active}
-            trailing={
-              <span className=" font-semibold tabular-nums">
-                {formatSpend(slice.spent)}
-              </span>
-            }
-            meter={{
-              fraction: slice.spent / max,
-              share: slice.share,
-              count: slice.transactionCount,
-            }}
-            onClick={() =>
-              onSelectFilter(
-                active
-                  ? { kind: "all" }
-                  : {
-                      kind: "category",
-                      sliceId: slice.id,
-                      categoryIds: slice.categoryIds,
-                      name: slice.name,
-                    },
-              )
-            }
-          />
+          <div key={parent.id} className="flex flex-col gap-1">
+            <DroppableSidebarRow
+              categoryId={parent.id}
+              icon={categoryIcon(parent.icon, parent.name)}
+              swatch={swatch}
+              name={parent.name}
+              active={active}
+              trailing={<CategoryAmount spent={spent} count={count} />}
+              meter={spent > 0 ? { fraction: spent / max } : undefined}
+              suffix={
+                children.length > 0 ? (
+                  <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground">
+                    {children.length}
+                    <ChevronDown
+                      className={cn("size-3 transition-transform", showChildren && "rotate-180")}
+                    />
+                  </span>
+                ) : undefined
+              }
+              onClick={() =>
+                onSelectFilter(
+                  active
+                    ? { kind: "all" }
+                    : {
+                        kind: "category",
+                        sliceId: parent.id,
+                        categoryIds,
+                        name: parent.name,
+                      },
+                )
+              }
+            />
+
+            {showChildren && visibleChildren.map((child) => {
+              const childActive = filter.kind === "category" && filter.sliceId === child.id;
+              return (
+                <DroppableSidebarRow
+                  key={child.id}
+                  categoryId={child.id}
+                  icon={categoryIcon(child.icon, child.name)}
+                  swatch={swatch}
+                  name={child.name}
+                  active={childActive}
+                  indent
+                  trailing={
+                    <CategoryAmount
+                      spent={spentByCategory.get(child.id) ?? 0}
+                      count={countByCategory.get(child.id) ?? 0}
+                    />
+                  }
+                  onClick={() =>
+                    onSelectFilter(
+                      childActive
+                        ? { kind: "all" }
+                        : {
+                            kind: "category",
+                            sliceId: child.id,
+                            categoryIds: [child.id],
+                            name: child.name,
+                          },
+                    )
+                  }
+                />
+              );
+            })}
+          </div>
         );
       })}
 
-      {uncategorizedCount > 0 && (
-        <SidebarRow
-          icon={CircleDashed}
-          swatch={UNCATEGORIZED_SWATCH}
-          name="Uncategorized"
-          active={filter.kind === "uncategorized"}
-          trailing={
-            <span className="flex items-baseline gap-2">
-              <span className="text-sm font-semibold tabular-nums">
-                {formatSpend(uncategorizedSpent)}
-              </span>
-              <span className="text-xs tabular-nums text-muted-foreground">
-                {uncategorizedCount}
-              </span>
-            </span>
-          }
-          onClick={() =>
-            onSelectFilter(
-              filter.kind === "uncategorized"
-                ? { kind: "all" }
-                : { kind: "uncategorized" },
-            )
-          }
-        />
-      )}
+      <DroppableSidebarRow
+        categoryId={null}
+        icon={CircleDashed}
+        swatch={UNCATEGORIZED_SWATCH}
+        name="Uncategorized"
+        active={filter.kind === "uncategorized"}
+        trailing={<CategoryAmount spent={uncategorizedSpent} count={uncategorizedCount} />}
+        onClick={() =>
+          onSelectFilter(
+            filter.kind === "uncategorized" ? { kind: "all" } : { kind: "uncategorized" },
+          )
+        }
+      />
     </section>
   );
 }
 
-/**
- * One row: a pastel icon badge in the category's own color, the name and
- * amount on the top line, and (for real categories) the spend meter tucked
- * under them. Extracted because all three row kinds — All, a category, and
- * Uncategorized — are the same shape, and they were drifting apart when each
- * was written out inline.
- */
+function CategoryAmount({ spent, count }: { spent: number; count: number }) {
+  if (spent === 0 && count === 0) return null;
+
+  return (
+    <span className="flex items-baseline gap-1.5">
+      <span className="font-semibold tabular-nums">{formatSpend(spent)}</span>
+      <span className="text-[10px] tabular-nums text-muted-foreground">{count}</span>
+    </span>
+  );
+}
+
+function DroppableSidebarRow({
+  categoryId,
+  ...props
+}: Omit<ComponentProps<typeof SidebarRow>, "rowRef" | "isOver"> & {
+  categoryId: string | null;
+}) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: `overview-category-${categoryId ?? "uncategorized"}`,
+    data: { categoryId },
+  });
+
+  return <SidebarRow {...props} rowRef={setNodeRef} isOver={isOver} />;
+}
+
 function SidebarRow({
   icon: Icon,
   swatch,
   name,
   active,
   trailing,
+  suffix,
   meter,
+  indent = false,
+  rowRef,
+  isOver = false,
   onClick,
 }: {
   icon: LucideIcon;
@@ -152,46 +254,53 @@ function SidebarRow({
   name: string;
   active: boolean;
   trailing: ReactNode;
-  /** Omitted by the rows that aren't part of the spend ranking. */
-  meter?: { fraction: number; share: number; count: number };
+  suffix?: ReactNode;
+  meter?: { fraction: number };
+  indent?: boolean;
+  rowRef?: (node: HTMLElement | null) => void;
+  isOver?: boolean;
   onClick: () => void;
 }) {
   return (
     <button
+      ref={rowRef}
       type="button"
       onClick={onClick}
       className={cn(
-        "flex items-center gap-3 rounded-xl border text-xs bg-card px-2.5 py-2 text-left transition-colors",
-        active
-          ? cn("border-transparent ring-2", swatch.ring)
-          : "border-transparent hover:bg-muted/50",
+        "flex items-center gap-3 rounded-xl border bg-card px-2.5 py-2 text-left text-xs transition-all",
+        indent && "ml-6 py-1.5",
+        isOver
+          ? cn("scale-[1.02] border-transparent bg-primary/10 ring-2", swatch.ring)
+          : active
+            ? cn("border-transparent ring-2", swatch.ring)
+            : "border-transparent hover:bg-muted/50",
       )}
     >
       <span
         className={cn(
-          "grid size-9 shrink-0 place-items-center rounded-full",
+          "grid shrink-0 place-items-center rounded-full",
+          indent ? "size-7" : "size-9",
           swatch.badge,
         )}
       >
-        <Icon className="size-4.5" strokeWidth={2} />
+        <Icon className={indent ? "size-3.5" : "size-4.5"} strokeWidth={2} />
       </span>
 
       <span className="flex min-w-0 flex-1 flex-col gap-1.5">
         <span className="flex items-baseline gap-2">
-          <span className="min-w-0 flex-1 truncate  font-semibold" title={name}>
-            {name}
+          <span className="min-w-0 flex-1 truncate font-semibold" title={name}>
+            {isOver ? `Move to ${name}` : name}
           </span>
-          <span className="shrink-0">{trailing}</span>
+          {!isOver && <span className="shrink-0">{trailing}</span>}
+          {!isOver && suffix && <span className="shrink-0">{suffix}</span>}
         </span>
 
         {meter && (
-          <span className="flex items-center gap-2">
-            <span className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-chart-track">
-              <span
-                className={cn("block h-full rounded-full", swatch.bar)}
-                style={{ width: `${Math.max(meter.fraction * 100, 2)}%` }}
-              />
-            </span>
+          <span className="h-1.5 min-w-0 overflow-hidden rounded-full bg-chart-track">
+            <span
+              className={cn("block h-full rounded-full", swatch.bar)}
+              style={{ width: `${Math.max(meter.fraction * 100, 2)}%` }}
+            />
           </span>
         )}
       </span>

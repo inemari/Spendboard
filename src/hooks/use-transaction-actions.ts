@@ -38,7 +38,15 @@ export function useTransactionActions(
   openInvoiceIds: Set<string> = new Set(),
 ) {
   const [transactions, setTransactions] = useState(initialTransactions);
-  useEffect(() => setTransactions(initialTransactions), [initialTransactions]);
+  useEffect(() => {
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (!cancelled) setTransactions(initialTransactions);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [initialTransactions]);
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [pendingSimilarMove, setPendingSimilarMove] = useState<PendingSimilarMove | null>(null);

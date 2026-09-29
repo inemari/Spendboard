@@ -96,7 +96,7 @@ export function AdminHouseholdsPanel({
         </h2>
         <p className="text-sm text-muted-foreground">
           Pair two users into a household so they can settle shared credit-card bills. Neither
-          user can see the other's individual transactions — only shared totals.
+          user can see the other&apos;s individual transactions — only shared totals.
         </p>
       </div>
 
@@ -230,14 +230,18 @@ function UserSelect({
   return (
     <Select value={value} onValueChange={(v) => v && onChange(v)}>
       <SelectTrigger className="w-56">
-        <SelectValue placeholder={placeholder} />
+        <SelectValue placeholder={placeholder}>
+          {value
+            ? users.find((user) => user.id === value)?.email ?? "User without email"
+            : undefined}
+        </SelectValue>
       </SelectTrigger>
       <SelectContent>
         {users
           .filter((u) => u.id !== exclude)
           .map((u) => (
             <SelectItem key={u.id} value={u.id}>
-              {u.email ?? u.id}
+              {u.email ?? "User without email"}
             </SelectItem>
           ))}
       </SelectContent>

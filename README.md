@@ -1,8 +1,9 @@
 # Spendboard
 
 Expense management app. Upload a bank statement (Excel, CSV, or PDF),
-categorize transactions via drag-and-drop board, dropdown, or one-by-one
-review, and track common vs. personal spending across any timeframe.
+categorize transactions by dragging overview rows onto the category sidebar,
+using a dropdown, or working through the one-by-one review, and track common
+vs. personal spending across any timeframe.
 
 Stack: Next.js (App Router) + TypeScript + Tailwind + shadcn/ui + Supabase (Postgres, Auth) + dnd-kit.
 
@@ -52,3 +53,11 @@ Stack: Next.js (App Router) + TypeScript + Tailwind + shadcn/ui + Supabase (Post
 ## Roadmap
 
 See [ROADMAP.md](ROADMAP.md) for work that's planned but not yet built.
+
+## Quality and remediation
+
+- [APP_AUDIT.md](APP_AUDIT.md) records the September 2026 functionality,
+  logic, Supabase, design, and accessibility audit.
+- [REQUIREMENTS.md](REQUIREMENTS.md) turns those findings into prioritized,
+  implementation-ready requirements with acceptance criteria. Reference its
+  requirement IDs in commits, pull requests, and agent tasks.

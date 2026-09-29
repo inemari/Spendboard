@@ -2,16 +2,26 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { CalendarSearch, LayoutGrid, List, Receipt, Search } from "lucide-react";
+import {
+  DndContext,
+  DragOverlay,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
+import { CalendarSearch, Receipt, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatRangeLabel, resolveRange, type ViewMode } from "@/lib/date-range";
+import { formatAmount } from "@/lib/format";
 import { useTransactionActions } from "@/hooks/use-transaction-actions";
 import { computeOverview } from "@/lib/overview";
 import { buildCategoryColorMap, NEUTRAL_SWATCH, UNCATEGORIZED_SWATCH } from "@/lib/category-colors";
 import { OverviewSummary } from "@/components/overview-summary";
 import { CategorySidebar, type CategoryFilter } from "@/components/category-sidebar";
 import { TransactionList } from "@/components/transaction-list";
-import { CategoryBoard } from "@/components/category-board";
 import { BulkActionBar } from "@/components/bulk-action-bar";
 import { TypeOverviewSheet } from "@/components/type-overview-sheet";
 import { SimilarTransactionsDialog } from "@/components/similar-transactions-dialog";
@@ -28,8 +38,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { Category, CreditInvoice, Transaction, TxType } from "@/lib/types";
-
-type View = "overview" | "board";
 
 /** "all" shows everything, "unassigned" shows transactions with no
  *  credit_invoice_id, anything else is a specific invoice's id. */
@@ -63,7 +71,6 @@ export function TransactionBoard({
     transactions,
     selectedIds,
     toggleSelect,
-    toggleSelectAll,
     clearSelection,
     handleCategoryChange,
     handleCategoryChangeMulti,
@@ -88,13 +95,14 @@ export function TransactionBoard({
   } = useTransactionActions(initialTransactions, categories, invoices, openInvoiceIds);
 
   const [overviewType, setOverviewType] = useState<TxType | null>(null);
-  const [view, setView] = useState<View>("overview");
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>({ kind: "all" });
   const [invoiceFilter, setInvoiceFilter] = useState<InvoiceFilter>("all");
-  // Each view keeps its own search text, so switching Overview <-> Board
-  // doesn't clobber whichever query the other view had typed.
   const [listQuery, setListQuery] = useState("");
-  const [boardQuery, setBoardQuery] = useState("");
+  const [draggedTransaction, setDraggedTransaction] = useState<Transaction | null>(null);
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor),
+  );
 
   const router = useRouter();
   const pathname = usePathname();
@@ -117,7 +125,7 @@ export function TransactionBoard({
     const timeout = setTimeout(() => router.replace(pathname, { scroll: false }), 4000);
     return () => clearTimeout(timeout);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-run when the highlight param itself changes
-  }, [highlightParam, view]);
+  }, [highlightParam]);
 
   // Same params the timeframe switcher reads, so the empty state can name the
   // timeframe that came back empty rather than always saying "this month".
@@ -138,13 +146,8 @@ export function TransactionBoard({
     [transactions, categories],
   );
 
-  const sorted = useMemo(
-    () => [...filterByInvoice(transactions, invoiceFilter)].sort((a, b) => (a.date < b.date ? 1 : -1)),
-    [transactions, invoiceFilter],
-  );
-
-  // Shared by the sidebar and the board's kanban columns, so a category's
-  // color is the same in both places instead of each view deriving its own.
+  // Shared by the overview summary and category drop targets so category
+  // identity stays stable throughout the page.
   const colorMap = useMemo(() => buildCategoryColorMap(categories), [categories]);
 
   // The category sidebar is the sole source of truth for which category is
@@ -176,35 +179,37 @@ export function TransactionBoard({
     return null;
   }, [categoryFilter, colorMap]);
 
-  // Desktop-only since the board needs drag-and-drop and horizontal room.
-  const viewToggle = (
-    <div className="hidden gap-1 rounded-full bg-muted p-0.5 md:flex">
-      {(
-        [
-          { value: "overview", label: "Overview", Icon: List },
-          { value: "board", label: "Board", Icon: LayoutGrid },
-        ] as const
-      ).map(({ value, label, Icon }) => (
-        <button
-          key={value}
-          type="button"
-          onClick={() => setView(value)}
-          aria-pressed={view === value}
-          className={cn(
-            "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
-            view === value
-              ? "bg-card text-foreground shadow-sm"
-              : "text-muted-foreground hover:text-foreground",
-          )}
-        >
-          <Icon className="size-3.5" />
-          {label}
-        </button>
-      ))}
-    </div>
-  );
+  function handleDragStart(event: DragStartEvent) {
+    setDraggedTransaction(
+      transactions.find((transaction) => transaction.id === String(event.active.id)) ?? null,
+    );
+  }
+
+  function handleDragEnd(event: DragEndEvent) {
+    setDraggedTransaction(null);
+    if (!event.over) return;
+
+    const categoryId = event.over.data.current?.categoryId as string | null | undefined;
+    if (categoryId === undefined) return;
+
+    const transactionId = String(event.active.id);
+    const ids =
+      selectedIds.has(transactionId) && selectedIds.size > 1
+        ? Array.from(selectedIds)
+        : [transactionId];
+
+    if (ids.length > 1) handleCategoryChangeMulti(ids, categoryId);
+    else handleCategoryChange(transactionId, categoryId);
+  }
 
   return (
+    <DndContext
+      id="overview-transactions-dnd"
+      sensors={sensors}
+      onDragStart={handleDragStart}
+      onDragCancel={() => setDraggedTransaction(null)}
+      onDragEnd={handleDragEnd}
+    >
     <div className={cn("flex flex-col gap-4", selectedIds.size > 0 && "pb-20")}>
       <SimilarTransactionsDialog
         pending={pendingSimilarMove}
@@ -237,10 +242,7 @@ export function TransactionBoard({
         onDelete={handleDeleteTransaction}
       />
 
-      {/* One shared bar for date-range navigation, the active view's search/
-          filter field, and the Overview/Board toggle — keeping all of it off
-          the board's own canvas is what gives the board its extra vertical
-          room. */}
+      {/* One shared bar for date-range navigation, search, and settlement filtering. */}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/60 bg-card px-3 py-2">
         <TimeframeSwitcher />
 
@@ -248,21 +250,13 @@ export function TransactionBoard({
           <div className="flex items-center gap-2">
             <div className="relative">
               <Search className="absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground" />
-              {view === "overview" ? (
-                <Input
-                  value={listQuery}
-                  onChange={(e) => setListQuery(e.target.value)}
-                  placeholder="Search…"
-                  className="h-8 w-full pl-8 text-xs sm:w-48"
-                />
-              ) : (
-                <Input
-                  value={boardQuery}
-                  onChange={(e) => setBoardQuery(e.target.value)}
-                  placeholder="Filter categories…"
-                  className="h-8 w-full pl-8 text-xs sm:w-48"
-                />
-              )}
+              <Input
+                value={listQuery}
+                onChange={(e) => setListQuery(e.target.value)}
+                placeholder="Search…"
+                aria-label="Search transactions"
+                className="h-8 w-full pl-8 text-xs sm:w-48"
+              />
             </div>
             {invoices.length > 0 && (
               <Select value={invoiceFilter} onValueChange={(v) => v && setInvoiceFilter(v)}>
@@ -286,72 +280,58 @@ export function TransactionBoard({
                 </SelectContent>
               </Select>
             )}
-            {viewToggle}
           </div>
         )}
       </div>
 
       {transactions.length > 0 && (
         <>
-          <div className={cn(view === "board" && "md:hidden")}>
-            <div className="grid gap-5 lg:grid-cols-[19rem_minmax(0,1fr)] lg:items-start">
-              <aside className="flex flex-col gap-4 rounded-2xl border border-border/60 bg-card p-4 sm:p-5">
+          <div>
+            <div className="grid gap-5 lg:grid-cols-[19rem_minmax(0,1fr)] lg:grid-rows-[auto_1fr] lg:items-start">
+              <section className="order-1 rounded-2xl border border-border/60 bg-card p-4 sm:p-5 lg:col-start-1 lg:row-start-1">
                 <OverviewSummary
                   overview={overview}
                   categorizeHref="/categorize"
                   onSelectType={setOverviewType}
                 />
-                <div className="flex flex-col gap-1.5 border-t border-border/60 pt-4">
-                  <CategorySidebar
-                    breakdown={overview.breakdown}
-                    totalCount={transactions.length}
-                    uncategorizedCount={overview.uncategorizedCount}
-                    uncategorizedSpent={overview.uncategorizedSpent}
-                    colorMap={colorMap}
-                    filter={categoryFilter}
-                    onSelectFilter={setCategoryFilter}
-                  />
-                </div>
-              </aside>
+              </section>
 
-              <TransactionList
-                transactions={visibleTransactions}
-                categories={categories}
-                invoices={invoices}
-                openInvoiceIds={openInvoiceIds}
-                selectedIds={selectedIds}
-                highlightedIds={highlightedIds}
-                filterChip={filterChip}
-                query={listQuery}
-                onToggleSelect={toggleSelect}
-                onCategoryChange={handleCategoryChange}
-                onTypeToggle={handleTypeToggle}
-                onCardTypeToggle={handleCardTypeToggle}
-                onInvoiceChange={handleInvoiceChange}
-                onNotesChange={handleNotesChange}
-                onDelete={handleDeleteTransaction}
-              />
+              <div className="order-2 min-w-0 lg:col-start-2 lg:row-span-2 lg:row-start-1">
+                <TransactionList
+                  transactions={visibleTransactions}
+                  categories={categories}
+                  invoices={invoices}
+                  openInvoiceIds={openInvoiceIds}
+                  selectedIds={selectedIds}
+                  highlightedIds={highlightedIds}
+                  filterChip={filterChip}
+                  query={listQuery}
+                  draggable
+                  onToggleSelect={toggleSelect}
+                  onCategoryChange={handleCategoryChange}
+                  onTypeToggle={handleTypeToggle}
+                  onCardTypeToggle={handleCardTypeToggle}
+                  onInvoiceChange={handleInvoiceChange}
+                  onNotesChange={handleNotesChange}
+                  onDelete={handleDeleteTransaction}
+                />
+              </div>
+
+              <aside className="order-3 rounded-2xl border border-border/60 bg-card p-4 sm:p-5 lg:sticky lg:top-4 lg:col-start-1 lg:row-start-2 lg:max-h-[calc(100svh-2rem)] lg:overflow-y-auto">
+                <CategorySidebar
+                  categories={categories}
+                  transactions={transactions}
+                  totalCount={transactions.length}
+                  uncategorizedCount={overview.uncategorizedCount}
+                  uncategorizedSpent={overview.uncategorizedSpent}
+                  colorMap={colorMap}
+                  filter={categoryFilter}
+                  onSelectFilter={setCategoryFilter}
+                />
+              </aside>
             </div>
           </div>
 
-          {view === "board" && (
-            <CategoryBoard
-              transactions={sorted}
-              categories={categories}
-              colorMap={colorMap}
-              query={boardQuery}
-              onCategoryChange={handleCategoryChange}
-              onCategoryChangeMulti={handleCategoryChangeMulti}
-              onTypeToggle={handleTypeToggle}
-              onCardTypeToggle={handleCardTypeToggle}
-              onNotesChange={handleNotesChange}
-              onDelete={handleDeleteTransaction}
-              selectedIds={selectedIds}
-              onToggleSelect={toggleSelect}
-              onToggleSelectAll={toggleSelectAll}
-              highlightedIds={highlightedIds}
-            />
-          )}
         </>
       )}
 
@@ -407,5 +387,18 @@ export function TransactionBoard({
         />
       )}
     </div>
+      <DragOverlay dropAnimation={null}>
+        {draggedTransaction && (
+          <div className="flex min-w-64 items-center justify-between gap-4 rounded-xl border bg-card px-4 py-3 text-sm shadow-xl">
+            <span className="max-w-64 truncate font-medium">
+              {draggedTransaction.description}
+            </span>
+            <span className="shrink-0 font-semibold tabular-nums">
+              {formatAmount(draggedTransaction.amount)}
+            </span>
+          </div>
+        )}
+      </DragOverlay>
+    </DndContext>
   );
 }

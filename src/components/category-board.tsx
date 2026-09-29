@@ -45,6 +45,16 @@ const MIN_SCALE = 0.4;
 // far a single measurement pass can push it.
 const MAX_SCALE = Infinity;
 
+function isPopulated(cell: {
+  transactions: Transaction[];
+  subcategories: { transactions: Transaction[] }[];
+}) {
+  return (
+    cell.transactions.length > 0 ||
+    cell.subcategories.some((section) => section.transactions.length > 0)
+  );
+}
+
 /**
  * The "cockpit": every category (plus Uncategorized) as a fixed-height cell
  * in one wrapping grid, so the whole board is scannable without paging
@@ -184,10 +194,6 @@ export function CategoryBoard({
   // packing is what lets a compact cell backfill an open slot next to a
   // still-tall populated column, instead of every empty cell being pushed
   // into its own section below.
-  const isPopulated = (cell: (typeof filteredCells)[number]) =>
-    cell.transactions.length > 0 ||
-    cell.subcategories.some((s) => s.transactions.length > 0);
-
   // Populated cells first (stable sort keeps each group's original order)
   // so the categories with something in them read as the front of the
   // board, with the compact empty ones trailing/backfilling around them.
@@ -218,7 +224,8 @@ export function CategoryBoard({
 
   useEffect(() => {
     attemptsRef.current = 0;
-    setScale(1);
+    const frame = requestAnimationFrame(() => setScale(1));
+    return () => cancelAnimationFrame(frame);
   }, [cellCount]);
 
   useEffect(() => {
@@ -231,20 +238,23 @@ export function CategoryBoard({
   }, []);
 
   useEffect(() => {
-    const grid = gridRef.current;
-    if (!grid || attemptsRef.current > 40) return;
-    const available = window.innerHeight - grid.getBoundingClientRect().top - 16;
-    const natural = grid.scrollHeight;
-    // A gap between the shrink and grow thresholds (rather than both firing
-    // right at 100%) keeps the two steps from fighting each other forever.
-    if (natural > available && scale > MIN_SCALE) {
-      attemptsRef.current += 1;
-      setScale((s) => Math.max(MIN_SCALE, s * 0.92));
-    } else if (natural < available * 0.92 && scale < MAX_SCALE) {
-      attemptsRef.current += 1;
-      setScale((s) => Math.min(MAX_SCALE, s * 1.06));
-    }
-  });
+    const frame = requestAnimationFrame(() => {
+      const grid = gridRef.current;
+      if (!grid || attemptsRef.current > 40) return;
+      const available = window.innerHeight - grid.getBoundingClientRect().top - 16;
+      const natural = grid.scrollHeight;
+      // A gap between the shrink and grow thresholds (rather than both firing
+      // right at 100%) keeps the two steps from fighting each other forever.
+      if (natural > available && scale > MIN_SCALE) {
+        attemptsRef.current += 1;
+        setScale((current) => Math.max(MIN_SCALE, current * 0.92));
+      } else if (natural < available * 0.92 && scale < MAX_SCALE) {
+        attemptsRef.current += 1;
+        setScale((current) => Math.min(MAX_SCALE, current * 1.06));
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [cellCount, scale]);
 
   return (
     <DndContext
