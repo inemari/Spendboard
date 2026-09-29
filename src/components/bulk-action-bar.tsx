@@ -93,7 +93,9 @@ export function BulkActionBar({
           onValueChange={(value: TxType | null) => value && onTypeChange(value)}
         >
           <SelectTrigger className="h-8 w-32 rounded-full text-xs">
-            <SelectValue placeholder="Set type" />
+            <SelectValue placeholder="Set type">
+              {(value: TxType | null) => (value ? formatTxType(value) : "Set type")}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             {TYPES.map((type) => (
@@ -110,7 +112,11 @@ export function BulkActionBar({
           }
         >
           <SelectTrigger className="h-8 w-28 rounded-full text-xs">
-            <SelectValue placeholder="Set card" />
+            <SelectValue placeholder="Set card">
+              {(value: CardType | null) =>
+                value ? `${value[0].toUpperCase()}${value.slice(1)}` : "Set card"
+              }
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             {CARD_TYPES.map((cardType) => (
@@ -128,7 +134,12 @@ export function BulkActionBar({
             }
           >
             <SelectTrigger className="h-8 w-40 rounded-full text-xs">
-              <SelectValue placeholder="Set settlement" />
+              <SelectValue placeholder="Set settlement">
+                {(value: string | null) => {
+                  if (!value || value === NO_INVOICE_VALUE) return "Set settlement";
+                  return openInvoices.find((invoice) => invoice.id === value)?.label ?? "Set settlement";
+                }}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value={NO_INVOICE_VALUE}>Remove settlement</SelectItem>

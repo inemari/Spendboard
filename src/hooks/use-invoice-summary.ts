@@ -14,10 +14,17 @@ import type { InvoiceMemberSummary } from "@/lib/types";
  */
 export function useInvoiceSummary(invoiceId: string) {
   const supabase = useMemo(() => createClient(), []);
-  const [summary, setSummary] = useState<InvoiceMemberSummary[] | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<{
+    key: string;
+    summary: InvoiceMemberSummary[] | null;
+    error: string | null;
+  } | null>(null);
   const [attempt, setAttempt] = useState(0);
+  const requestKey = `${invoiceId}:${attempt}`;
+  const currentResult = result?.key === requestKey ? result : null;
+  const summary = currentResult?.summary ?? null;
+  const error = currentResult?.error ?? null;
+  const loading = currentResult === null;
 
   const retry = useCallback(() => {
     setAttempt((n) => n + 1);
@@ -25,25 +32,26 @@ export function useInvoiceSummary(invoiceId: string) {
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setError(null);
 
     supabase
       .rpc("household_invoice_summary", { p_invoice_id: invoiceId })
       .then(({ data, error }) => {
         if (cancelled) return;
-        setLoading(false);
         if (error) {
-          setError(error.message);
+          setResult({ key: requestKey, summary: null, error: error.message });
           return;
         }
-        setSummary((data ?? []) as InvoiceMemberSummary[]);
+        setResult({
+          key: requestKey,
+          summary: (data ?? []) as InvoiceMemberSummary[],
+          error: null,
+        });
       });
 
     return () => {
       cancelled = true;
     };
-  }, [supabase, invoiceId, attempt]);
+  }, [supabase, invoiceId, requestKey]);
 
   return { summary, loading, error, retry };
 }

@@ -18,7 +18,14 @@ export default async function CategoriesPage() {
         </p>
       )}
 
-      <CategoryManagerPanel categories={categories} />
+      <CategoryManagerPanel
+        key={categories
+          .map(({ id, name, icon, parent_id, sort_order }) =>
+            [id, name, icon, parent_id, sort_order].join(":"),
+          )
+          .join("|")}
+        categories={categories}
+      />
     </div>
   );
 }

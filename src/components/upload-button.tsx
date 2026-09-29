@@ -33,6 +33,42 @@ const ACCEPT = Array.from(
 
 const NEW_INVOICE_VALUE = "__new__";
 
+export function invoiceChoiceLabel(
+  choice: string,
+  invoices: CreditInvoice[] | undefined,
+) {
+  if (choice === NEW_INVOICE_VALUE) return "New invoice…";
+  return invoices?.find((invoice) => invoice.id === choice)?.label;
+}
+
+export function InvoicePicker({
+  value,
+  invoices,
+  onValueChange,
+}: {
+  value: string;
+  invoices: CreditInvoice[] | undefined;
+  onValueChange: (value: string) => void;
+}) {
+  const selectedLabel = invoiceChoiceLabel(value, invoices);
+
+  return (
+    <Select value={value} onValueChange={(next) => next && onValueChange(next)}>
+      <SelectTrigger aria-label={`Invoice: ${selectedLabel ?? "Choose an invoice"}`}>
+        <SelectValue placeholder="Choose an invoice…">{selectedLabel}</SelectValue>
+      </SelectTrigger>
+      <SelectContent>
+        {invoices?.map((invoice) => (
+          <SelectItem key={invoice.id} value={invoice.id}>
+            {invoice.label}
+          </SelectItem>
+        ))}
+        <SelectItem value={NEW_INVOICE_VALUE}>New invoice…</SelectItem>
+      </SelectContent>
+    </Select>
+  );
+}
+
 export function UploadButton({
   categories,
   householdId,
@@ -257,19 +293,11 @@ export function UploadButton({
             </DialogDescription>
           </DialogHeader>
 
-          <Select value={invoiceChoice} onValueChange={(v) => v && setInvoiceChoice(v)}>
-            <SelectTrigger>
-              <SelectValue placeholder="Choose an invoice…" />
-            </SelectTrigger>
-            <SelectContent>
-              {openInvoices?.map((invoice) => (
-                <SelectItem key={invoice.id} value={invoice.id}>
-                  {invoice.label}
-                </SelectItem>
-              ))}
-              <SelectItem value={NEW_INVOICE_VALUE}>New invoice…</SelectItem>
-            </SelectContent>
-          </Select>
+          <InvoicePicker
+            value={invoiceChoice}
+            invoices={openInvoices}
+            onValueChange={setInvoiceChoice}
+          />
 
           {invoiceChoice === NEW_INVOICE_VALUE && (
             <Input

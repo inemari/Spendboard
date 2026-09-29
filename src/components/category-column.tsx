@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { Filter, Inbox, MoreVertical } from "lucide-react";
 import { DraggableTransactionCard } from "@/components/draggable-transaction-card";
@@ -192,6 +192,36 @@ export function CategoryColumn({
   if (compact) {
     return <CompactCategoryColumn id={id} title={title} swatch={swatch} />;
   }
+
+  return (
+    <PopulatedCategoryColumn
+      id={id}
+      title={title}
+      transactions={transactions}
+      subcategories={subcategories}
+      swatch={swatch}
+      {...actions}
+    />
+  );
+}
+
+/** The stateful populated variant is a separate component so changing a
+ * category between compact and populated mounts a different component rather
+ * than changing the hook order of an existing CategoryColumn instance. */
+function PopulatedCategoryColumn({
+  id,
+  title,
+  transactions,
+  subcategories,
+  swatch,
+  ...actions
+}: {
+  id: string;
+  title: string;
+  transactions: Transaction[];
+  subcategories: ColumnSection[];
+  swatch: CategorySwatch;
+} & ColumnActions) {
 
   const hasSubcategories = subcategories.length > 0;
   const GENERAL_ID = `${id}__general`;
