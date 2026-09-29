@@ -1,8 +1,9 @@
 # Spendboard
 
 Expense management app. Upload a bank statement (Excel, CSV, or PDF),
-categorize transactions via drag-and-drop board, dropdown, or one-by-one
-review, and track common vs. personal spending across any timeframe.
+categorize transactions by dragging overview rows onto the category sidebar,
+using a dropdown, or working through the one-by-one review, and track common
+vs. personal spending across any timeframe.
 
 Stack: Next.js (App Router) + TypeScript + Tailwind + shadcn/ui + Supabase (Postgres, Auth) + dnd-kit.
 

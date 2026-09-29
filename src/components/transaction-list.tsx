@@ -1,7 +1,17 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ChevronDown, CreditCard, Receipt, SearchX, Trash2 } from "lucide-react";
+import { useDraggable } from "@dnd-kit/core";
+import {
+  ChevronDown,
+  CreditCard,
+  GripVertical,
+  MessageSquarePlus,
+  Pencil,
+  Receipt,
+  SearchX,
+  Trash2,
+} from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -35,6 +45,7 @@ export function TransactionList({
   highlightedIds,
   filterChip,
   query = "",
+  draggable = false,
   hideSelection = false,
   bare = false,
   onToggleSelect,
@@ -59,6 +70,8 @@ export function TransactionList({
   /** Search text — owned by the shared toolbar above this list, so it stays
    *  in the same bar as the date-range switcher and view toggle. */
   query?: string;
+  /** Enables a keyboard- and pointer-operable drag handle for overview rows. */
+  draggable?: boolean;
   /** Hides the select checkbox entirely — for contexts with no bulk-action
    *  bar to act on a selection (e.g. the settlement review step). */
   hideSelection?: boolean;
@@ -78,6 +91,7 @@ export function TransactionList({
   onDelete: (id: string) => void;
 }) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [noteFocusId, setNoteFocusId] = useState<string | null>(null);
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -171,10 +185,17 @@ export function TransactionList({
                     selected={selectedIds.has(t.id)}
                     highlighted={highlightedIds.has(t.id)}
                     hideSelection={hideSelection}
+                    draggable={draggable}
                     expanded={expandedId === t.id}
-                    onToggleExpanded={() =>
-                      setExpandedId((prev) => (prev === t.id ? null : t.id))
-                    }
+                    focusNote={noteFocusId === t.id}
+                    onToggleExpanded={() => {
+                      setNoteFocusId(null);
+                      setExpandedId((prev) => (prev === t.id ? null : t.id));
+                    }}
+                    onAddNote={() => {
+                      setExpandedId(t.id);
+                      setNoteFocusId(t.id);
+                    }}
                     onToggleSelect={() => onToggleSelect(t.id)}
                     onCategoryChange={(categoryId) =>
                       onCategoryChange(t.id, categoryId)
@@ -205,8 +226,11 @@ function TransactionRow({
   selected,
   highlighted,
   hideSelection = false,
+  draggable,
   expanded,
+  focusNote,
   onToggleExpanded,
+  onAddNote,
   onToggleSelect,
   onCategoryChange,
   onTypeToggle,
@@ -222,8 +246,11 @@ function TransactionRow({
   selected: boolean;
   highlighted: boolean;
   hideSelection?: boolean;
+  draggable: boolean;
   expanded: boolean;
+  focusNote: boolean;
   onToggleExpanded: () => void;
+  onAddNote: () => void;
   onToggleSelect: () => void;
   onCategoryChange: (categoryId: string | null) => void;
   onTypeToggle: () => void;
@@ -232,6 +259,10 @@ function TransactionRow({
   onNotesChange: (notes: string | null) => void;
   onDelete: () => void;
 }) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: t.id,
+    disabled: !draggable,
+  });
   const [noteDraft, setNoteDraft] = useState(t.notes ?? "");
   const categoryName = categories.find((c) => c.id === t.category_id)?.name;
 
@@ -242,14 +273,28 @@ function TransactionRow({
 
   return (
     <li
+      ref={setNodeRef}
       id={`transaction-${t.id}`}
       className={cn(
-        "group scroll-mt-24 rounded-xl transition-colors ",
+        "group scroll-mt-24 rounded-xl border border-transparent transition-colors hover:border-border/60 hover:bg-muted/30",
+        isDragging && "opacity-40",
         selected && "bg-primary/5",
         highlighted && "ring-2 ring-amber-500",
       )}
     >
       <div className="flex items-center gap-3 px-2 py-2.5">
+        {draggable && (
+          <button
+            type="button"
+            {...listeners}
+            {...attributes}
+            aria-label={`Drag ${t.description} to a category`}
+            className="-mr-1 hidden touch-none cursor-grab rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:cursor-grabbing lg:inline-flex"
+          >
+            <GripVertical className="size-4" />
+          </button>
+        )}
+
         {!hideSelection && (
           <Checkbox
             checked={selected}
@@ -257,39 +302,68 @@ function TransactionRow({
             aria-label={`Select ${t.description}`}
             className={cn(
               "size-3.5 shrink-0 cursor-pointer transition-opacity",
-              !selected &&
-                "opacity-0 group-hover:opacity-100 focus-visible:opacity-100",
+              !selected && "opacity-50 group-hover:opacity-100 focus-visible:opacity-100",
             )}
           />
         )}
 
-        <button
-          type="button"
-          onClick={onToggleExpanded}
-          aria-expanded={expanded}
-          className="flex min-w-0 flex-1 items-center gap-3 text-left"
-        >
-          <span className="min-w-0 flex-1">
+        <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
+          <button
+            type="button"
+            onClick={onToggleExpanded}
+            aria-expanded={expanded}
+            className="min-w-0 flex-1 text-left"
+          >
+          <span className="block min-w-0">
             <span className="block truncate text-sm font-medium" title={t.description}>
               {t.description}
             </span>
-            {t.location && (
-              <span className="block truncate text-xs text-muted-foreground" title={t.location}>
-                {t.location}
+            <span className="flex min-w-0 items-center gap-1.5 truncate text-xs text-muted-foreground">
+              {t.location && <span className="truncate" title={t.location}>{t.location}</span>}
+              {t.location && <span aria-hidden="true">·</span>}
+              <span className="shrink-0">{formatTxType(t.type)}</span>
+              <span aria-hidden="true">·</span>
+              <span className="shrink-0 capitalize">{t.card_type}</span>
+            </span>
+            {t.notes && (
+              <span className="mt-0.5 flex items-center gap-1 truncate text-[11px] text-primary/80" title={t.notes}>
+                <MessageSquarePlus className="size-3 shrink-0" />
+                <span className="truncate">{t.notes}</span>
               </span>
             )}
           </span>
+          </button>
 
-          <span
-            className={cn(
-              "hidden shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-medium sm:inline",
-              categoryName
-                ? "bg-muted text-muted-foreground"
-                : "bg-primary/10 text-primary",
-            )}
+          <Select
+            value={t.category_id ?? UNCATEGORIZED_VALUE}
+            onValueChange={(value) =>
+              onCategoryChange(value === UNCATEGORIZED_VALUE ? null : value)
+            }
           >
-            {categoryName ?? "Uncategorized"}
-          </span>
+            <SelectTrigger
+              aria-label={`Change category for ${t.description}`}
+              className={cn(
+                "h-7 w-[7.25rem] shrink-0 rounded-full border-0 px-2.5 text-[11px] font-medium shadow-none sm:w-36",
+                categoryName
+                  ? "bg-muted text-muted-foreground"
+                  : "bg-primary/10 text-primary",
+              )}
+            >
+              <SelectValue>{categoryName ?? "Uncategorized"}</SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={UNCATEGORIZED_VALUE}>Uncategorized</SelectItem>
+              {flattenWithDepth(categories).map(({ category: c, depth }) => (
+                <SelectItem
+                  key={c.id}
+                  value={c.id}
+                  className={depth > 0 ? "pl-6 text-muted-foreground" : undefined}
+                >
+                  {depth > 0 ? `↳ ${c.name}` : c.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
           <span
             className={cn(
@@ -300,45 +374,39 @@ function TransactionRow({
             {formatAmount(t.amount)}
           </span>
 
-          <ChevronDown
-            className={cn(
-              "size-3.5 shrink-0 text-muted-foreground transition-transform",
-              expanded && "rotate-180",
-            )}
-          />
+          <button
+            type="button"
+            onClick={onToggleExpanded}
+            aria-expanded={expanded}
+            aria-label={`${expanded ? "Hide" : "Show"} details for ${t.description}`}
+            className="flex shrink-0 items-center gap-1 rounded-full px-1.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <Pencil className="size-3" />
+            <span className="hidden lg:inline">Details</span>
+            <ChevronDown
+              className={cn("size-3.5 transition-transform", expanded && "rotate-180")}
+            />
+          </button>
+        </div>
+
+        <button
+          type="button"
+          onClick={onAddNote}
+          aria-label={t.notes ? `Edit note for ${t.description}` : `Add note to ${t.description}`}
+          title={t.notes ? "Edit note" : "Add note"}
+          className={cn(
+            "flex shrink-0 items-center gap-1 rounded-full px-2 py-1.5 text-xs font-medium transition-colors hover:bg-muted hover:text-foreground",
+            t.notes ? "text-primary" : "text-muted-foreground",
+          )}
+        >
+          <MessageSquarePlus className="size-3.5" />
+          <span className="hidden md:inline">{t.notes ? "Note" : "Add note"}</span>
         </button>
       </div>
 
       {expanded && (
-        <div className="flex flex-col gap-3 px-2 pb-3 pl-8">
+        <div className="mx-2 mb-2 flex flex-col gap-3 rounded-xl border border-border/60 bg-muted/20 p-3 sm:ml-10">
           <div className="flex flex-wrap items-center gap-2">
-            <Select
-              value={t.category_id ?? UNCATEGORIZED_VALUE}
-              onValueChange={(value) =>
-                onCategoryChange(value === UNCATEGORIZED_VALUE ? null : value)
-              }
-            >
-              <SelectTrigger className="h-8 w-48 text-xs">
-                <SelectValue>{categoryName ?? "Uncategorized"}</SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={UNCATEGORIZED_VALUE}>
-                  Uncategorized
-                </SelectItem>
-                {flattenWithDepth(categories).map(({ category: c, depth }) => (
-                  <SelectItem
-                    key={c.id}
-                    value={c.id}
-                    className={
-                      depth > 0 ? "pl-6 text-muted-foreground" : undefined
-                    }
-                  >
-                    {depth > 0 ? `↳ ${c.name}` : c.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
             <button
               type="button"
               onClick={onTypeToggle}
@@ -380,13 +448,17 @@ function TransactionRow({
             </button>
           </div>
 
-          <Input
-            value={noteDraft}
-            onChange={(e) => setNoteDraft(e.target.value)}
-            onBlur={saveNote}
-            placeholder="Add a note…"
-            className="h-8 text-xs"
-          />
+          <label className="flex flex-col gap-1.5 text-xs font-medium">
+            Note
+            <Input
+              autoFocus={focusNote}
+              value={noteDraft}
+              onChange={(e) => setNoteDraft(e.target.value)}
+              onBlur={saveNote}
+              placeholder="Add a note…"
+              className="h-8 bg-card text-xs font-normal"
+            />
+          </label>
         </div>
       )}
     </li>

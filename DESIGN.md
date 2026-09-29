@@ -84,8 +84,8 @@ tokens.
   app's own surfaces (`#ffffff` light, `#241521` dark) before changing any of
   these values — don't eyeball colorblind-safety.
 
-**The "Where it went" sidebar, the board's kanban columns, and the
-categorize screen's category nodes share a different color job and don't use
+**The overview category sidebar and the categorize screen's category nodes
+share a different color job and don't use
 the palette above.** None is a magnitude chart — every sidebar row, column
 header, and category node always shows the category's name as text, so a
 color there never carries meaning alone. Each category gets its own identity
